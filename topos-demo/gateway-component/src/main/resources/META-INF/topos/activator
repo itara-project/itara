@@ -1,0 +1,2 @@
+component-id=gateway
+activator=demo.gateway.component.GatewayActivator

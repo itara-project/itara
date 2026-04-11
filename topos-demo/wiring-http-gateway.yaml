@@ -1,0 +1,13 @@
+# wiring-http-gateway.yaml
+# Gateway JVM: calls Calculator over HTTP on localhost:8081
+
+components:
+  - id: "gateway"
+    activator: "demo.gateway.component.GatewayActivator"
+
+connections:
+  - from: "gateway"
+    to: "calculator"
+    type: http
+    host: "localhost"
+    port: 8081

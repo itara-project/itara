@@ -1,0 +1,14 @@
+# wiring-direct.yaml
+# Both components run in the same JVM.
+# Gateway calls Calculator as a direct method call — no network involved.
+
+components:
+  - id: "gateway"
+    activator: "demo.gateway.component.GatewayActivator"
+  - id: "calculator"
+    activator: "demo.calculator.component.CalculatorActivator"
+
+connections:
+  - from: "gateway"
+    to: "calculator"
+    type: direct
