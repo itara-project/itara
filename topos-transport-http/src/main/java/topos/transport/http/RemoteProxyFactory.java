@@ -1,4 +1,4 @@
-package topos.agent.proxy;
+package topos.transport.http;
 
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;

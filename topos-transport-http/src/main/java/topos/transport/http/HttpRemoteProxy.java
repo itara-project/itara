@@ -1,4 +1,4 @@
-package topos.agent.proxy;
+package topos.transport.http;
 
 import java.io.*;
 import java.lang.reflect.InvocationHandler;

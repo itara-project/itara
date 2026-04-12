@@ -85,9 +85,10 @@ a proxy from the API jar alone.
 ## Structure
 
 ```
-topos-common/     Annotations, registry, activator interface. No external deps.
-topos-agent/      JVM agent. ByteBuddy proxy generation, HTTP server/client.
-topos-demo/       Hello world demo. Two components, three wiring configs.
+topos-common/           Annotations, registry, activator interface, proxy interface. No external deps.
+topos-agent/            JVM agent. proxy implementation discovery and generation.
+topos-transport-http/   ByteBuddy proxy generation, HTTP server/client.
+topos-demo/             Hello world demo. Two components, three wiring configs.
 ```
 
 ### Key concepts
@@ -112,9 +113,10 @@ The agent reads this at JVM startup.
 Build order:
 
 ```
-cd topos-common && mvn install
-cd topos-agent  && mvn package
-cd topos-demo   && mvn install
+cd topos-common          && mvn install
+cd topos-agent           && mvn package
+cd topos-transport-http  && mvn install
+cd topos-demo            && mvn install
 ```
 
 **Direct topology (one JVM):**
@@ -126,7 +128,8 @@ java "-Dtopos.config=topos-demo/wiring-direct.yaml"
           topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
           topos-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
           topos-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
+          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
+          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 
@@ -138,7 +141,8 @@ java "-Dtopos.config=topos-demo/wiring-http-calculator.yaml"
      -javaagent:topos-agent/target/topos-agent-1.0-SNAPSHOT.jar
      -cp "topos-common/target/topos-common-1.0-SNAPSHOT.jar;
           topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar"
+          topos-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
+          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
      topos.runtime.ToposMain
 
 # Terminal 2
@@ -147,7 +151,8 @@ java "-Dtopos.config=topos-demo/wiring-http-gateway.yaml"
      -cp "topos-common/target/topos-common-1.0-SNAPSHOT.jar;
           topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
           topos-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
+          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
+          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 

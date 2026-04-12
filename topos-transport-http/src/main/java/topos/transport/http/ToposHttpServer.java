@@ -1,9 +1,13 @@
-package topos.agent.proxy;
+package topos.transport.http;
 
 import com.sun.net.httpserver.HttpServer;
 import topos.runtime.ToposRegistry;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 

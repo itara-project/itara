@@ -2,60 +2,47 @@ package topos.agent;
 
 import topos.agent.config.ConfigLoader;
 import topos.agent.config.WiringConfig;
-import topos.agent.proxy.RemoteProxyFactory;
-import topos.agent.proxy.ToposHttpServer;
 import topos.api.ToposActivator;
 import topos.runtime.ToposRegistry;
+import topos.runtime.TransportRegistry;
+import topos.spi.ToposTransport;
 
 import java.lang.instrument.Instrumentation;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * The Topos Java agent.
  *
- * Entry point: premain(), called by the JVM before the application's
- * main method. Wires the component registry based on the config slice,
- * then hands control to the application.
- *
  * Startup sequence:
- *   1. Load the per-JVM wiring config slice
- *   2. Scan the classpath for @ComponentInterface contracts
- *   3. Scan META-INF/topos/activator files for local activator classes
- *   4. For each connection in the config:
- *        - direct:  register the activator in the registry
- *        - http (inbound): start the HTTP server on the configured port
- *        - http (outbound): create a proxy and pre-register it in the registry
- *   5. Hand control to the application (main method runs normally)
+ *   1. Install ContractClassTransformer (patches no-arg ctors into contracts)
+ *   2. Load wiring config
+ *   3. Scan classpath for @ComponentInterface contracts
+ *   4. Scan META-INF/topos/activator for local activator classes
+ *   5. Load META-INF/topos/transport — discover available transport impls
+ *   6. Register activators for local components
+ *   7. Process connections:
+ *        - direct:   nothing to do, activators handle it
+ *        - other:    use TransportRegistry to create proxy or start listener
+ *   8. Hand control to the application (main runs normally)
  *
  * JVM arguments:
  *   -javaagent:/path/to/topos-agent.jar
- *   -Dtopos.config=/path/to/wiring-slice.yaml
- *
- * The config path is the only argument the orchestrator needs to pass.
- * Everything else is discovered from the classpath and the config file.
+ *   "-Dtopos.config=/path/to/wiring-slice.yaml"
  */
 public class ToposAgent {
 
-    /**
-     * Called by the JVM before main(). The Instrumentation instance is
-     * available for future use — bytecode transformation for callsite
-     * patching will use it when ByteBuddy's agent mode is enabled.
-     * Currently the agent uses ByteBuddy's subclassing mode to generate
-     * remote proxies, which does not require instrumentation.
-     */
     public static void premain(String agentArgs, Instrumentation instrumentation) {
         System.out.println("[Topos] Agent starting...");
 
-        // Install the class transformer FIRST, before any contract class loads.
-        // This ensures @ComponentInterface classes get a no-arg constructor
-        // patched in if they don't already have one, before RemoteProxyFactory
-        // tries to subclass them.
+        // Install transformer FIRST — before any contract class is loaded
         ContractClassTransformer.install(instrumentation);
 
         try {
             setup(instrumentation);
         } catch (Exception e) {
-            System.err.println("[Topos] FATAL: Agent failed to initialize: " + e.getMessage());
+            System.err.println("[Topos] FATAL: Agent failed to initialize: "
+                    + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
@@ -66,8 +53,9 @@ public class ToposAgent {
     private static void setup(Instrumentation instrumentation) throws Exception {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         ToposRegistry registry = ToposRegistry.instance();
+        TransportRegistry transportRegistry = TransportRegistry.instance();
 
-        // ── Step 1: Load config ────────────────────────────────────────────
+        // ── Step 1: Load wiring config ─────────────────────────────────────
         System.out.println("[Topos] Loading wiring config from: "
                 + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
         WiringConfig config = ConfigLoader.load();
@@ -75,10 +63,9 @@ public class ToposAgent {
         // ── Step 2: Scan for contracts (@ComponentInterface) ───────────────
         System.out.println("[Topos] Scanning classpath for component contracts...");
         Map<String, Class<?>> contracts = ContractScanner.scan(classLoader);
-
         if (contracts.isEmpty()) {
-            System.out.println("[Topos] WARNING: No @ComponentInterface classes found "
-                    + "on the classpath. Check that interface jars are included.");
+            System.out.println("[Topos] WARNING: No @ComponentInterface classes found. "
+                    + "Check that API jars are on the classpath.");
         }
 
         // ── Step 3: Scan for activators (META-INF/topos/activator) ─────────
@@ -86,104 +73,126 @@ public class ToposAgent {
         Map<String, Class<? extends ToposActivator<?>>> activators =
                 ActivatorScanner.scan(classLoader);
 
-        // ── Step 4: Register activators for local components ───────────────
-        // All components listed in the config with an activator entry are local.
-        // Register them so the registry can activate them on demand.
+        // ── Step 4: Load transports (META-INF/topos/transport) ─────────────
+        System.out.println("[Topos] Loading transport implementations...");
+        TransportLoader.load(classLoader);
+
+        // ── Step 5: Register activators for local components ───────────────
         if (config.getComponents() != null) {
             for (WiringConfig.ComponentEntry entry : config.getComponents()) {
+                Class<? extends ToposActivator<?>> activatorClass = null;
+
+                // Explicit activator class name in config takes priority
                 if (entry.getActivator() != null && !entry.getActivator().isBlank()) {
-                    // Activator class name is explicit in config — use it directly
                     @SuppressWarnings("unchecked")
-                    Class<? extends ToposActivator<?>> activatorClass =
+                    Class<? extends ToposActivator<?>> cls =
                             (Class<? extends ToposActivator<?>>) classLoader
                                     .loadClass(entry.getActivator());
-                    registry.registerActivator(entry.getId(), activatorClass);
+                    activatorClass = cls;
                 } else {
-                    // Fall back to scanned activators from META-INF
-                    Class<? extends ToposActivator<?>> scanned = activators.get(entry.getId());
-                    if (scanned != null) {
-                        registry.registerActivator(entry.getId(), scanned);
-                    }
-                    // If neither is present, the component will fail at runtime when requested.
-                    // This is intentional: we report the error at the point of use.
+                    // Fall back to scanned META-INF activators
+                    activatorClass = activators.get(entry.getId());
+                }
+
+                if (activatorClass != null) {
+                    registry.registerActivator(entry.getId(), activatorClass);
                 }
             }
         }
 
-        // ── Step 5: Process connections ────────────────────────────────────
-        Integer httpServerPort = null;
-
+        // ── Step 6: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (WiringConfig.ConnectionEntry conn : config.getConnections()) {
+                String type = conn.getType();
 
-                if (conn.isDirect()) {
-                    // Direct connection: both components are in this JVM.
-                    // Nothing to do here — the activators are already registered.
-                    // When the caller's activator calls registry.get(toId),
-                    // it will trigger the callee's activator recursively.
-                    System.out.println("[Topos] Connection: " + conn.getFrom()
-                            + " -> " + conn.getTo() + " [direct]");
+                if ("direct".equalsIgnoreCase(type)) {
+                    // Collocated — activators handle wiring, nothing to do here
+                    System.out.println("[Topos] Connection: "
+                            + conn.getFrom() + " -> " + conn.getTo()
+                            + " [direct]");
+                    continue;
+                }
 
-                } else if (conn.isHttp()) {
+                // All non-direct connections go through the transport registry
+                ToposTransport transport = transportRegistry.get(type);
 
-                    if (conn.isExternal()) {
-                        // External inbound: this JVM needs an HTTP server
-                        // so external callers can reach the 'to' component.
-                        // All inbound connections share one server port.
-                        if (httpServerPort == null) {
-                            httpServerPort = conn.getPort() > 0 ? conn.getPort() : 8080;
-                        }
-                        System.out.println("[Topos] Connection: [external] -> "
-                                + conn.getTo() + " [http, port=" + httpServerPort + "]");
+                // Build properties map from the connection entry
+                Map<String, String> props = buildProperties(conn);
 
-                    } else if (conn.getHost() != null && !conn.getHost().isBlank()) {
-                        // Outbound HTTP: this JVM calls a remote component.
-                        // Create a proxy and pre-register it in the registry.
-                        Class<?> contractClass = contracts.get(conn.getTo());
-                        if (contractClass == null) {
-                            throw new IllegalStateException(
-                                    "[Topos] Cannot create HTTP proxy for '" + conn.getTo()
-                                    + "': no @ComponentInterface with that id found "
-                                    + "on the classpath. Is the interface jar included?");
-                        }
-
-                        Object proxy = RemoteProxyFactory.createHttpProxy(
-                                contractClass,
-                                conn.getTo(),
-                                conn.getHost(),
-                                conn.getPort(),
-                                classLoader
-                        );
-
-                        registry.preRegister(conn.getTo(), proxy);
-                        System.out.println("[Topos] Connection: " + conn.getFrom()
-                                + " -> " + conn.getTo()
-                                + " [http -> " + conn.getHost() + ":" + conn.getPort() + "]");
-
-                    } else {
-                        // Inbound from another Topos component (not external, not outbound)
-                        // This JVM is the callee. It needs an HTTP server.
-                        if (httpServerPort == null) {
-                            httpServerPort = conn.getPort() > 0 ? conn.getPort() : 8080;
-                        }
-                        System.out.println("[Topos] Connection: " + conn.getFrom()
-                                + " -> " + conn.getTo()
-                                + " [http inbound, port=" + httpServerPort + "]");
+                if (isOutbound(conn)) {
+                    // This JVM calls a remote component — create a proxy
+                    Class<?> contractClass = contracts.get(conn.getTo());
+                    if (contractClass == null) {
+                        throw new IllegalStateException(
+                                "[Topos] Cannot create proxy for '" + conn.getTo()
+                                + "': no @ComponentInterface with that id found. "
+                                + "Is the API jar on the classpath?");
                     }
+
+                    Object proxy = transport.createProxy(
+                            conn.getTo(), contractClass, props, classLoader);
+                    registry.preRegister(conn.getTo(), proxy);
+
+                    System.out.println("[Topos] Connection: "
+                            + conn.getFrom() + " -> " + conn.getTo()
+                            + " [" + type + " outbound]");
+
+                } else {
+                    // This JVM exposes a component — start a listener
+                    transport.startListener(conn.getTo(), props, registry);
+
+                    // Register shutdown hook to stop listener cleanly
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                        System.out.println("[Topos] Stopping " + type + " listener...");
+                        transport.stopListener();
+                    }));
+
+                    System.out.println("[Topos] Connection: "
+                            + (conn.isExternal() ? "[external]" : conn.getFrom())
+                            + " -> " + conn.getTo()
+                            + " [" + type + " inbound]");
                 }
             }
         }
+    }
 
-        // ── Step 6: Start HTTP server if needed ────────────────────────────
-        if (httpServerPort != null) {
-            ToposHttpServer httpServer = new ToposHttpServer(httpServerPort, registry);
-            httpServer.start();
+    /**
+     * Determines if a connection is outbound from this JVM's perspective.
+     *
+     * Outbound = this JVM is the caller, needs a proxy.
+     * Inbound  = this JVM is the callee, needs a listener.
+     *
+     * A connection is outbound if:
+     *   - it has a non-empty 'from' (not external entry point)
+     *   - it has a host specified (the remote host to call)
+     *
+     * A connection is inbound if:
+     *   - it has no host (this JVM IS the host)
+     *   - or it is an external entry point (from is empty)
+     */
+    private static boolean isOutbound(WiringConfig.ConnectionEntry conn) {
+        return !conn.isExternal()
+                && conn.getHost() != null
+                && !conn.getHost().isBlank();
+    }
 
-            // Shut down gracefully when the JVM exits
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.out.println("[Topos] Stopping HTTP server...");
-                httpServer.stop();
-            }));
-        }
+    /**
+     * Builds a properties map from a connection entry.
+     * Transports receive this map and extract what they need.
+     *
+     * Standard keys (transports may define their own additional keys):
+     *   host     - remote host (outbound connections)
+     *   port     - port number
+     *   from     - caller component id
+     *   to       - callee component id
+     */
+    private static Map<String, String> buildProperties(WiringConfig.ConnectionEntry conn) {
+        Map<String, String> props = new HashMap<>();
+        if (conn.getHost() != null)  props.put("host", conn.getHost());
+        if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
+        if (conn.getFrom() != null)  props.put("from", conn.getFrom());
+        if (conn.getTo() != null)    props.put("to", conn.getTo());
+        // Future: additional connection properties from the YAML will be added here
+        return props;
     }
 }
