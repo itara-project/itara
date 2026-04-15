@@ -1,6 +1,6 @@
-# Contributing to Topos
+# Contributing to Itara
 
-Thank you for your interest in contributing. Topos is an early-stage project
+Thank you for your interest in contributing. Itara is an early-stage project
 with a clear vision and a small core team. Contributions are welcome, but the
 vision comes first — please read this document and the manifesto before
 starting any work.
@@ -29,10 +29,10 @@ belongs in two places, the answer is usually a new module or a new SPI,
 not a bigger existing module.
 
 **Interfaces before implementations.**
-SPIs (Service Provider Interfaces) are defined in `topos-common` with no
+SPIs (Service Provider Interfaces) are defined in `itara-common` with no
 external dependencies. Implementations live in separate modules and are
 discovered at runtime. If your contribution requires adding a dependency
-to `topos-common`, reconsider the design.
+to `itara-common`, reconsider the design.
 
 **The manifesto is the filter.**
 Before proposing a design, ask: does this violate any principle in the
@@ -49,27 +49,27 @@ Complexity that defeats tooling also defeats human contributors.
 ## Project structure
 
 ```
-topos-common/              Annotations, SPI interfaces, registry, ToposMain.
+itara-common/              Annotations, SPI interfaces, registry, ItaraMain.
                            No external dependencies. Everything depends on this.
 
-topos-agent/               JVM premain agent. Discovers and wires components.
-                           Depends on topos-common and ByteBuddy only.
+itara-agent/               JVM premain agent. Discovers and wires components.
+                           Depends on itara-common and ByteBuddy only.
 
-topos-transport-http/      HTTP transport implementation.
+itara-transport-http/      HTTP transport implementation.
                            Reference implementation of the transport SPI.
 
-topos-demo/                Hello world demo. Two components, three topologies.
+itara-demo/                Hello world demo. Two components, three topologies.
                            Read this before writing any integration tests.
 ```
 
 Planned modules (not yet implemented — see open issues):
 
 ```
-topos-transport-jms/       JMS transport (ActiveMQ Artemis first)
-topos-transport-kafka/     Kafka transport
-topos-observability-otel/  OpenTelemetry observer implementation
-topos-spring/              Spring Boot integration (fetch helper, not magic)
-topos-discovery-*/         Service discovery plugins (Consul, k8s DNS, etc.)
+itara-transport-jms/       JMS transport (ActiveMQ Artemis first)
+itara-transport-kafka/     Kafka transport
+itara-observability-otel/  OpenTelemetry observer implementation
+itara-spring/              Spring Boot integration (fetch helper, not magic)
+itara-discovery-*/         Service discovery plugins (Consul, k8s DNS, etc.)
 ```
 
 ---
@@ -79,17 +79,17 @@ topos-discovery-*/         Service discovery plugins (Consul, k8s DNS, etc.)
 Requirements: JDK 21, Maven 3.8+.
 
 ```bash
-# Build and install topos-common first (everything depends on it)
-cd topos-common && mvn install
+# Build and install itara-common first (everything depends on it)
+cd itara-common && mvn install
 
 # Build the agent fat jar
-cd topos-agent && mvn package
+cd itara-agent && mvn package
 
 # Build the HTTP transport
-cd topos-transport-http && mvn package
+cd itara-transport-http && mvn package
 
 # Build and run the demo
-cd topos-demo && mvn install
+cd itara-demo && mvn install
 ```
 
 See README.md for the run commands.
@@ -154,11 +154,11 @@ thread contention. Request-response uses a temporary reply queue.
 ## What we are looking for
 
 **Transport implementations** — JMS, Kafka, gRPC. Follow the pattern in
-`topos-transport-http`. Define a `META-INF/topos/transport` descriptor.
+`itara-transport-http`. Define a `META-INF/itara/transport` descriptor.
 Test against a real broker, not a mock.
 
 **Observability** — the context propagation design is in progress (see issue).
-Do not start implementing observability until the `ToposContext` design is
+Do not start implementing observability until the `ItaraContext` design is
 finalised. Watch the discussion issue.
 
 **Test infrastructure** — unit tests for the registry and config loader,
@@ -180,7 +180,7 @@ architecture.
 - Auto-injection magic in the Spring adapter
 - Live rewiring within a running JVM (this is a closed question — see manifesto)
 - Anything that adds call-time overhead to collocated connections
-- New dependencies in `topos-common`
+- New dependencies in `itara-common`
 - Features that only make sense for one specific transport or framework
 
 If you want to propose something that falls into these categories, open a

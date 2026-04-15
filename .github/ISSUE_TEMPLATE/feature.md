@@ -10,7 +10,7 @@ labels: ''
 
 ## Why
 
-<!-- Why does this belong in Topos? How does it serve the manifesto? -->
+<!-- Why does this belong in Itara? How does it serve the manifesto? -->
 
 ## Acceptance criteria
 

@@ -1,11 +1,11 @@
-# **THE TOPOS MANIFESTO**  
+# **THE ITARA MANIFESTO**  
 ### *A Declaration of Principles*
 
 Software was meant to be soft.  
 It was meant to adapt, evolve, reshape itself as understanding grows.  
 Instead, we have built a world where topology is frozen into code, where boundaries calcify, where architecture becomes a prison.
 
-Topos exists to end that world.
+Itara exists to end that world.
 
 This manifesto defines the principles that will never change.  
 These are the hills we stand on.  
@@ -92,7 +92,7 @@ It is **not**:
  - a deployment unit
 
 Frameworks live *inside* components.  
-Components live *inside* Topos.
+Components live *inside* Itara.
 
 ---
 
@@ -107,10 +107,10 @@ Topology must never force a rewrite.
 ---
 
 ## **7. Language Neutrality Is a Core Value**
-Topos is not a Java project.  
+Itara is not a Java project.  
 Java is merely the first reference runtime.
 
-Topos must support:
+Itara must support:
 
  - Java
  - Rust
@@ -132,18 +132,18 @@ Serialization is pluggable.
 Observability sinks are pluggable.  
 Deployment strategies are pluggable.
 
-Topos defines the *shape* of the world, not the implementation of every detail.
+Itara defines the *shape* of the world, not the implementation of every detail.
 
 ---
 
-## **9. Topos Does Not Replace Architecture. It Concentrates It.**
+## **9. Itara Does Not Replace Architecture. It Concentrates It.**
 
-Domain-driven design, saga patterns, event sourcing, CQRS, hexagonal architecture — these remain as relevant as ever. Topos does not make them obsolete.
-What Topos changes is where they live.
+Domain-driven design, saga patterns, event sourcing, CQRS, hexagonal architecture — these remain as relevant as ever. Itara does not make them obsolete.
+What Itara changes is where they live.
 
 Today, architectural patterns are distributed across dozens of services, encoded in HTTP clients, message producers, retry policies, and timeout configurations scattered throughout the codebase. Understanding the architecture means reading everything.
 
-With Topos, the topology — the communication structure that gives patterns their shape — is concentrated in one place. The saga is visible in the graph. The bounded contexts are visible as component clusters. The event flow is visible as typed edges.
+With Itara, the topology — the communication structure that gives patterns their shape — is concentrated in one place. The saga is visible in the graph. The bounded contexts are visible as component clusters. The event flow is visible as typed edges.
 
 Architecture patterns are still designed by architects. They are now expressed, enforced, and changed in one place rather than many.
 
@@ -152,7 +152,7 @@ This scales better organizationally for the same reason orchestration scales bet
 ---
 
 ## **10. Software Must Become Soft Again**
-This is the purpose of Topos.
+This is the purpose of Itara.
 
 To make architecture fluid.  
 To make boundaries reversible.  

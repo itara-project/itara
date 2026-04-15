@@ -1,6 +1,6 @@
-# Topos — Architectural Vision
+# Itara — Architectural Vision
 
-This document describes where Topos is going, not just where it is.
+This document describes where Itara is going, not just where it is.
 It is a living document. Last updated: April 2026.
 
 ---
@@ -39,19 +39,19 @@ no serialization, no indirection at call time. The agent resolves the wiring
 at startup — by the time the application runs, the call is identical to any
 normal Java method call.
 
-This is a design commitment, not an aspiration. Topos will never introduce
+This is a design commitment, not an aspiration. Itara will never introduce
 call-time overhead for collocated components. If a future version cannot
 uphold this guarantee for a given connection type, that connection type will
 not be classified as direct.
 
-The corollary: collocating two components in Topos costs nothing compared to
+The corollary: collocating two components in Itara costs nothing compared to
 writing them as a single service. The only cost is startup time, paid once.
 
 ---
 
 ## Two levels of code
 
-Every Topos application has two levels:
+Every Itara application has two levels:
 
 Implementation level — component logic, written in a normal language.
 No knowledge of transport or topology.
@@ -80,7 +80,7 @@ eventually plan graphically.
 **The agent (exists)** — JVM premain. Reads the wiring config, instruments
 callsites, generates proxies, synthesizes HTTP servers, hands off to the app.
 
-**The orchestrator (no new tool required)** — Topos is designed to be orchestrator-agnostic. Kubernetes, Nomad, plain systemd, or any other process management tool can serve as the orchestrator. The framework's job is to make components orchestrator-friendly — each JVM is a self-contained unit that reads a wiring config at startup and exposes health endpoints automatically. The orchestrator's job is what it already does: start, stop, and monitor processes.
+**The orchestrator (no new tool required)** — Itara is designed to be orchestrator-agnostic. Kubernetes, Nomad, plain systemd, or any other process management tool can serve as the orchestrator. The framework's job is to make components orchestrator-friendly — each JVM is a self-contained unit that reads a wiring config at startup and exposes health endpoints automatically. The orchestrator's job is what it already does: start, stop, and monitor processes.
 A Kubernetes operator is a natural implementation of the controller layer — it watches the topology graph, observes component metrics via the agent's built-in instrumentation, and updates wiring configs and restarts pods when topology changes are warranted. This is the recommended path for teams already running Kubernetes.
 A custom orchestrator may unlock capabilities that general-purpose tools cannot — finer-grained scheduling, topology-aware placement, tighter integration with the controller's decision model. That is a future option, not a requirement. Wide adoption comes first, and wide adoption means meeting engineers where they already are.
 
@@ -106,7 +106,7 @@ explained, audited, and trusted.
 
 ## Built-in observability
 
-Observability is not an afterthought in Topos — it is a structural property
+Observability is not an afterthought in Itara — it is a structural property
 of the architecture. The agent intercepts every call between components. That
 interception point is the natural place to collect latency, throughput, error
 rates, and payload characteristics without any instrumentation burden on the
@@ -122,7 +122,7 @@ full automation is ever enabled, the engineer can watch the controller's
 reasoning against real data and verify that it is correct. Trust is built
 on transparency, not on promises.
 
-A system that cannot be observed cannot be safely automated. Topos treats
+A system that cannot be observed cannot be safely automated. Itara treats
 these as inseparable requirements.
 
 ---
@@ -177,7 +177,7 @@ Academic work on queuing models and feedback control of computing systems
 has existed for two decades without a practical application to pull it into
 production use.
 
-Topos is the missing application.
+Itara is the missing application.
 
 ---
 

@@ -1,8 +1,8 @@
-# Topos
+# Itara
 
 **Make software soft again.**
 
-Topos is a runtime framework that treats distributed system topology as a
+Itara is a runtime framework that treats distributed system topology as a
 configuration decision, not a code decision.
 
 Change how your components communicate — collocated direct calls, HTTP,
@@ -24,7 +24,7 @@ This is the state of the art. The patterns are elegant — blue-green deployment
 expand-and-contract, strangler fig — but every one of them is ceremony. External
 scaffolding bolted around systems that fundamentally cannot evolve themselves.
 
-Topos proposes that topology should be a continuously adjustable variable,
+Itara proposes that topology should be a continuously adjustable variable,
 not a hardcoded consequence of how services were originally written.
 
 ---
@@ -34,7 +34,7 @@ not a hardcoded consequence of how services were originally written.
 A component declares its contract — what it accepts and what it returns.
 It does not declare how it is called. That is the runtime's decision.
 
-The Topos agent intercepts the JVM startup, reads a wiring config, and
+The Itara agent intercepts the JVM startup, reads a wiring config, and
 connects components to each other using whatever transport the config specifies.
 The component code is identical regardless of whether it is called as a direct
 in-process method or over HTTP from a separate JVM.
@@ -67,11 +67,11 @@ Two components. One adds numbers. One accepts requests and delegates.
 ```
 # Gateway JVM:
 [Gateway] Received request: add(3, 4)
-[Topos/HTTP] -> add on calculator at localhost:8081
+[Itara/HTTP] -> add on calculator at localhost:8081
 [Gateway] Returning: The result of 3 + 4 = 7
 
 # Calculator JVM:
-[Topos/HTTP] <- add on calculator
+[Itara/HTTP] <- add on calculator
 [Calculator] add(3, 4) = 7
 ```
 
@@ -85,10 +85,10 @@ a proxy from the API jar alone.
 ## Structure
 
 ```
-topos-common/           Annotations, registry, activator interface, proxy interface. No external deps.
-topos-agent/            JVM agent. proxy implementation discovery and generation.
-topos-transport-http/   ByteBuddy proxy generation, HTTP server/client.
-topos-demo/             Hello world demo. Two components, three wiring configs.
+itara-common/           Annotations, registry, activator interface, proxy interface. No external deps.
+itara-agent/            JVM agent. proxy implementation discovery and generation.
+itara-transport-http/   ByteBuddy proxy generation, HTTP server/client.
+itara-demo/             Hello world demo. Two components, three wiring configs.
 ```
 
 ### Key concepts
@@ -99,9 +99,9 @@ API jar. Defines what the component does. Says nothing about how it is called.
 **Component** — one implementation of a contract. Lives in a component jar.
 Has no knowledge of transport or topology.
 
-**Activator** — one class per component jar implementing ToposActivator.
+**Activator** — one class per component jar implementing ItaraActivator.
 Constructs the component's internal object graph and returns the root instance.
-Discovered via META-INF/topos/activator.
+Discovered via META-INF/itara/activator.
 
 **Wiring config** — a YAML file defining connections between components.
 The agent reads this at JVM startup.
@@ -113,23 +113,23 @@ The agent reads this at JVM startup.
 Build order:
 
 ```
-cd topos-common          && mvn install
-cd topos-agent           && mvn package
-cd topos-transport-http  && mvn install
-cd topos-demo            && mvn install
+cd itara-common          && mvn install
+cd itara-agent           && mvn package
+cd itara-transport-http  && mvn install
+cd itara-demo            && mvn install
 ```
 
 **Direct topology (one JVM):**
 
 ```
-java "-Dtopos.config=topos-demo/wiring-direct.yaml"
-     -javaagent:topos-agent/target/topos-agent-1.0-SNAPSHOT.jar
-     -cp "topos-common/target/topos-common-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
-          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
+java "-Ditara.config=itara-demo/wiring-direct.yaml"
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
+          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
+          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
+          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 
@@ -137,22 +137,22 @@ java "-Dtopos.config=topos-demo/wiring-direct.yaml"
 
 ```
 # Terminal 1
-java "-Dtopos.config=topos-demo/wiring-http-calculator.yaml"
-     -javaagent:topos-agent/target/topos-agent-1.0-SNAPSHOT.jar
-     -cp "topos-common/target/topos-common-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
-          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
-     topos.runtime.ToposMain
+java "-Ditara.config=itara-demo/wiring-http-calculator.yaml"
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
+          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
+          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
+     itara.runtime.ItaraMain
 
 # Terminal 2
-java "-Dtopos.config=topos-demo/wiring-http-gateway.yaml"
-     -javaagent:topos-agent/target/topos-agent-1.0-SNAPSHOT.jar
-     -cp "topos-common/target/topos-common-1.0-SNAPSHOT.jar;
-          topos-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          topos-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
-          topos-transport-http/target/topos-transport-http-1.0-SNAPSHOT.jar"
+java "-Ditara.config=itara-demo/wiring-http-gateway.yaml"
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
+          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
+          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 
