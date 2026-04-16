@@ -24,10 +24,11 @@ CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
 
 # ── Setup: build libs dir with transport jar ───────────────────────────────
-LIBS_DIR=/tmp/itara-libs
+LIBS_DIR=./itara-libs
 mkdir -p "$LIBS_DIR"
-cp itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar "$LIBS_DIR/"
+cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
+ls -l "$LIBS_DIR"
 
 # Always kill the calculator JVM on exit, success or failure
 cleanup() {
