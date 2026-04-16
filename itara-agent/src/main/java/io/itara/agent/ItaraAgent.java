@@ -51,7 +51,10 @@ public class ItaraAgent {
     }
 
     private static void setup(Instrumentation instrumentation) throws Exception {
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        // Build the Itara classloader — child-first, loads from itara.lib.dir
+        // Falls back to context classloader if property is not set
+        ClassLoader itaraClassLoader = ItaraClassLoader.build(
+                Thread.currentThread().getContextClassLoader());
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
 
@@ -62,7 +65,7 @@ public class ItaraAgent {
 
         // ── Step 2: Scan for contracts (@ComponentInterface) ───────────────
         System.out.println("[Itara] Scanning classpath for component contracts...");
-        Map<String, Class<?>> contracts = ContractScanner.scan(classLoader);
+        Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
         if (contracts.isEmpty()) {
             System.out.println("[Itara] WARNING: No @ComponentInterface classes found. "
                     + "Check that API jars are on the classpath.");
@@ -71,11 +74,11 @@ public class ItaraAgent {
         // ── Step 3: Scan for activators (META-INF/itara/activator) ─────────
         System.out.println("[Itara] Scanning for activator descriptors...");
         Map<String, Class<? extends ItaraActivator<?>>> activators =
-                ActivatorScanner.scan(classLoader);
+                ActivatorScanner.scan(itaraClassLoader);
 
         // ── Step 4: Load transports (META-INF/itara/transport) ─────────────
         System.out.println("[Itara] Loading transport implementations...");
-        TransportLoader.load(classLoader);
+        TransportLoader.load(itaraClassLoader);
 
         // ── Step 5: Register activators for local components ───────────────
         if (config.getComponents() != null) {
@@ -86,7 +89,7 @@ public class ItaraAgent {
                 if (entry.getActivator() != null && !entry.getActivator().isBlank()) {
                     @SuppressWarnings("unchecked")
                     Class<? extends ItaraActivator<?>> cls =
-                            (Class<? extends ItaraActivator<?>>) classLoader
+                            (Class<? extends ItaraActivator<?>>) itaraClassLoader
                                     .loadClass(entry.getActivator());
                     activatorClass = cls;
                 } else {
@@ -130,7 +133,7 @@ public class ItaraAgent {
                     }
 
                     Object proxy = transport.createProxy(
-                            conn.getTo(), contractClass, props, classLoader);
+                            conn.getTo(), contractClass, props, itaraClassLoader);
                     registry.preRegister(conn.getTo(), proxy);
 
                     System.out.println("[Itara] Connection: "

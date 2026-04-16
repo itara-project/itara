@@ -52,7 +52,8 @@ Complexity that defeats tooling also defeats human contributors.
 itara-common/              Annotations, SPI interfaces, registry, ItaraMain.
                            No external dependencies. Everything depends on this.
 
-itara-agent/               JVM premain agent. Discovers and wires components.
+itara-agent/               JVM premain agent and custom class loader.
+                           Discovers and wires components.
                            Depends on itara-common and ByteBuddy only.
 
 itara-transport-http/      HTTP transport implementation.

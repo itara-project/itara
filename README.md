@@ -86,7 +86,7 @@ a proxy from the API jar alone.
 
 ```
 itara-common/           Annotations, registry, activator interface, proxy interface. No external deps.
-itara-agent/            JVM agent. proxy implementation discovery and generation.
+itara-agent/            JVM agent. proxy implementation discovery and generation. custom class loader
 itara-transport-http/   ByteBuddy proxy generation, HTTP server/client.
 itara-demo/             Hello world demo. Two components, three wiring configs.
 ```
@@ -119,17 +119,21 @@ cd itara-transport-http  && mvn install
 cd itara-demo            && mvn install
 ```
 
+The agent loads the runtime jars from the specified dir first (-Ditara.lib.dir=/path/to/runtime/jars/dir),
+then from the system class path if not found (child-first approach),
+so move the itara-transport-http and other runtime jars to the libs directory
+
 **Direct topology (one JVM):**
 
 ```
-java "-Ditara.config=itara-demo/wiring-direct.yaml"
+java "-Ditara.lib.dir=libs"
+     "-Ditara.config=itara-demo/wiring-direct.yaml"
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
           itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
           itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
-          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 
@@ -137,22 +141,22 @@ java "-Ditara.config=itara-demo/wiring-direct.yaml"
 
 ```
 # Terminal 1
-java "-Ditara.config=itara-demo/wiring-http-calculator.yaml"
+java "-Ditara.lib.dir=libs"
+     "-Ditara.config=itara-demo/wiring-http-calculator.yaml"
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
-          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
+          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar"
      itara.runtime.ItaraMain
 
 # Terminal 2
-java "-Ditara.config=itara-demo/wiring-http-gateway.yaml"
+java "-Ditara.lib.dir=libs"
+     "-Ditara.config=itara-demo/wiring-http-gateway.yaml"
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
           itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar;
-          itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar"
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
      demo.gateway.component.DemoMain
 ```
 
@@ -164,6 +168,7 @@ never sees the implementation.
 ## Current state
 
 Working today: direct and HTTP connections, ByteBuddy proxy generation,
+custom class loader for runtime and application classpath separation,
 automatic constructor patching, activator-based lazy instantiation,
 synthesized inbound HTTP server, zero code change between topologies.
 
