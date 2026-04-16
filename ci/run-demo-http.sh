@@ -44,6 +44,7 @@ trap cleanup EXIT
 echo "[CI] Starting calculator JVM..."
 
 java \
+  -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CALC_CONFIG \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL" \
