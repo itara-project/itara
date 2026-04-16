@@ -23,6 +23,12 @@ GW_CONFIG=itara-demo/wiring-http-gateway.yaml
 CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
 
+# ── Setup: build libs dir with transport jar ───────────────────────────────
+LIBS_DIR=/tmp/itara-libs
+mkdir -p "$LIBS_DIR"
+cp itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar "$LIBS_DIR/"
+echo "[CI] Libs dir prepared: $LIBS_DIR"
+
 # Always kill the calculator JVM on exit, success or failure
 cleanup() {
   if [ -n "$CALC_PID" ] && kill -0 "$CALC_PID" 2>/dev/null; then
@@ -37,6 +43,7 @@ trap cleanup EXIT
 echo "[CI] Starting calculator JVM..."
 
 java \
+  -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CALC_CONFIG \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL" \
