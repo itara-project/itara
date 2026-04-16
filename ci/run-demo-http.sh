@@ -24,7 +24,7 @@ CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
 
 # ── Setup: build libs dir with transport jar ───────────────────────────────
-LIBS_DIR=./itara-libs
+LIBS_DIR=itara-libs
 mkdir -p "$LIBS_DIR"
 cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
@@ -44,7 +44,6 @@ trap cleanup EXIT
 echo "[CI] Starting calculator JVM..."
 
 java \
-  -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CALC_CONFIG \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL" \
@@ -87,6 +86,7 @@ echo "[CI] Calculator is ready."
 echo "[CI] Starting gateway JVM..."
 
 java \
+  -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$GW_CONFIG \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$GW_API:$GW_IMPL" \
