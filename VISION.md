@@ -33,19 +33,13 @@ business problem.
 
 ## A hard guarantee: zero overhead on collocated calls
 
-When two components are wired as direct (collocated in the same JVM), the
-call between them is a plain method invocation. There is no proxy overhead,
-no serialization, no indirection at call time. The agent resolves the wiring
-at startup — by the time the application runs, the call is identical to any
-normal Java method call.
+When two components share the same process and type system — for example, two JVM components wired as direct — the call between them is a plain method invocation. There is no proxy overhead, no serialization, no indirection at call time. The agent resolves the wiring at startup — by the time the application runs, the call is identical to any normal Java method call.
 
-This is a design commitment, not an aspiration. Itara will never introduce
-call-time overhead for collocated components. If a future version cannot
-uphold this guarantee for a given connection type, that connection type will
-not be classified as direct.
+For components colocated on the same host but running in separate runtimes — such as components written in different languages — the developer declares the local IPC mechanism in the wiring configuration (Unix domain socket, shared memory, named pipe, or any other supported local transport). The runtime uses exactly the mechanism declared and nothing else. No network leaves the host. No transport decision is made autonomously by the runtime. If a developer does not trust a particular mechanism, or discovers a problem with an implementation, they change the configuration. The runtime follows.
 
-The corollary: collocating two components in Itara costs nothing compared to
-writing them as a single service. The only cost is startup time, paid once.
+This is a design commitment, not an aspiration. Itara will never introduce transport overhead for collocated components — no serialization, no network hop, no indirection at call time. The only operations the runtime adds to a direct call are those that are structural properties of the platform itself, specifically the observability events that make every interaction traceable and auditable. These are not optional and not removable — they are what makes the topology layer trustworthy. Everything else is zero. If a future version cannot uphold this guarantee for a given connection type, that connection type will not be classified as direct.
+
+The corollary: collocating two components in Itara costs nothing compared to writing them as a single service. The only cost is startup time, paid once.
 
 ---
 

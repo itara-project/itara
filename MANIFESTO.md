@@ -48,15 +48,18 @@ They belong to the runtime and the topology layer, not the code.
 ---
 
 ## **3. Colocation Must Be Zero‑Overhead**
-If two components are colocated, the runtime must call them as if they were functions in the same file.
+If two components share the same process and type system, the runtime must call them as if they were functions in the same file.
 
  - No serialization
  - No networking
  - No proxies — enforced at startup, never at call time
- - No overhead
+ - No transport overhead — only the runtime's structural operations (observability) are added, and only because they are inseparable from the platform's guarantees
+
+For components colocated on the same host but in separate runtimes — such as components written in different languages — the developer declares the local communication mechanism in the wiring configuration. The runtime follows that declaration exactly. No network leaves the host. No decision is made on the developer's behalf.
 
 Colocation is not an optimization.  
-It is the baseline.
+It is the baseline.  
+The developer controls how it is achieved.
 
 ---
 
