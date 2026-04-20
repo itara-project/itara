@@ -1,0 +1,58 @@
+name: itara-demo-http
+
+# Demonstrates HTTP topology across two containers.
+# Gateway and calculator run in separate containers, separate JVMs.
+# Communication happens over HTTP — zero code changes from the direct topology.
+# Change to docker-compose-direct.yml to run both components in the same JVM instead.
+
+services:
+  calculator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
+      - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
+      - ./wiring-http-calculator-docker.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+    ports:
+      - "8081:8081"
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar"
+      - "io.itara.runtime.ItaraMain"
+    networks:
+      - itara-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
+      - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
+      - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
+      - ./wiring-http-gateway-docker.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+    command:
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar"
+      - "demo.gateway.component.DemoMain"
+    depends_on:
+      - calculator
+    networks:
+      - itara-net
+
+networks:
+  itara-net:
+    driver: bridge

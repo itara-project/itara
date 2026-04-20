@@ -123,6 +123,37 @@ The agent loads the runtime jars from the specified dir first (-Ditara.lib.dir=/
 then from the system class path if not found (child-first approach),
 so move the itara-transport-http and other runtime jars to the libs directory
 
+---
+
+### Option A — Docker (recommended)
+
+Requires Docker Desktop. No local JDK installation needed.
+
+Copy `itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar` into `itara-demo/libs/`.
+
+**Direct topology — both components in one container:**
+
+```
+cd itara-demo
+docker compose -f docker-compose-direct.yml up
+```
+
+**HTTP topology — two separate containers, zero code changes:**
+
+```
+cd itara-demo
+docker compose -f docker-compose-http.yml up
+```
+
+The gateway and calculator run in separate containers on the same Docker
+network. The gateway resolves the calculator by service name. Same component
+code, same API jars, different wiring config — topology is the only thing
+that changed.
+
+---
+
+### Option B — Native (local JDK)
+
 **Direct topology (one JVM):**
 
 ```

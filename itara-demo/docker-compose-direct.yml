@@ -1,0 +1,28 @@
+name: itara-demo-direct
+
+# Demonstrates direct (colocated) topology.
+# Both gateway and calculator run in the same container, same JVM.
+# No network communication between components — pure method calls.
+# Change to docker-compose-http.yml to see the same code over HTTP instead.
+
+services:
+  itara-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
+      - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
+      - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
+      - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
+      - ./wiring-direct.yaml:/app/config/wiring-direct.yaml:ro
+      - ./libs:/app/libs:ro
+    command:
+      - "-Ditara.config=/app/config/wiring-direct.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/gateway-api.jar:/app/gateway-component.jar"
+      - "demo.gateway.component.DemoMain"
