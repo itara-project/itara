@@ -3,7 +3,6 @@
 
 components:
   - id: "calculator"
-    activator: "demo.calculator.component.CalculatorActivator"
 
 connections:
   - from: "gateway"

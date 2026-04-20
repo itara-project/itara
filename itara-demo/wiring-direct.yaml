@@ -4,9 +4,7 @@
 
 components:
   - id: "gateway"
-    activator: "demo.gateway.component.GatewayActivator"
   - id: "calculator"
-    activator: "demo.calculator.component.CalculatorActivator"
 
 connections:
   - from: "gateway"

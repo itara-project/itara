@@ -3,7 +3,6 @@
 
 components:
   - id: "gateway"
-    activator: "demo.gateway.component.GatewayActivator"
 
 connections:
   - from: "gateway"

@@ -98,7 +98,6 @@ public class ConfigLoader {
         if (comp != null) {
             switch (key) {
                 case "id"        -> comp.setId(value);
-                case "activator" -> comp.setActivator(value);
             }
         } else if (conn != null) {
             switch (key) {
