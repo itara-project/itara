@@ -83,19 +83,7 @@ public class ItaraAgent {
         // ── Step 5: Register activators for local components ───────────────
         if (config.getComponents() != null) {
             for (WiringConfig.ComponentEntry entry : config.getComponents()) {
-                Class<? extends ItaraActivator<?>> activatorClass = null;
-
-                // Explicit activator class name in config takes priority
-                if (entry.getActivator() != null && !entry.getActivator().isBlank()) {
-                    @SuppressWarnings("unchecked")
-                    Class<? extends ItaraActivator<?>> cls =
-                            (Class<? extends ItaraActivator<?>>) itaraClassLoader
-                                    .loadClass(entry.getActivator());
-                    activatorClass = cls;
-                } else {
-                    // Fall back to scanned META-INF activators
-                    activatorClass = activators.get(entry.getId());
-                }
+                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
 
                 if (activatorClass != null) {
                     registry.registerActivator(entry.getId(), activatorClass);

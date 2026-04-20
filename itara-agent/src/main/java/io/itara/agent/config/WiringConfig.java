@@ -46,13 +46,9 @@ public class WiringConfig {
     public static class ComponentEntry {
         /** The component id — must match @ComponentInterface(id) */
         private String id;
-        /** Fully qualified activator class name. Null for remote-only components. */
-        private String activator;
 
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
-        public String getActivator() { return activator; }
-        public void setActivator(String activator) { this.activator = activator; }
     }
 
     public static class ConnectionEntry {
