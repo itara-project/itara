@@ -4,27 +4,32 @@ import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ObserverRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraTransport;
 
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The Itara Java agent.
  *
  * Startup sequence:
- *   1. Install ContractClassTransformer (patches no-arg ctors into contracts)
- *   2. Load wiring config
- *   3. Scan classpath for @ComponentInterface contracts
- *   4. Scan META-INF/itara/activator for local activator classes
- *   5. Load META-INF/itara/transport — discover available transport impls
- *   6. Register activators for local components
- *   7. Process connections:
- *        - direct:   nothing to do, activators handle it
+ *   1. Load wiring config
+ *   2. Scan classpath for @ComponentInterface contracts
+ *   3. Scan META-INF/itara/activator for local activator classes
+ *   4. Load META-INF/itara/transport — discover available transport impls
+ *   5. Load META-INF/itara/observer — discover available observer impls
+ *   6. Register ComponentFactory — activates and wraps instances in
+ *      observability decorator for all four events on direct calls
+ *   7. Register activators for local components
+ *   8. Process connections:
+ *        - direct:   nothing to do, factory handles decoration on first get()
  *        - other:    use TransportRegistry to create proxy or start listener
- *   8. Hand control to the application (main runs normally)
+ *   9. Hand control to the application (main runs normally)
  *
  * JVM arguments:
  *   -javaagent:/path/to/itara-agent.jar
@@ -34,9 +39,6 @@ public class ItaraAgent {
 
     public static void premain(String agentArgs, Instrumentation instrumentation) {
         System.out.println("[Itara] Agent starting...");
-
-        // Install transformer FIRST — before any contract class is loaded
-        ContractClassTransformer.install(instrumentation);
 
         try {
             setup(instrumentation);
@@ -80,24 +82,62 @@ public class ItaraAgent {
         System.out.println("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
-        // ── Step 5: Register activators for local components ───────────────
+        // ── Step 5: Load observers (META-INF/itara/observer) ───────────────
+        System.out.println("[Itara] Loading observer implementations...");
+        ObserverLoader.load(itaraClassLoader);
+
+        // ── Step 6: Register ComponentFactory ──────────────────────────────
+        // The factory is called lazily by the registry on first component access.
+        // It activates the component and wraps it in an observability decorator
+        // so all four events fire for every direct (colocated) call.
+        final Set<String> transportHandled = new HashSet<>();
+        registry.setComponentFactory((activatorClass, componentId, contractClass) -> {
+            try {
+                ItaraActivator<?> activator =
+                        activatorClass.getDeclaredConstructor().newInstance();
+                Object instance = activator.activate(registry);
+
+                if (transportHandled.contains(componentId)) {
+                    return instance; // transport handles observability — no decorator
+                }
+
+                // Wrap in observability decorator only if observers are registered
+                // and the contract class is known — no-op overhead if no observers
+                if (ObserverRegistry.instance().size() > 0 && contractClass != null) {
+                    return ObservabilityDecorator.wrap(
+                            instance, componentId, contractClass, itaraClassLoader);
+                }
+                return instance;
+
+            } catch (Exception e) {
+                throw new RuntimeException(
+                        "[Itara] Failed to activate component '"
+                        + componentId + "': " + e.getMessage(), e);
+            }
+        });
+
+        // ── Step 7: Register activators for local components ───────────────
         if (config.getComponents() != null) {
             for (WiringConfig.ComponentEntry entry : config.getComponents()) {
-                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
+                Class<? extends ItaraActivator<?>> activatorClass =
+                        activators.get(entry.getId());
 
                 if (activatorClass != null) {
-                    registry.registerActivator(entry.getId(), activatorClass);
+                    registry.registerActivator(
+                            entry.getId(),
+                            activatorClass,
+                            contracts.get(entry.getId()));
                 }
             }
         }
 
-        // ── Step 6: Process connections ────────────────────────────────────
+        // ── Step 8: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (WiringConfig.ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
 
                 if ("direct".equalsIgnoreCase(type)) {
-                    // Collocated — activators handle wiring, nothing to do here
+                    // Colocated — factory handles decoration on first get()
                     System.out.println("[Itara] Connection: "
                             + conn.getFrom() + " -> " + conn.getTo()
                             + " [direct]");
@@ -131,6 +171,7 @@ public class ItaraAgent {
                 } else {
                     // This JVM exposes a component — start a listener
                     transport.startListener(conn.getTo(), props, registry);
+                    transportHandled.add(conn.getTo()); // mark as handled by transport
 
                     // Register shutdown hook to stop listener cleanly
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -183,7 +224,6 @@ public class ItaraAgent {
         if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
         if (conn.getFrom() != null)  props.put("from", conn.getFrom());
         if (conn.getTo() != null)    props.put("to", conn.getTo());
-        // Future: additional connection properties from the YAML will be added here
         return props;
     }
 }
