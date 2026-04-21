@@ -9,8 +9,8 @@ import io.itara.api.ContractMethod;
  * Lives in gateway-api.jar.
  */
 @ComponentInterface(id = "gateway")
-public abstract class GatewayService {
+public interface GatewayService {
 
     @ContractMethod
-    public abstract String calculate(int a, int b);
+    String calculate(int a, int b);
 }
