@@ -1,0 +1,14 @@
+# wiring-http-gateway-docker.yaml
+# Gateway JVM: calls Calculator over HTTP
+# host uses Docker Compose service name instead of localhost
+
+components:
+  - id: "gateway"
+    activator: "demo.gateway.component.GatewayActivator"
+
+connections:
+  - from: "gateway"
+    to: "calculator"
+    type: http
+    host: "calculator"
+    port: 8081

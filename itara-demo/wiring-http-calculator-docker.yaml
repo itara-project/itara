@@ -1,0 +1,13 @@
+# wiring-http-calculator-docker.yaml
+# Calculator JVM: listens for inbound HTTP calls from Gateway on port 8081
+# For Docker Compose — service name used as host identifier
+
+components:
+  - id: "calculator"
+    activator: "demo.calculator.component.CalculatorActivator"
+
+connections:
+  - from: "gateway"
+    to: "calculator"
+    type: http
+    port: 8081
