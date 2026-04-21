@@ -14,9 +14,18 @@ GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
 GW_IMPL=itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar
 CONFIG=itara-demo/wiring-direct.yaml
 
+# ── Setup: build libs dir with transport and observability jar ───────────────────────────────
+LIBS_DIR=itara-libs
+mkdir -p "$LIBS_DIR"
+cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
+cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
+echo "[CI] Libs dir prepared: $LIBS_DIR"
+ls -l "$LIBS_DIR"
+
 echo "[CI] Starting direct topology demo..."
 
 java \
+  -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CONFIG \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL:$GW_API:$GW_IMPL" \
