@@ -10,7 +10,7 @@ import demo.gateway.api.GatewayService;
  * Has no knowledge of whether CalculatorService is a direct call or HTTP.
  * The registry provides whichever the topology config dictates.
  */
-public class GatewayServiceImpl extends GatewayService {
+public class GatewayServiceImpl implements GatewayService {
 
     private final CalculatorService calculator;
 

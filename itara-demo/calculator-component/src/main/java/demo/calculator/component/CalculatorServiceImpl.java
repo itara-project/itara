@@ -7,7 +7,7 @@ import demo.calculator.api.CalculatorService;
  * Lives in calculator-component.jar.
  * Has no knowledge of how it is called — direct or HTTP.
  */
-public class CalculatorServiceImpl extends CalculatorService {
+public class CalculatorServiceImpl implements CalculatorService {
 
     @Override
     public int add(int a, int b) {

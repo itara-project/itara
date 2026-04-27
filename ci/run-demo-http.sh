@@ -23,10 +23,11 @@ GW_CONFIG=itara-demo/wiring-http-gateway.yaml
 CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
 
-# ── Setup: build libs dir with transport jar ───────────────────────────────
+# ── Setup: build libs dir with transport and observability jar ───────────────────────────────
 LIBS_DIR=itara-libs
 mkdir -p "$LIBS_DIR"
 cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
+cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 

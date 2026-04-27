@@ -9,8 +9,8 @@ import io.itara.api.ContractMethod;
  * Both the gateway and the calculator depend on this jar.
  */
 @ComponentInterface(id = "calculator")
-public abstract class CalculatorService {
+public interface CalculatorService {
 
     @ContractMethod(idempotent = true)
-    public abstract int add(int a, int b);
+    int add(int a, int b);
 }
