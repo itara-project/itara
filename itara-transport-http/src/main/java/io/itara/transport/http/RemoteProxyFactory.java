@@ -1,5 +1,6 @@
 package io.itara.transport.http;
 
+import io.itara.spi.ItaraSerializer;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -9,6 +10,7 @@ import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Method;
+import java.util.logging.Logger;
 
 /**
  * Generates remote proxy classes using ByteBuddy.
@@ -31,6 +33,8 @@ import java.lang.reflect.Method;
  */
 public class RemoteProxyFactory {
 
+    private static final Logger log = Logger.getLogger(RemoteProxyFactory.class.getName());
+
     /**
      * Creates a ByteBuddy-generated subclass of the contract class.
      * All non-final, non-private methods are intercepted and delegated
@@ -49,10 +53,11 @@ public class RemoteProxyFactory {
                                          String componentId,
                                          String host,
                                          int port,
-                                         ClassLoader classLoader) {
+                                         ClassLoader classLoader,
+                                         ItaraSerializer serializer) {
         try {
             HttpCallInterceptor interceptor =
-                    new HttpCallInterceptor(componentId, host, port);
+                    new HttpCallInterceptor(componentId, host, port, serializer);
 
             Class<? extends T> proxyClass = (Class<? extends T>) new ByteBuddy()
                     .subclass(contractClass)
@@ -72,7 +77,7 @@ public class RemoteProxyFactory {
             // no-arg constructor (protected or public).
             T proxy = proxyClass.getDeclaredConstructor().newInstance();
 
-            System.out.println("[Itara] Created HTTP proxy for: " + componentId
+            log.info("[Itara] Created HTTP proxy for: " + componentId
                     + " (" + contractClass.getSimpleName() + ")"
                     + " -> " + host + ":" + port);
 
@@ -96,8 +101,8 @@ public class RemoteProxyFactory {
 
         private final HttpRemoteProxy delegate;
 
-        public HttpCallInterceptor(String componentId, String host, int port) {
-            this.delegate = new HttpRemoteProxy(componentId, host, port);
+        public HttpCallInterceptor(String componentId, String host, int port, ItaraSerializer serializer) {
+            this.delegate = new HttpRemoteProxy(componentId, host, port, serializer);
         }
 
         /**

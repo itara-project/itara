@@ -10,3 +10,4 @@ connections:
     type: http
     host: "localhost"
     port: 8081
+    serializer: "json"

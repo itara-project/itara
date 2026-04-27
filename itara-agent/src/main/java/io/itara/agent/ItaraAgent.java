@@ -4,8 +4,10 @@ import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.ObserverRegistry;
 import io.itara.runtime.TransportRegistry;
+import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
 
 import java.lang.instrument.Instrumentation;
@@ -21,7 +23,8 @@ import java.util.Set;
  *   1. Load wiring config
  *   2. Scan classpath for @ComponentInterface contracts
  *   3. Scan META-INF/itara/activator for local activator classes
- *   4. Load META-INF/itara/transport — discover available transport impls
+ *   4. Load META-INF/itara/serializer — discover available serializer impls
+ *   5. Load META-INF/itara/transport — discover available transport impls
  *   5. Load META-INF/itara/observer — discover available observer impls
  *   6. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
@@ -59,6 +62,7 @@ public class ItaraAgent {
                 Thread.currentThread().getContextClassLoader());
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
+        SerializerRegistry serializerRegistry = SerializerRegistry.instance();
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
         System.out.println("[Itara] Loading wiring config from: "
@@ -78,15 +82,19 @@ public class ItaraAgent {
         Map<String, Class<? extends ItaraActivator<?>>> activators =
                 ActivatorScanner.scan(itaraClassLoader);
 
-        // ── Step 4: Load transports (META-INF/itara/transport) ─────────────
+        // ── Step 4: Load serializers (META-INF/itara/serializer) ─────────────
+        System.out.println("[Itara] Loading serializer implementations...");
+        SerializerLoader.load(itaraClassLoader);
+
+        // ── Step 5: Load transports (META-INF/itara/transport) ─────────────
         System.out.println("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
-        // ── Step 5: Load observers (META-INF/itara/observer) ───────────────
+        // ── Step 6: Load observers (META-INF/itara/observer) ───────────────
         System.out.println("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
 
-        // ── Step 6: Register ComponentFactory ──────────────────────────────
+        // ── Step 7: Register ComponentFactory ──────────────────────────────
         // The factory is called lazily by the registry on first component access.
         // It activates the component and wraps it in an observability decorator
         // so all four events fire for every direct (colocated) call.
@@ -116,11 +124,10 @@ public class ItaraAgent {
             }
         });
 
-        // ── Step 7: Register activators for local components ───────────────
+        // ── Step 8: Register activators for local components ───────────────
         if (config.getComponents() != null) {
             for (WiringConfig.ComponentEntry entry : config.getComponents()) {
-                Class<? extends ItaraActivator<?>> activatorClass =
-                        activators.get(entry.getId());
+                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
 
                 if (activatorClass != null) {
                     registry.registerActivator(
@@ -131,7 +138,7 @@ public class ItaraAgent {
             }
         }
 
-        // ── Step 8: Process connections ────────────────────────────────────
+        // ── Step 9: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (WiringConfig.ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
@@ -146,6 +153,7 @@ public class ItaraAgent {
 
                 // All non-direct connections go through the transport registry
                 ItaraTransport transport = transportRegistry.get(type);
+                ItaraSerializer serializer = serializerRegistry.get(conn.getSerializerType());
 
                 // Build properties map from the connection entry
                 Map<String, String> props = buildProperties(conn);
@@ -160,8 +168,11 @@ public class ItaraAgent {
                                 + "Is the API jar on the classpath?");
                     }
 
-                    Object proxy = transport.createProxy(
-                            conn.getTo(), contractClass, props, itaraClassLoader);
+                    Object proxy = transport.createProxy(conn.getTo(),
+                                                         contractClass,
+                                                         props,
+                                                         itaraClassLoader,
+                                                         serializer);
                     registry.preRegister(conn.getTo(), proxy);
 
                     System.out.println("[Itara] Connection: "
@@ -170,7 +181,7 @@ public class ItaraAgent {
 
                 } else {
                     // This JVM exposes a component — start a listener
-                    transport.startListener(conn.getTo(), props, registry);
+                    transport.startListener(conn.getTo(), props, registry, serializer);
                     transportHandled.add(conn.getTo()); // mark as handled by transport
 
                     // Register shutdown hook to stop listener cleanly
@@ -224,6 +235,7 @@ public class ItaraAgent {
         if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
         if (conn.getFrom() != null)  props.put("from", conn.getFrom());
         if (conn.getTo() != null)    props.put("to", conn.getTo());
+        // Future: additional connection properties from the YAML will be added here
         return props;
     }
 }

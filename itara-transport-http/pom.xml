@@ -4,28 +4,26 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.itara</groupId>
-    <artifactId>itara-transport-http</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <parent>
+        <groupId>io.itara</groupId>
+        <artifactId>itara-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
 
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <artifactId>itara-transport-http</artifactId>
+    <name>Itara HTTP Transport</name>
 
     <dependencies>
         <!-- Needs itara-common for ItaraTransport SPI and ItaraRegistry -->
         <dependency>
             <groupId>io.itara</groupId>
             <artifactId>itara-common</artifactId>
-            <version>1.0-SNAPSHOT</version>
         </dependency>
         <!-- ByteBuddy for proxy generation -->
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-            <version>1.14.18</version>
         </dependency>
     </dependencies>
 

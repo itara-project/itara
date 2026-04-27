@@ -66,6 +66,8 @@ public class WiringConfig {
         private String host;
         /** For http connections: the port of the remote JVM. */
         private int port;
+        /** Serializer type. Must match the type in the implementation code. */
+        private String serializerType = "json";
 
         public String getFrom() { return from; }
         public void setFrom(String from) { this.from = from; }
@@ -77,6 +79,8 @@ public class WiringConfig {
         public void setHost(String host) { this.host = host; }
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
+        public String getSerializerType() { return serializerType; }
+        public void setSerializerType(String serializerType) { this.serializerType = serializerType; }
 
         public boolean isExternal() {
             return from == null || from.isBlank();
