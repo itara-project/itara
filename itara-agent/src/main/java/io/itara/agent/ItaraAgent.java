@@ -1,6 +1,8 @@
 package io.itara.agent;
 
+import io.itara.agent.config.ComponentEntry;
 import io.itara.agent.config.ConfigLoader;
+import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
@@ -126,7 +128,7 @@ public class ItaraAgent {
 
         // ── Step 8: Register activators for local components ───────────────
         if (config.getComponents() != null) {
-            for (WiringConfig.ComponentEntry entry : config.getComponents()) {
+            for (ComponentEntry entry : config.getComponents()) {
                 Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
 
                 if (activatorClass != null) {
@@ -140,7 +142,7 @@ public class ItaraAgent {
 
         // ── Step 9: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
-            for (WiringConfig.ConnectionEntry conn : config.getConnections()) {
+            for (ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
 
                 if ("direct".equalsIgnoreCase(type)) {
@@ -153,7 +155,7 @@ public class ItaraAgent {
 
                 // All non-direct connections go through the transport registry
                 ItaraTransport transport = transportRegistry.get(type);
-                ItaraSerializer serializer = serializerRegistry.get(conn.getSerializerType());
+                ItaraSerializer serializer = serializerRegistry.get(conn.getSerializer());
 
                 // Build properties map from the connection entry
                 Map<String, String> props = buildProperties(conn);
@@ -213,7 +215,7 @@ public class ItaraAgent {
      *   - it has no host (this JVM IS the host)
      *   - or it is an external entry point (from is empty)
      */
-    private static boolean isOutbound(WiringConfig.ConnectionEntry conn) {
+    private static boolean isOutbound(ConnectionEntry conn) {
         return !conn.isExternal()
                 && conn.getHost() != null
                 && !conn.getHost().isBlank();
@@ -229,7 +231,7 @@ public class ItaraAgent {
      *   from     - caller component id
      *   to       - callee component id
      */
-    private static Map<String, String> buildProperties(WiringConfig.ConnectionEntry conn) {
+    private static Map<String, String> buildProperties(ConnectionEntry conn) {
         Map<String, String> props = new HashMap<>();
         if (conn.getHost() != null)  props.put("host", conn.getHost());
         if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));

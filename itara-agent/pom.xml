@@ -32,6 +32,21 @@
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
         </dependency>
+        <!-- Jackson YAML for wiring config parsing.
+                 Shaded into the fat jar to avoid version conflicts with any
+                 YAML or Jackson library the application may use.
+                 Provides ObjectMapper-style deserialization directly into
+                 WiringConfig, ComponentEntry, and ConnectionEntry. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -56,6 +71,7 @@
                         </goals>
                         <configuration>
                             <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <!-- Exclude signature files that break fat jars -->
                                 <filter>

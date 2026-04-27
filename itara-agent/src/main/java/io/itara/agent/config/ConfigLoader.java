@@ -1,27 +1,59 @@
 package io.itara.agent.config;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Minimal YAML parser for the Itara wiring config.
+ * Loads and parses the Itara wiring configuration from a YAML file.
  *
- * Deliberately avoids external dependencies (no SnakeYAML, no Jackson)
- * to keep the agent jar self-contained and avoid classpath conflicts
- * with whatever the application uses.
+ * The config file path is specified via the JVM system property:
+ *   -Ditara.config=/path/to/wiring.yaml
  *
- * Supports only the specific structure of the wiring config.
- * This is not a general-purpose YAML parser.
+ * Loading happens in two phases:
  *
- * Config system property: -Ditara.config=/path/to/wiring.yaml
+ *   1. Environment variable substitution — applied to the raw file content
+ *      before parsing. Syntax: ${VAR_NAME:-default_value}
+ *      This allows container deployments to inject host names, ports, and
+ *      other environment-specific values without modifying the config file.
+ *
+ *   2. YAML parsing — Jackson maps the substituted YAML into WiringConfig,
+ *      ComponentEntry, and ConnectionEntry objects. Unknown fields are
+ *      silently ignored for forward compatibility.
+ *
+ * After parsing, the config is validated — required fields are checked and
+ * transport-specific requirements (e.g. host/port for HTTP) are enforced.
+ * Validation errors throw ConfigurationException with a message that
+ * identifies the exact field and connection index.
  */
 public class ConfigLoader {
 
+    private static final Logger log = Logger.getLogger(ConfigLoader.class.getName());
+
     public static final String CONFIG_PROPERTY = "itara.config";
 
+    /** Matches ${VAR_NAME} and ${VAR_NAME:-default} */
+    private static final Pattern ENV_VAR_PATTERN =
+            Pattern.compile("\\$\\{([^}:]+)(?::-(.*?))?}");
+
+    private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
+
+    // ── Public API ─────────────────────────────────────────────────────────
+
+    /**
+     * Loads the wiring config from the path specified by -Ditara.config.
+     *
+     * @throws IllegalStateException  if the system property is not set
+     * @throws IOException            if the file cannot be read
+     * @throws ConfigurationException if the YAML is malformed or required
+     *                                fields are missing
+     */
     public static WiringConfig load() throws IOException {
         String path = System.getProperty(CONFIG_PROPERTY);
         if (path == null || path.isBlank()) {
@@ -32,101 +64,92 @@ public class ConfigLoader {
         return parse(path);
     }
 
+    /**
+     * Parses a wiring config from the given file path.
+     * Visible for testing.
+     */
     static WiringConfig parse(String path) throws IOException {
-        List<String> lines = readLines(path);
-        WiringConfig config = new WiringConfig();
-        config.setComponents(new ArrayList<>());
-        config.setConnections(new ArrayList<>());
+        String raw;
+        try {
+            raw = Files.readString(Paths.get(path));
+        } catch (IOException e) {
+            throw new IOException(
+                    "[Itara] Could not read wiring config from '"
+                    + path + "': " + e.getMessage(), e);
+        }
+        return parseString(raw);
+    }
 
-        String section = null;
-        WiringConfig.ComponentEntry currentComponent = null;
-        WiringConfig.ConnectionEntry currentConnection = null;
+    /**
+     * Parses a wiring config from a raw YAML string.
+     * Visible for testing — allows testing without a file on disk.
+     * Environment variable substitution is applied before parsing.
+     *
+     * @throws ConfigurationException if the YAML is malformed or required
+     *                                fields are missing
+     */
+    static WiringConfig parseString(String yaml) {
+        String substituted = substituteEnvVars(yaml);
 
-        for (String raw : lines) {
-            if (raw.isBlank() || raw.stripLeading().startsWith("#")) continue;
-
-            int indent = leadingSpaces(raw);
-            String line = raw.strip();
-
-            // Top-level section headers
-            if (indent == 0) {
-                if (line.equals("components:")) { section = "components"; continue; }
-                if (line.equals("connections:")) { section = "connections"; continue; }
-                continue;
-            }
-
-            // New list item
-            if (line.startsWith("- ")) {
-                String content = line.substring(2).strip();
-                if ("components".equals(section)) {
-                    currentComponent = new WiringConfig.ComponentEntry();
-                    config.getComponents().add(currentComponent);
-                    currentConnection = null;
-                    parseKeyValue(content, currentComponent, null);
-                } else if ("connections".equals(section)) {
-                    currentConnection = new WiringConfig.ConnectionEntry();
-                    config.getConnections().add(currentConnection);
-                    currentComponent = null;
-                    parseKeyValue(content, null, currentConnection);
-                }
-                continue;
-            }
-
-            // Property line within a list item
-            if ("components".equals(section) && currentComponent != null) {
-                parseKeyValue(line, currentComponent, null);
-            } else if ("connections".equals(section) && currentConnection != null) {
-                parseKeyValue(line, null, currentConnection);
-            }
+        // Empty or comment-only documents produce no content — return empty config
+        if (substituted == null || substituted.isBlank()
+                || substituted.lines()
+                .map(String::strip)
+                .allMatch(l -> l.isEmpty() || l.startsWith("#"))) {
+            return new WiringConfig();
         }
 
+        WiringConfig config;
+        try {
+            config = MAPPER.readValue(substituted, WiringConfig.class);
+        } catch (Exception e) {
+            throw new ConfigurationException(
+                    "[Itara] Failed to parse wiring config: " + e.getMessage(), e);
+        }
+
+        // readValue returns null for an empty or comment-only document
+        if (config == null) {
+            config = new WiringConfig();
+        }
+
+        config.validate();
         return config;
     }
 
-    private static void parseKeyValue(String line,
-                                      WiringConfig.ComponentEntry comp,
-                                      WiringConfig.ConnectionEntry conn) {
-        int colon = line.indexOf(':');
-        if (colon < 0) return;
-        String key = line.substring(0, colon).strip();
-        String value = line.substring(colon + 1).strip();
-        // Strip surrounding quotes if present
-        if (value.startsWith("\"") && value.endsWith("\"")) {
-            value = value.substring(1, value.length() - 1);
-        }
+    // ── Env var substitution ───────────────────────────────────────────────
 
-        if (comp != null) {
-            switch (key) {
-                case "id"        -> comp.setId(value);
+    /**
+     * Substitutes ${VAR:-default} and ${VAR} patterns in the raw YAML
+     * string before it is handed to the YAML parser.
+     *
+     * Substitution happens on the raw string so the parser always sees
+     * clean, well-typed content. A port substituted from an env var
+     * arrives as a plain integer string, which Jackson coerces to int.
+     */
+    static String substituteEnvVars(String raw) {
+        Matcher matcher = ENV_VAR_PATTERN.matcher(raw);
+        StringBuilder result = new StringBuilder();
+
+        while (matcher.find()) {
+            String varName    = matcher.group(1);
+            String defaultVal = matcher.group(2); // null if no :- present
+            String envValue   = System.getenv(varName);
+
+            String replacement;
+            if (envValue != null) {
+                replacement = envValue;
+            } else if (defaultVal != null) {
+                replacement = defaultVal;
+            } else {
+                log.warning("[Itara] Environment variable '" + varName
+                        + "' is not set and has no default. "
+                        + "Placeholder '" + matcher.group() + "' will be used as-is.");
+                replacement = matcher.group();
             }
-        } else if (conn != null) {
-            switch (key) {
-                case "from" -> conn.setFrom(value);
-                case "to"   -> conn.setTo(value);
-                case "type" -> conn.setType(value);
-                case "host" -> conn.setHost(value);
-                case "port" -> { try { conn.setPort(Integer.parseInt(value)); }
-                                 catch (NumberFormatException ignored) {} }
-                case "serializer" -> conn.setSerializerType(value);
-            }
-        }
-    }
 
-    private static int leadingSpaces(String line) {
-        int count = 0;
-        for (char c : line.toCharArray()) {
-            if (c == ' ') count++;
-            else break;
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
-        return count;
-    }
-
-    private static List<String> readLines(String path) throws IOException {
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            String line;
-            while ((line = br.readLine()) != null) lines.add(line);
-        }
-        return lines;
+        matcher.appendTail(result);
+        return result.toString();
     }
 }
