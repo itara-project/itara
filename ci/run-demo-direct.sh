@@ -14,11 +14,12 @@ GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
 GW_IMPL=itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar
 CONFIG=itara-demo/wiring-direct.yaml
 
-# ── Setup: build libs dir with transport and observability jar ───────────────────────────────
+# ── Setup: build libs dir with transport, serializer and observability jars ───────────────────────────────
 LIBS_DIR=itara-libs
 mkdir -p "$LIBS_DIR"
 cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
 cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
+cp itara-serializer-json/target/itara-serializer-json-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 

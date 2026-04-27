@@ -19,14 +19,26 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: 'maven'    # also add this — caches ~/.m2 between runs
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.6
 
       - name: Build all modules
-        run: |
-          mvn install -DskipTests --no-transfer-progress -f itara-common/pom.xml
-          mvn install -DskipTests --no-transfer-progress -f itara-agent/pom.xml
-          mvn install -DskipTests --no-transfer-progress -f itara-transport-http/pom.xml
-          mvn install -DskipTests --no-transfer-progress -f itara-observability-logging/pom.xml
-          mvn install -DskipTests --no-transfer-progress -f itara-demo/pom.xml
+        run: mvn install --no-transfer-progress
+
+      - name: Run unit and integration tests
+        run: mvn test --no-transfer-progress
+
+      - name: Make CI scripts executable
+        # Required for local testing with 'act' on Windows.
+        # Windows NTFS does not preserve Unix execute bits when act mounts
+        # the working directory into the Docker container.
+        # On the real GitHub runner this is a no-op — git checkout
+        # restores the executable bit from the git index correctly.
+        run: chmod +x ci/*.sh
 
       - name: Run demo (direct topology)
         run: ci/run-demo-direct.sh

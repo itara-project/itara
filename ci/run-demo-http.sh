@@ -3,11 +3,12 @@
 # Runs the demo in HTTP topology across two JVMs.
 #
 # Sequence:
-#   1. Start calculator JVM in background (inbound HTTP listener on port 8081)
-#   2. Wait until it signals readiness via log output
-#   3. Start gateway JVM in foreground (calls calculator over HTTP)
-#   4. If gateway exits 0, the test passes
-#   5. Kill calculator JVM in cleanup regardless of outcome
+#   1. Build libs dir with transport and serializer jars
+#   2. Start calculator JVM in background (inbound HTTP listener on port 8081)
+#   3. Wait until it signals readiness via log output
+#   4. Start gateway JVM in foreground (calls calculator over HTTP)
+#   5. If gateway exits 0, the test passes
+#   6. Kill calculator JVM in cleanup regardless of outcome
 
 set -euo pipefail
 
@@ -23,11 +24,13 @@ GW_CONFIG=itara-demo/wiring-http-gateway.yaml
 CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
 
-# ── Setup: build libs dir with transport and observability jar ───────────────────────────────
+# ── Setup: build libs dir with transport, observability and serializer jars ───────────────────────────────
 LIBS_DIR=itara-libs
 mkdir -p "$LIBS_DIR"
-cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
+cp itara-transport-http/target/itara-transport-http-*.jar   "$LIBS_DIR/"
+cp itara-serializer-json/target/itara-serializer-json-*.jar "$LIBS_DIR/"
 cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
+
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 
@@ -95,4 +98,5 @@ java \
   demo.gateway.component.DemoMain
 
 echo "[CI] HTTP topology demo completed successfully."
+cat "$CALC_LOG"
 # cleanup() kills the calculator on exit

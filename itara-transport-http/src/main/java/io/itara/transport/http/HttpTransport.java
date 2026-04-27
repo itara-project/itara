@@ -1,6 +1,7 @@
 package io.itara.transport.http;
 
 import io.itara.runtime.ItaraRegistry;
+import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
 
 import java.util.Map;
@@ -31,22 +32,24 @@ public class HttpTransport implements ItaraTransport {
     public Object createProxy(String componentId,
                               Class<?> contractClass,
                               Map<String, String> properties,
-                              ClassLoader classLoader) {
+                              ClassLoader classLoader,
+                              ItaraSerializer serializer) {
         String host = required(properties, "host", componentId);
         int port = requiredInt(properties, "port", componentId);
 
         return RemoteProxyFactory.createHttpProxy(
-                contractClass, componentId, host, port, classLoader);
+                contractClass, componentId, host, port, classLoader, serializer);
     }
 
     @Override
     public void startListener(String componentId,
                               Map<String, String> properties,
-                              ItaraRegistry registry) {
+                              ItaraRegistry registry,
+                              ItaraSerializer serializer) {
         int port = requiredInt(properties, "port", componentId);
 
         try {
-            activeServer = new ItaraHttpServer(port, registry);
+            activeServer = new ItaraHttpServer(port, registry, serializer);
             activeServer.start();
         } catch (Exception e) {
             throw new RuntimeException(

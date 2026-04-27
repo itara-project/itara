@@ -11,3 +11,4 @@ connections:
     to: "calculator"
     type: http
     port: 8081
+    serializer: "json"

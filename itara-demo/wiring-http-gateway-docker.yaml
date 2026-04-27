@@ -12,3 +12,4 @@ connections:
     type: http
     host: "calculator"
     port: 8081
+    serializer: "json"

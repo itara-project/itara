@@ -46,7 +46,8 @@ public interface ItaraTransport {
     Object createProxy(String componentId,
                        Class<?> contractClass,
                        Map<String, String> properties,
-                       ClassLoader classLoader);
+                       ClassLoader classLoader,
+                       ItaraSerializer serializer);
 
     /**
      * Start a listener that receives inbound calls for the given component
@@ -62,7 +63,8 @@ public interface ItaraTransport {
      */
     void startListener(String componentId,
                        Map<String, String> properties,
-                       ItaraRegistry registry);
+                       ItaraRegistry registry,
+                       ItaraSerializer serializer);
 
     /**
      * Stop the listener started by startListener(), if any.

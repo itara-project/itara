@@ -107,6 +107,7 @@ public class ConfigLoader {
                 case "host" -> conn.setHost(value);
                 case "port" -> { try { conn.setPort(Integer.parseInt(value)); }
                                  catch (NumberFormatException ignored) {} }
+                case "serializer" -> conn.setSerializerType(value);
             }
         }
     }
