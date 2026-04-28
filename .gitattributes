@@ -1,0 +1,6 @@
+# Force LF for shell scripts — CRLF breaks shebangs on Linux
+*.sh text eol=lf
+
+# Force LF for CI workflow files
+*.yml text eol=lf
+*.yaml text eol=lf
