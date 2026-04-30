@@ -76,9 +76,8 @@ public final class ContextPropagation {
         String[] tp = ItaraContext.parseTraceparent(traceparent);
         if (tp == null) return null;
 
-        String traceId    = tp[1];
-        String parentSpan = tp[2]; // caller's spanId becomes our parentSpanId
-        String spanId     = ItaraContext.generateSpanId(); // new span for this side
+        String traceId = tp[1];
+        String spanId  = tp[2]; // caller's spanId becomes our parentSpanId
 
         // Defaults
         String requestId     = ItaraContext.generateRequestId();
@@ -105,7 +104,7 @@ public final class ContextPropagation {
             }
         }
 
-        return ItaraContext.restore(traceId, spanId, parentSpan,
+        return ItaraContext.restore(traceId, spanId, null,
                 requestId, correlationId, sourceNode, edgePath);
     }
 

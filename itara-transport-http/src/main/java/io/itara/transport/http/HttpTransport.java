@@ -21,11 +21,13 @@ import java.util.Map;
  */
 public class HttpTransport implements ItaraTransport {
 
+    public static String TYPE = "http";
+
     private ItaraHttpServer activeServer;
 
     @Override
     public String type() {
-        return "http";
+        return TYPE;
     }
 
     @Override

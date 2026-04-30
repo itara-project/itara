@@ -32,6 +32,10 @@ public final class ObserverRegistry {
         return INSTANCE;
     }
 
+    public List<ItaraObserver> getObservers() {
+        return observers;
+    }
+
     public void register(ItaraObserver observer) {
         observers.add(observer);
         System.out.println("[Itara] Registered observer: "
@@ -40,69 +44,5 @@ public final class ObserverRegistry {
 
     public int size() {
         return observers.size();
-    }
-
-    // ── Event dispatch ─────────────────────────────────────────────────────
-
-    public void fireCallSent(ItaraContext ctx,
-                             String componentId,
-                             String methodName) {
-        long timestamp = System.nanoTime();
-        for (ItaraObserver observer : observers) {
-            try {
-                observer.onCallSent(ctx, componentId, methodName, timestamp);
-            } catch (Exception e) {
-                warn(observer, "onCallSent", e);
-            }
-        }
-    }
-
-    public void fireCallReceived(ItaraContext ctx,
-                                 String componentId,
-                                 String methodName) {
-        long timestamp = System.nanoTime();
-        for (ItaraObserver observer : observers) {
-            try {
-                observer.onCallReceived(ctx, componentId, methodName, timestamp);
-            } catch (Exception e) {
-                warn(observer, "onCallReceived", e);
-            }
-        }
-    }
-
-    public void fireReturnSent(ItaraContext ctx,
-                               String componentId,
-                               String methodName,
-                               boolean error) {
-        long timestamp = System.nanoTime();
-        for (ItaraObserver observer : observers) {
-            try {
-                observer.onReturnSent(ctx, componentId, methodName, timestamp, error);
-            } catch (Exception e) {
-                warn(observer, "onReturnSent", e);
-            }
-        }
-    }
-
-    public void fireReturnReceived(ItaraContext ctx,
-                                   String componentId,
-                                   String methodName,
-                                   boolean error) {
-        long timestamp = System.nanoTime();
-        for (ItaraObserver observer : observers) {
-            try {
-                observer.onReturnReceived(ctx, componentId, methodName, timestamp, error);
-            } catch (Exception e) {
-                warn(observer, "onReturnReceived", e);
-            }
-        }
-    }
-
-    // ── Internal ───────────────────────────────────────────────────────────
-
-    private void warn(ItaraObserver observer, String method, Exception e) {
-        System.err.println("[Itara] Observer error in "
-                + observer.getClass().getName()
-                + "." + method + ": " + e.getMessage());
     }
 }

@@ -5,6 +5,8 @@ import demo.calculator.api.CalculatorService;
 import demo.calculator.component.CalculatorServiceImpl;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ObservabilityFacade;
+import io.itara.runtime.NoOpOtelBridge;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.spi.ItaraSerializer;
 import io.itara.transport.http.HttpTransport;
@@ -65,6 +67,8 @@ class HttpTransportIntegrationTest {
                 serializer
         );
         proxy = (CalculatorService) rawProxy;
+
+        ObservabilityFacade.initialize(new NoOpOtelBridge());
     }
 
     @AfterAll
