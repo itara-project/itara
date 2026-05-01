@@ -165,15 +165,12 @@ public class OtelBridgeImpl implements OtelBridge {
                 ? otelSpanId
                 : ItaraContext.generateSpanId();
 
-        final List<String> newEdgePath = new ArrayList<>();
-        if (ctx != null) newEdgePath.addAll(ctx.getEdgePath());
-        newEdgePath.add(componentId);
         ItaraContext resolved = ItaraContext.restore(
                 traceId, spanId, parentSpanId,
                 ctx != null ? ctx.getRequestId() : ItaraContext.generateRequestId(),
                 ctx != null ? ctx.getCorrelationId() : null,
                 ctx != null ? ctx.getSourceNode() : componentId,
-                newEdgePath);
+                ctx != null ? ctx.getEdgePath() : List.of());
 
         setAttributes(span, resolved, componentId, methodName, transport);
         pendingCallerSpans.put(resolved.getSpanId(),
@@ -221,12 +218,15 @@ public class OtelBridgeImpl implements OtelBridge {
                 ? otelSpanId
                 : ItaraContext.generateSpanId();
 
+        final List<String> newEdgePath = new ArrayList<>();
+        if (ctx != null) newEdgePath.addAll(ctx.getEdgePath());
+        newEdgePath.add(componentId);
         ItaraContext resolved = ItaraContext.restore(
                 traceId, spanId, parentSpanId,
                 ctx != null ? ctx.getRequestId() : ItaraContext.generateRequestId(),
                 ctx != null ? ctx.getCorrelationId() : null,
                 ctx != null ? ctx.getSourceNode() : componentId,
-                ctx != null ? ctx.getEdgePath() : List.of());
+                newEdgePath);
 
         setAttributes(span, resolved, componentId, methodName, transport);
         pendingCalleeSpans.put(resolved.getSpanId(),

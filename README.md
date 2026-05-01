@@ -2,7 +2,7 @@
 
 **Make software soft again.**
 
-Itara is a runtime framework that treats distributed system topology as a
+Itara is a JVM runtime that treats distributed system topology as a
 configuration decision, not a code decision.
 
 Change how your components communicate — collocated direct calls, HTTP,
@@ -45,7 +45,7 @@ in-process method or over HTTP from a separate JVM.
 connections:
   - from: gateway
     to:   calculator
-    type: direct      # or: http, async — code does not change
+    type: direct      # or: http, kafka — code does not change
 ```
 
 ---
@@ -80,131 +80,213 @@ The gateway JVM does not have calculator-component.jar on its classpath
 in the HTTP run — it never sees the implementation. The agent generates
 a proxy from the API jar alone.
 
+**External HTTP entry point — call the gateway directly:**
+
+```bash
+curl -X POST http://localhost:8082/itara/gateway/calculate \
+     -H "Content-Type: application/json" \
+     -d "[32, 41]"
+# → "The result of 32 + 41 = 73"
+```
+
+Add an inbound HTTP connection to any component in the wiring config and
+Itara automatically starts an HTTP server for it. No code changes.
+
+---
+
+## Observability
+
+Itara treats observability as a first-class citizen. Every component call
+produces four events regardless of transport:
+
+- **CALL_SENT** — caller side, before dispatch
+- **CALL_RECEIVED** — callee side, on arrival
+- **RETURN_SENT** — callee side, before response
+- **RETURN_RECEIVED** — caller side, on return
+
+This makes network latency directly observable: the gap between CALL_SENT
+and CALL_RECEIVED is the transport overhead. The gap between RETURN_SENT
+and RETURN_RECEIVED is the return path. Both sides of every call are measured
+independently.
+
+**OpenTelemetry is built in.** Drop `itara-observability-otel` into
+`itara.lib.dir` and add the OTel SDK to your classpath. Itara generates
+distributed traces with correct parent-child relationships across JVMs,
+using W3C traceparent headers for propagation. No code changes required.
+
+Each span carries:
+- `itara.component` — the component being called
+- `itara.method` — the method name
+- `itara.transport` — actual transport used (direct, http, kafka)
+- `itara.edge.path` — the full call chain (e.g. `[gateway, calculator]`)
+- `itara.request.id` — for cross-signal correlation
+- `itara.source.node` — the originating node
+
+Latency metrics are recorded as a histogram (`itara.call.duration`)
+with component, method, transport, and error dimensions — sufficient
+for latency alerting and SLO tracking without additional configuration.
+
+**The observer SPI** allows custom observability implementations. Multiple
+observers can run simultaneously — a logging observer and a custom metrics
+sink, for example. OTel is built-in infrastructure, not an observer
+implementation; the SPI is for passive consumers of events.
+
 ---
 
 ## Structure
 
 ```
-itara-common/           Annotations, registry, activator interface, proxy interface. No external deps.
-itara-agent/            JVM agent. proxy implementation discovery and generation. custom class loader
-itara-transport-http/   ByteBuddy proxy generation, HTTP server/client.
-itara-demo/             Hello world demo. Two components, three wiring configs.
+itara-common/                  SPIs, registries, ItaraContext, OtelBridge, ObservabilityFacade
+itara-agent/                   JVM premain, classloader, wiring, OtelBridgeLoader, ObserverLoader
+itara-transport-http/          HttpTransport, HttpRemoteProxy, ItaraHttpServer
+itara-serializer-json/         JSON serializer (default, shaded Jackson)
+itara-serializer-java/         Java serializer (legacy opt-in)
+itara-observability-otel/      OtelBridgeImpl — spans and metrics via OTel API
+itara-observability-logging/   LoggingObserver — structured event logging
+itara-integration-tests/       HttpTransportIntegrationTest
+itara-demo/                    calculator-api, calculator-component, gateway-api, gateway-component
 ```
 
 ### Key concepts
 
-**Contract** — an abstract class annotated @ComponentInterface. Lives in an
+**Contract** — an interface annotated `@ComponentInterface`. Lives in an
 API jar. Defines what the component does. Says nothing about how it is called.
 
 **Component** — one implementation of a contract. Lives in a component jar.
 Has no knowledge of transport or topology.
 
-**Activator** — one class per component jar implementing ItaraActivator.
+**Activator** — one class per component jar implementing `ItaraActivator`.
 Constructs the component's internal object graph and returns the root instance.
-Discovered via META-INF/itara/activator.
+Discovered via `META-INF/itara/activator`.
 
-**Wiring config** — a YAML file defining connections between components.
+**Wiring config** — a YAML file defining components and connections.
+Supports environment variable substitution (`${VAR:-default}`).
 The agent reads this at JVM startup.
+
+**itara.lib.dir** — a directory of SPI jars loaded by the agent's child-first
+classloader. Transports, serializers, and observers go here. The application
+classpath never needs to change.
 
 ---
 
 ## Running the demo
 
-Build order:
+**Build everything from the repo root:**
 
+```bash
+mvn install
 ```
-cd itara-common          && mvn install
-cd itara-agent           && mvn package
-cd itara-transport-http  && mvn install
-cd itara-demo            && mvn install
-```
-
-The agent loads the runtime jars from the specified dir first (-Ditara.lib.dir=/path/to/runtime/jars/dir),
-then from the system class path if not found (child-first approach),
-so move the itara-transport-http and other runtime jars to the libs directory
-
----
 
 ### Option A — Docker (recommended)
 
-Requires Docker Desktop. No local JDK installation needed.
+Requires Docker Desktop.
 
-Copy `itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar` into `itara-demo/libs/`.
+**Collect OTel jars** (needed for distributed tracing):
+
+```bash
+# From itara-demo/
+chmod +x collect-otel-libs.sh && ./collect-otel-libs.sh
+```
 
 **Direct topology — both components in one container:**
 
-```
+```bash
 cd itara-demo
 docker compose -f docker-compose-direct.yml up
 ```
 
-**HTTP topology — two separate containers, zero code changes:**
+**HTTP topology — two separate containers with full observability:**
 
-```
+```bash
 cd itara-demo
 docker compose -f docker-compose-http.yml up
 ```
 
-The gateway and calculator run in separate containers on the same Docker
-network. The gateway resolves the calculator by service name. Same component
-code, same API jars, different wiring config — topology is the only thing
-that changed.
+Wait about 60 seconds (ElasticSearch takes a while to start up), then:
+- **Kibana APM**: http://localhost:5601 → Observability → APM → Services  
+- **Make a call**: `curl -X POST http://localhost:8082/itara/gateway/calculate -H "Content-Type: application/json" -d "[32, 41]"`
+- **View the trace** in Kibana
 
----
+### Option B — Docker without observability
 
-### Option B — Native (local JDK)
+**Direct topology — both components in one container:**
+
+```bash
+cd itara-demo
+docker compose -f docker-compose-direct.yml up
+```
+
+The HTTP setup also works without observability of course, but since it's not the intended use, there is no demo for that. It is easy to modify the appropriate compose file though, if someone wants avoid the ELK stack.
+
+### Option C — Native (local JDK 21+)
 
 **Direct topology (one JVM):**
 
-```
-java "-Ditara.lib.dir=libs"
-     "-Ditara.config=itara-demo/wiring-direct.yaml"
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
+```bash
+java -Ditara.lib.dir=libs \
+     -Ditara.config=itara-demo/wiring-direct.yaml \
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
+          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:\
+          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:\
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar" \
      demo.gateway.component.DemoMain
 ```
 
-**HTTP topology — start calculator first, wait for "Server listening on port 8081":**
+**HTTP topology — start calculator first, then gateway:**
 
-```
-# Terminal 1
-java "-Ditara.lib.dir=libs"
-     "-Ditara.config=itara-demo/wiring-http-calculator.yaml"
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar"
-     itara.runtime.ItaraMain
+```bash
+# Terminal 1 — calculator JVM
+java -Ditara.lib.dir=libs \
+     -Ditara.config=itara-demo/wiring-http-calculator.yaml \
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
+          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar" \
+     io.itara.runtime.ItaraMain
 
-# Terminal 2
-java "-Ditara.lib.dir=libs"
-     "-Ditara.config=itara-demo/wiring-http-gateway.yaml"
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar;
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar;
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar"
+# Terminal 2 — gateway JVM (after calculator prints "Server listening on port 8081")
+java -Ditara.lib.dir=libs \
+     -Ditara.config=itara-demo/wiring-http-gateway.yaml \
+     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
+     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
+          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
+          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:\
+          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar" \
      demo.gateway.component.DemoMain
 ```
 
-calculator-component.jar is absent from the gateway classpath. The gateway
-never sees the implementation.
+`calculator-component.jar` is absent from the gateway classpath.
+The gateway never sees the implementation.
 
 ---
 
 ## Current state
 
-Working today: direct and HTTP connections, ByteBuddy proxy generation,
-custom class loader for runtime and application classpath separation,
-automatic constructor patching, activator-based lazy instantiation,
-synthesized inbound HTTP server, zero code change between topologies.
+**Working:**
+- Direct and HTTP topologies
+- Inbound HTTP server — any component can accept external HTTP calls via wiring config
+- JSON and Java serializers (pluggable via SPI)
+- Custom classloader for runtime/application classpath separation
+- Activator-based lazy instantiation
+- Full observability with four-event model (CALL_SENT, CALL_RECEIVED, RETURN_SENT, RETURN_RECEIVED)
+- OpenTelemetry bridge — distributed traces in Kibana/Jaeger/any OTel backend
+- W3C traceparent propagation across JVMs
+- Edge path tracking across the call chain
+- Error taxonomy (CHECKED / RUNTIME / TRANSPORT) with correct HTTP status codes
+- YAML wiring config with environment variable substitution
+- Logging observer SPI
+- Integration tests
 
-Planned: orchestrator, controller, message queue connections, build plugin,
-language-neutral contract descriptor, Spring adapter, mathematical models.
+**Planned:**
+- Kafka transport
+- Spring Boot adapter
+- Elastic sink for direct ELK export
+- Controller (Orca) for runtime topology management
+- Mathematical models for topology optimization
+- Build plugin
+- Language-neutral contract descriptor
 
 See VISION.md for the full architectural vision.
 

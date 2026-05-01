@@ -101,7 +101,7 @@ public final class ObservabilityFacade {
     public ItaraContext fireCallSent(String componentId,
                                      String methodName,
                                      String transport) {
-        long timestamp = System.nanoTime();
+        long timestamp = System.currentTimeMillis() * 1_000_000L;
         ItaraContext current = ItaraContext.current();
 
         // Bridge resolves context: null = root, non-null = child
@@ -133,7 +133,7 @@ public final class ObservabilityFacade {
                                    String componentId,
                                    String methodName,
                                    boolean error) {
-        long timestamp = System.nanoTime();
+        long timestamp = System.currentTimeMillis() * 1_000_000L;
         bridge.onReturnReceived(callCtx, componentId, methodName, timestamp, error);
 
         for (var observer : registry.getObservers()) {
@@ -168,7 +168,7 @@ public final class ObservabilityFacade {
                                          String componentId,
                                          String methodName,
                                          String transport) {
-        long timestamp = System.nanoTime();
+        long timestamp = System.currentTimeMillis() * 1_000_000L;
         ItaraContext resolved = bridge.onCallReceived(
                 incomingCtx, componentId, methodName, transport, timestamp);
         ItaraContext.set(resolved);
@@ -195,7 +195,7 @@ public final class ObservabilityFacade {
                                String componentId,
                                String methodName,
                                boolean error) {
-        long timestamp = System.nanoTime();
+        long timestamp = System.currentTimeMillis() * 1_000_000L;
         bridge.onReturnSent(callCtx, componentId, methodName, timestamp, error);
 
         for (var observer : registry.getObservers()) {

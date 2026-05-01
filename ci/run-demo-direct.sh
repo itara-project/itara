@@ -8,6 +8,7 @@ set -euo pipefail
 
 AGENT=itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
 COMMON=itara-common/target/itara-common-1.0-SNAPSHOT.jar
+#OTEL=itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar
 CALC_API=itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar
 CALC_IMPL=itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar
 GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
@@ -20,7 +21,7 @@ mkdir -p "$LIBS_DIR"
 cp itara-transport-http/target/itara-transport-http-*.jar "$LIBS_DIR/"
 cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
 cp itara-serializer-json/target/itara-serializer-json-*.jar "$LIBS_DIR/"
-cp itara-observability-otel/target/itara-observability-otel-*.jar "$LIBS_DIR/"
+#cp itara-observability-otel/target/itara-observability-otel-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 

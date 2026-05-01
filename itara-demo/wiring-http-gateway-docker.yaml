@@ -4,7 +4,6 @@
 
 components:
   - id: "gateway"
-    activator: "demo.gateway.component.GatewayActivator"
 
 connections:
   - from: "gateway"
@@ -12,4 +11,9 @@ connections:
     type: http
     host: "calculator"
     port: 8081
+    serializer: "json"
+  - from:
+    to: "gateway"
+    type: http
+    port: 8082
     serializer: "json"

@@ -30,7 +30,7 @@ mkdir -p "$LIBS_DIR"
 cp itara-transport-http/target/itara-transport-http-*.jar   "$LIBS_DIR/"
 cp itara-serializer-json/target/itara-serializer-json-*.jar "$LIBS_DIR/"
 cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_DIR/"
-cp itara-observability-otel/target/itara-observability-otel-*.jar "$LIBS_DIR/"
+#cp itara-observability-otel/target/itara-observability-otel-*.jar "$LIBS_DIR/"
 
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
