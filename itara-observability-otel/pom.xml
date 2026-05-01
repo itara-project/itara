@@ -84,6 +84,7 @@
                             <artifactSet>
                                 <excludes>
                                     <exclude>io.itara:itara-common</exclude>
+                                    <exclude>io.opentelemetry:*</exclude>
                                 </excludes>
                             </artifactSet>
                             <filters>

@@ -26,7 +26,7 @@ public class NoOpOtelBridge implements OtelBridge {
         if (ctx == null) {
             return ItaraContext.newRoot(componentId);
         }
-        return ctx.newChildSpan(componentId);
+        return ctx;
     }
 
     @Override
@@ -38,7 +38,7 @@ public class NoOpOtelBridge implements OtelBridge {
         if (ctx == null) {
             return ItaraContext.newRoot(componentId);
         }
-        return ctx;
+        return ctx.newChildSpan(componentId);
     }
 
     @Override

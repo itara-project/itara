@@ -83,9 +83,12 @@ public class OtelBridgeLoader {
                             + ". Is itara-observability-otel in itara.lib.dir? "
                             + "Using no-op bridge.");
                 } catch (Exception e) {
+                    Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                            ? e.getCause() : e;
                     log.warning("[Itara] Failed to instantiate OtelBridge "
-                            + line + ": " + e.getMessage()
-                            + ". Using no-op bridge.");
+                            + line + ": " + (cause != null ? cause : e));
+                    log.warning("[Itara] exception: " + (cause != null ? cause.getClass().getName()
+                                                                         + ": " + cause.getMessage() : e));
                 }
             }
         } catch (IOException e) {

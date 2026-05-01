@@ -3,9 +3,96 @@ name: itara-demo-http
 # Demonstrates HTTP topology across two containers.
 # Gateway and calculator run in separate containers, separate JVMs.
 # Communication happens over HTTP — zero code changes from the direct topology.
-# Change to docker-compose-direct.yml to run both components in the same JVM instead.
+#
+# Observability pipeline:
+#   Itara services → OTel Collector (OTLP/HTTP) → APM Server (OTLP/gRPC) → Elasticsearch
+#
+# Kibana APM UI: http://localhost:5601 → Observability → APM → Services
+#
+# Uses Elastic Stack 7.17 — standalone APM, no Fleet integration required.
+#
+# OTel jars required in itara-demo/otel-libs/
+# Run collect-otel-libs.ps1 to populate from local Maven repo.
+# Remove opentelemetry-exporter-sender-okhttp jar if present — not needed.
 
 services:
+
+  # ── Elastic Stack 7.17 ────────────────────────────────────────────────────
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - itara-net
+
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:7.17.0
+    command: >
+      apm-server -e
+        -E apm-server.host=0.0.0.0:8200
+        -E output.elasticsearch.hosts=["elasticsearch:9200"]
+        -E apm-server.kibana.enabled=true
+        -E apm-server.kibana.host=http://kibana:5601
+    ports:
+      - "8200:8200"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── OTel Collector ────────────────────────────────────────────────────────
+  # Receives OTLP/HTTP from Itara services.
+  # Forwards to APM server via OTLP/gRPC on port 8200.
+  # This is the recommended architecture for 7.17 — APM server speaks gRPC natively.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    command: ["--config=/etc/otel-collector-config.yml"]
+    ports:
+      - "4318:4318"
+    depends_on:
+      apm-server:
+        condition: service_healthy
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Itara Demo ─────────────────────────────────────────────────────────────
+
   calculator:
     build:
       context: .
@@ -13,19 +100,35 @@ services:
     volumes:
       - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
       - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
       - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
       - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
       - ./wiring-http-calculator-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
     ports:
       - "8081:8081"
+    environment:
+      - OTEL_SERVICE_NAME=calculator
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar"
+      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
       - "io.itara.runtime.ItaraMain"
+    depends_on:
+      otel-collector:
+        condition: service_started
     networks:
       - itara-net
 
@@ -36,20 +139,39 @@ services:
     volumes:
       - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
       - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
       - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
       - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
       - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
       - ./wiring-http-gateway-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+    ports:
+      - "8082:8082"
+    environment:
+      - OTEL_SERVICE_NAME=gateway
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
     command:
       - "-Ditara.lib.dir=/app/libs"
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar"
-      - "demo.gateway.component.DemoMain"
+      - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      #- "demo.gateway.component.DemoMain"
+      - "io.itara.runtime.ItaraMain"
     depends_on:
-      - calculator
+      calculator:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     networks:
       - itara-net
 
