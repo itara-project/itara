@@ -4,14 +4,11 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.itara.runtime.ContextPropagation;
 import io.itara.runtime.ItaraContext;
-import io.itara.runtime.ObserverRegistry;
+import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.spi.ItaraSerializer;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -95,22 +92,23 @@ public class ItaraHttpServer {
 
         log.info("[Itara/HTTP] <- " + methodName + " on " + componentId);
 
-        // ── Context restoration ────────────────────────────────────────────
+        // ── Context restoration ────────────────────────────────────────────/
         String traceparent = exchange.getRequestHeaders()
                 .getFirst(ContextPropagation.W3C_TRACEPARENT);
         String tracestate = exchange.getRequestHeaders()
                 .getFirst(ContextPropagation.W3C_TRACESTATE);
 
-        ItaraContext ctx = ContextPropagation.fromHeaders(traceparent, tracestate);
-        if (ctx == null) {
-            ctx = ItaraContext.newRoot(componentId);
-        }
-        ItaraContext.set(ctx);
+        // Restore incoming context from W3C headers if present.
+        // Null means no incoming context — fireCallReceived will create a root.
+        ItaraContext incomingCtx = ContextPropagation.fromHeaders(traceparent, tracestate);
 
-        ObserverRegistry observers = ObserverRegistry.instance();
+        ObservabilityFacade facade = ObservabilityFacade.instance();
 
-        // ── onCallReceived ─────────────────────────────────────────────────
-        observers.fireCallReceived(ctx, componentId, methodName);
+        // CALL_RECEIVED — bridge resolves context (restored or new root),
+        // opens OTel SERVER span, fires passive observers.
+        // Returns the resolved context for use in the finally block.
+        ItaraContext callCtx = facade.fireCallReceived(
+                incomingCtx, componentId, methodName, HttpTransport.TYPE);
 
         boolean error = false;
         try {
@@ -194,8 +192,9 @@ public class ItaraHttpServer {
         } catch (Throwable t) {
             error = true;
         } finally {
-            observers.fireReturnSent(ctx, componentId, methodName, error);
-            ItaraContext.clear();
+            // RETURN_SENT — closes OTel SERVER span, fires passive observers,
+            // clears ThreadLocal context. Always runs regardless of outcome.
+            facade.fireReturnSent(callCtx, componentId, methodName, error);
         }
     }
 

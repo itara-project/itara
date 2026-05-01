@@ -5,9 +5,11 @@ import io.itara.spi.ItaraSerializer;
 
 import io.itara.runtime.ContextPropagation;
 import io.itara.runtime.ItaraContext;
-import io.itara.runtime.ObserverRegistry;
+import io.itara.runtime.ObservabilityFacade;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
@@ -44,28 +46,27 @@ public class HttpRemoteProxy implements InvocationHandler {
         }
 
         // ── Context setup ──────────────────────────────────────────────────
-        ItaraContext ctx = ItaraContext.current();
-        boolean isRootCaller = (ctx == null);
-        if (isRootCaller) {
-            ctx = ItaraContext.newRoot(componentId);
-            ItaraContext.set(ctx);
-        }
-        ItaraContext callCtx = ctx.newChildSpan(componentId);
-        ItaraContext.set(callCtx);
+        ObservabilityFacade facade = ObservabilityFacade.instance();
 
-        ObserverRegistry observers = ObserverRegistry.instance();
+        // Capture the context active before this call so fireReturnReceived
+        // can restore it. Null means this call will create a root context.
+        ItaraContext previousCtx = ItaraContext.current();
+
+        // CALL_SENT — facade resolves context (root or child via bridge),
+        // opens OTel CLIENT span, fires passive observers.
+        // Returns the resolved context which carries the correct traceId.
+        ItaraContext callCtx = facade.fireCallSent(
+                componentId, method.getName(), HttpTransport.TYPE);
+
         boolean error = false;
-
-        // ── onCallSent ─────────────────────────────────────────────────────
-        observers.fireCallSent(callCtx, componentId, method.getName());
-
-        String url = String.format("http://%s:%d/itara/%s/%s",
-                host, port, componentId, method.getName());
 
         log.info("[Itara/HTTP] -> " + method.getName()
                 + " on " + componentId + " at " + host + ":" + port);
 
         try {
+            String url = String.format("http://%s:%d/itara/%s/%s",
+                    host, port, componentId, method.getName());
+
             HttpURLConnection connection;
             try {
                 connection =
@@ -187,14 +188,9 @@ public class HttpRemoteProxy implements InvocationHandler {
                         e);
             }
         } finally {
-            // ── onReturnReceived ───────────────────────────────────────────
-            observers.fireReturnReceived(callCtx, componentId, method.getName(), error);
-
-            if (isRootCaller) {
-                ItaraContext.clear();
-            } else {
-                ItaraContext.set(ctx);
-            }
+            // RETURN_RECEIVED — closes OTel CLIENT span, fires passive observers,
+            // restores previousCtx (or clears if this was a root call).
+            facade.fireReturnReceived(callCtx, previousCtx, componentId, method.getName(), error);
         }
     }
 

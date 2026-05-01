@@ -20,6 +20,7 @@
         <module>itara-integration-tests</module>
         <module>itara-serializer-java</module>
         <module>itara-observability-logging</module>
+        <module>itara-observability-otel</module>
     </modules>
 
     <properties>
@@ -59,6 +60,25 @@
                 <groupId>com.fasterxml.jackson.dataformat</groupId>
                 <artifactId>jackson-dataformat-yaml</artifactId>
                 <version>2.19.0</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-api</artifactId>
+                <version>1.38.0</version>
+            </dependency>
+
+            <!-- Test dependencies — OTel SDK with in-memory exporters -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-sdk</artifactId>
+                <version>1.38.0</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-sdk-testing</artifactId>
+                <version>1.38.0</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>

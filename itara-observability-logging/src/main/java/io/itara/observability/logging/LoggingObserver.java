@@ -4,9 +4,10 @@ import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraObserver;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
- * Observer that logs every Itara event to stdout.
+ * Observer that logs every Itara event.
  *
  * Lives in itara-observability-logging — a separate jar loaded via
  * itara.lib.dir. Not loaded by default. Add this jar to the lib dir
@@ -24,33 +25,31 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LoggingObserver implements ItaraObserver {
 
-    // Caller side: spanId -> onCallSent timestamp
+    private static final Logger log =
+            Logger.getLogger(LoggingObserver.class.getName());
+
     private final ConcurrentHashMap<String, Long> callSentTimes
             = new ConcurrentHashMap<>();
-
-    // Callee side: spanId -> onCallReceived timestamp
     private final ConcurrentHashMap<String, Long> callReceivedTimes
             = new ConcurrentHashMap<>();
 
     @Override
     public void onCallSent(ItaraContext ctx, String componentId,
-                           String methodName, long timestamp) {
-        if (ctx != null) {
-            callSentTimes.put(ctx.getSpanId(), timestamp);
-        }
-        System.out.println("[Itara/obs] CALL_SENT     "
+                           String methodName, String transport, long timestamp) {
+        if (ctx != null) callSentTimes.put(ctx.getSpanId(), timestamp);
+        log.info("[Itara/obs] CALL_SENT     "
                 + componentId + "." + methodName
+                + " transport=" + transport
                 + trace(ctx));
     }
 
     @Override
     public void onCallReceived(ItaraContext ctx, String componentId,
-                               String methodName, long timestamp) {
-        if (ctx != null) {
-            callReceivedTimes.put(ctx.getSpanId(), timestamp);
-        }
-        System.out.println("[Itara/obs] CALL_RECEIVED "
+                               String methodName, String transport, long timestamp) {
+        if (ctx != null) callReceivedTimes.put(ctx.getSpanId(), timestamp);
+        log.info("[Itara/obs] CALL_RECEIVED "
                 + componentId + "." + methodName
+                + " transport=" + transport
                 + trace(ctx));
     }
 
@@ -64,7 +63,7 @@ public class LoggingObserver implements ItaraObserver {
                 execution = " execution=" + (timestamp - start) + "ns";
             }
         }
-        System.out.println("[Itara/obs] RETURN_SENT   "
+        log.info("[Itara/obs] RETURN_SENT   "
                 + componentId + "." + methodName
                 + trace(ctx)
                 + execution
@@ -81,7 +80,7 @@ public class LoggingObserver implements ItaraObserver {
                 latency = " latency=" + (timestamp - start) + "ns";
             }
         }
-        System.out.println("[Itara/obs] RETURN_RCVD   "
+        log.info("[Itara/obs] RETURN_RECEIVED   "
                 + componentId + "." + methodName
                 + trace(ctx)
                 + latency
@@ -96,6 +95,7 @@ public class LoggingObserver implements ItaraObserver {
         if (ctx.getParentSpanId() != null) {
             sb.append(" parentSpanId=").append(ctx.getParentSpanId());
         }
+        sb.append(" edgePath=").append(ctx.getEdgePath());
         return sb.toString();
     }
 }

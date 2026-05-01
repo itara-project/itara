@@ -6,8 +6,10 @@ import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
-import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.ObserverRegistry;
+import io.itara.runtime.ObservabilityFacade;
+import io.itara.runtime.OtelBridge;
+import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
@@ -92,11 +94,17 @@ public class ItaraAgent {
         System.out.println("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
-        // ── Step 6: Load observers (META-INF/itara/observer) ───────────────
+        // ── Step 6: Load OTEL bridge (META-INF/itara/otel-bridge) ─────────────
+        System.out.println("[Itara] Loading OTel bridge implementations...");
+        final OtelBridge otelBridge = OtelBridgeLoader.load(itaraClassLoader);
+
+        // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
         System.out.println("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
 
-        // ── Step 7: Register ComponentFactory ──────────────────────────────
+        ObservabilityFacade.initialize(otelBridge);
+
+        // ── Step 8: Register ComponentFactory ──────────────────────────────
         // The factory is called lazily by the registry on first component access.
         // It activates the component and wraps it in an observability decorator
         // so all four events fire for every direct (colocated) call.
@@ -126,7 +134,7 @@ public class ItaraAgent {
             }
         });
 
-        // ── Step 8: Register activators for local components ───────────────
+        // ── Step 9: Register activators for local components ───────────────
         if (config.getComponents() != null) {
             for (ComponentEntry entry : config.getComponents()) {
                 Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
@@ -140,7 +148,7 @@ public class ItaraAgent {
             }
         }
 
-        // ── Step 9: Process connections ────────────────────────────────────
+        // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
