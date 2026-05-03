@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Utilities for propagating ItaraContext across process boundaries
@@ -25,6 +26,8 @@ import java.util.List;
  *   Empty/absent fields are represented as empty strings between pipes.
  */
 public final class ContextPropagation {
+
+    private static final Logger log = Logger.getLogger(ContextPropagation.class.getName());
 
     public static final String HEADER_TRACEPARENT = "X-B3-TraceId";
     public static final String HEADER_TRACESTATE  = "X-Itara-State";
@@ -99,7 +102,7 @@ public final class ContextPropagation {
                         edgePath = Arrays.asList(fields[3].split(EDGE_SEP));
                     }
                 } catch (Exception e) {
-                    System.err.println("[Itara] Failed to parse tracestate: " + e.getMessage());
+                    log.warning("[Itara] Failed to parse tracestate: " + e.getMessage());
                 }
             }
         }

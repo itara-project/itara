@@ -4,6 +4,7 @@ import io.itara.spi.ItaraTransport;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * Registry of available transport implementations.
@@ -15,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * to create proxies or start listeners.
  */
 public class TransportRegistry {
+
+    private static final Logger log = Logger.getLogger(TransportRegistry.class.getName());
 
     private static final TransportRegistry INSTANCE = new TransportRegistry();
 
@@ -32,8 +35,7 @@ public class TransportRegistry {
      */
     public void register(ItaraTransport transport) {
         transports.put(transport.type().toLowerCase(), transport);
-        System.out.println("[Itara] Registered transport: " + transport.type()
-                + " -> " + transport.getClass().getName());
+        log.info("[Itara] Registered transport: " + transport.type() + " -> " + transport.getClass().getName());
     }
 
     /**

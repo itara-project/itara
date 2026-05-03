@@ -5,6 +5,8 @@ import demo.gateway.api.GatewayService;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
 
+import java.util.logging.Logger;
+
 /**
  * Activator for the gateway component.
  *
@@ -14,11 +16,13 @@ import io.itara.runtime.ItaraRegistry;
  */
 public class GatewayActivator implements ItaraActivator<GatewayService> {
 
+    private static final Logger log = Logger.getLogger(GatewayActivator.class.getName());
+
     @Override
     public GatewayService activate(ItaraRegistry registry) {
-        System.out.println("[GatewayActivator] Pulling calculator from registry...");
+        log.info("[GatewayActivator] Pulling calculator from registry...");
         CalculatorService calculator = registry.get("calculator", CalculatorService.class);
-        System.out.println("[GatewayActivator] Creating GatewayServiceImpl");
+        log.info("[GatewayActivator] Creating GatewayServiceImpl");
         return new GatewayServiceImpl(calculator);
     }
 }

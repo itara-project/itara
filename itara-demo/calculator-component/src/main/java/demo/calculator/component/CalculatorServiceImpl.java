@@ -3,6 +3,8 @@ package demo.calculator.component;
 import demo.calculator.api.ArithmeticOperationException;
 import demo.calculator.api.CalculatorService;
 
+import java.util.logging.Logger;
+
 /**
  * The calculator implementation.
  * Lives in calculator-component.jar.
@@ -10,10 +12,12 @@ import demo.calculator.api.CalculatorService;
  */
 public class CalculatorServiceImpl implements CalculatorService {
 
+    private static final Logger log = Logger.getLogger(CalculatorServiceImpl.class.getName());
+
     @Override
     public int add(int a, int b) {
         int result = a + b;
-        System.out.println("[Calculator] add(" + a + ", " + b + ") = " + result);
+        log.info("[Calculator] add(" + a + ", " + b + ") = " + result);
         return result;
     }
 
@@ -27,7 +31,7 @@ public class CalculatorServiceImpl implements CalculatorService {
             throw new ArithmeticException("Integer overflow: MIN_VALUE / -1");
         }
         int result = a / b;
-        System.out.println("[Calculator] divide(" + a + ", " + b + ") = " + result);
+        log.info("[Calculator] divide(" + a + ", " + b + ") = " + result);
         return result;
     }
 }

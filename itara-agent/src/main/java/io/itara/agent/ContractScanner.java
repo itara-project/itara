@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.logging.Logger;
 
 /**
  * Scans the classpath for classes annotated with @ComponentInterface.
@@ -22,6 +23,8 @@ import java.util.jar.JarFile;
  * to avoid scanning every class.
  */
 public class ContractScanner {
+
+    private static final Logger log = Logger.getLogger(ContractScanner.class.getName());
 
     /**
      * Scans the classpath for @ComponentInterface-annotated classes.
@@ -103,7 +106,7 @@ public class ContractScanner {
             if (annotation != null) {
                 String id = annotation.id();
                 result.put(id, cls);
-                System.out.println("[Itara] Found contract: " + id
+                log.info("[Itara] Found contract: " + id
                         + " -> " + className);
             }
         } catch (Throwable ignored) {

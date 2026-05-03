@@ -4,6 +4,7 @@ import io.itara.api.ItaraActivator;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * The Itara component registry for this JVM slice.
@@ -25,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Singleton — one registry per JVM, accessed via ItaraRegistry.instance().
  */
 public class ItaraRegistry {
+
+    private static final Logger log = Logger.getLogger(ItaraRegistry.class.getName());
 
     private static final ItaraRegistry INSTANCE = new ItaraRegistry();
 
@@ -60,7 +63,7 @@ public class ItaraRegistry {
      */
     public void preRegister(String id, Object proxy) {
         instances.put(id, proxy);
-        System.out.println("[Itara] Pre-registered remote proxy for: " + id);
+        log.info("[Itara] Pre-registered remote proxy for: " + id);
     }
 
     /**
@@ -72,8 +75,7 @@ public class ItaraRegistry {
                                   Class<?> contractClass) {
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
-        System.out.println("[Itara] Registered activator for: " + id
-                + " -> " + activatorClass.getName());
+        log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
     }
 
     /**
@@ -125,23 +127,21 @@ public class ItaraRegistry {
                             + "Check your wiring config.");
                 }
 
-                System.out.println("[Itara] Activating: " + key);
+                log.info("[Itara] Activating: " + key);
 
                 try {
                     if (componentFactory != null) {
                         // Agent-registered factory — activates and wraps in decorator
                         Object result = componentFactory.create(
                                 activatorClass, key, contracts.get(key));
-                        System.out.println("[Itara] Activated:  " + key
-                                + " -> " + result.getClass().getSimpleName());
+                        log.info("[Itara] Activated:  " + key + " -> " + result.getClass().getSimpleName());
                         return result;
                     } else {
                         // Fallback — direct activation, no decoration
                         ItaraActivator<?> activator =
                                 activatorClass.getDeclaredConstructor().newInstance();
                         Object result = activator.activate(ItaraRegistry.this);
-                        System.out.println("[Itara] Activated:  " + key
-                                + " -> " + result.getClass().getSimpleName());
+                        log.info("[Itara] Activated:  " + key + " -> " + result.getClass().getSimpleName());
                         return result;
                     }
                 } catch (IllegalStateException e) {
