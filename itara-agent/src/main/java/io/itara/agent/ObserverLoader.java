@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Enumeration;
+import java.util.logging.Logger;
 
 /**
  * Discovers and registers observer implementations from the classpath.
@@ -31,6 +32,8 @@ import java.util.Enumeration;
  */
 public class ObserverLoader {
 
+    private static final Logger log = Logger.getLogger(ObserverLoader.class.getName());
+
     private static final String RESOURCE_PATH = "META-INF/itara/observer";
 
     /**
@@ -42,14 +45,14 @@ public class ObserverLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
 
         if (!resources.hasMoreElements()) {
-            System.out.println("[Itara] WARNING: No observer implementations found. "
+            log.warning("[Itara] WARNING: No observer implementations found. "
                     + "Events will not be recorded.");
             return;
         }
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            System.out.println("[Itara] Found observer descriptor: " + url);
+            log.info("[Itara] Found observer descriptor: " + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -66,7 +69,7 @@ public class ObserverLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraObserver.class.isAssignableFrom(cls)) {
-                        System.err.println("[Itara] WARNING: " + line
+                        log.warning("[Itara] WARNING: " + line
                                 + " does not implement ItaraObserver — skipping.");
                         continue;
                     }
@@ -74,10 +77,10 @@ public class ObserverLoader {
                             (ItaraObserver) cls.getDeclaredConstructor().newInstance();
                     ObserverRegistry.instance().register(observer);
                 } catch (ClassNotFoundException e) {
-                    System.err.println("[Itara] WARNING: Observer class not found: "
+                    log.warning("[Itara] WARNING: Observer class not found: "
                             + line + ". Is the observer jar on the classpath?");
                 } catch (Exception e) {
-                    System.err.println("[Itara] WARNING: Failed to instantiate observer "
+                    log.warning("[Itara] WARNING: Failed to instantiate observer "
                             + line + ": " + e.getMessage());
                 }
             }

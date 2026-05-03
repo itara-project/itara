@@ -3,6 +3,8 @@ package demo.gateway.component;
 import demo.calculator.api.CalculatorService;
 import demo.gateway.api.GatewayService;
 
+import java.util.logging.Logger;
+
 /**
  * The gateway implementation.
  * Accepts a request, delegates to CalculatorService, prints and returns the result.
@@ -12,6 +14,8 @@ import demo.gateway.api.GatewayService;
  */
 public class GatewayServiceImpl implements GatewayService {
 
+    private static final Logger log = Logger.getLogger(GatewayServiceImpl.class.getName());
+
     private final CalculatorService calculator;
 
     public GatewayServiceImpl(CalculatorService calculator) {
@@ -20,10 +24,10 @@ public class GatewayServiceImpl implements GatewayService {
 
     @Override
     public String calculate(int a, int b) {
-        System.out.println("[Gateway] Received request: add(" + a + ", " + b + ")");
+        log.info("[Gateway] Received request: add(" + a + ", " + b + ")");
         int result = calculator.add(a, b);
         String message = "The result of " + a + " + " + b + " = " + result;
-        System.out.println("[Gateway] Returning: " + message);
+        log.info("[Gateway] Returning: " + message);
         return message;
     }
 }

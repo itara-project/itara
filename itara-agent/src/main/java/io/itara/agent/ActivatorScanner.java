@@ -9,6 +9,7 @@ import java.net.URL;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 /**
  * Discovers activator classes from component jars.
@@ -33,6 +34,8 @@ import java.util.Map;
  */
 public class ActivatorScanner {
 
+    private static final Logger log = Logger.getLogger(ActivatorScanner.class.getName());
+
     private static final String RESOURCE_PATH = "META-INF/itara/activator";
 
     /**
@@ -49,7 +52,7 @@ public class ActivatorScanner {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            System.out.println("[Itara] Found activator descriptor: " + url);
+            log.info("[Itara] Found activator descriptor: " + url);
 
             String componentId = null;
             String activatorClassName = null;
@@ -69,7 +72,7 @@ public class ActivatorScanner {
             }
 
             if (componentId == null || activatorClassName == null) {
-                System.err.println("[Itara] WARNING: Malformed activator descriptor at "
+                log.warning("[Itara] WARNING: Malformed activator descriptor at "
                         + url + " — skipping. Expected component-id= and activator= lines.");
                 continue;
             }
@@ -83,8 +86,7 @@ public class ActivatorScanner {
             }
 
             result.put(componentId, (Class<? extends ItaraActivator<?>>) raw);
-            System.out.println("[Itara] Registered activator: "
-                    + componentId + " -> " + activatorClassName);
+            log.info("[Itara] Registered activator: " + componentId + " -> " + activatorClassName);
         }
 
         return result;

@@ -4,6 +4,7 @@ import io.itara.spi.ItaraSerializer;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * Registry of available serializer implementations.
@@ -15,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * to serialize and deserialize messages across components.
  */
 public class SerializerRegistry {
+
+    private static final Logger log = Logger.getLogger(SerializerRegistry.class.getName());
 
     private static final SerializerRegistry INSTANCE = new SerializerRegistry();
 
@@ -32,8 +35,7 @@ public class SerializerRegistry {
      */
     public void register(ItaraSerializer serializer) {
         serializers.put(serializer.type().toLowerCase(), serializer);
-        System.out.println("[Itara] Registered serializer: " + serializer.type()
-                + " -> " + serializer.getClass().getName());
+        log.info("[Itara] Registered serializer: " + serializer.type() + " -> " + serializer.getClass().getName());
     }
 
     /**

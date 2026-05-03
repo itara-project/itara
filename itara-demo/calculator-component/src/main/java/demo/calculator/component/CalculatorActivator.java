@@ -4,6 +4,8 @@ import demo.calculator.api.CalculatorService;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ItaraRegistry;
 
+import java.util.logging.Logger;
+
 /**
  * Activator for the calculator component.
  * Constructs and returns the implementation instance.
@@ -11,9 +13,11 @@ import io.itara.runtime.ItaraRegistry;
  */
 public class CalculatorActivator implements ItaraActivator<CalculatorService> {
 
+    private static final Logger log = Logger.getLogger(CalculatorActivator.class.getName());
+
     @Override
     public CalculatorService activate(ItaraRegistry registry) {
-        System.out.println("[CalculatorActivator] Creating CalculatorServiceImpl");
+        log.info("[CalculatorActivator] Creating CalculatorServiceImpl");
         return new CalculatorServiceImpl();
     }
 }

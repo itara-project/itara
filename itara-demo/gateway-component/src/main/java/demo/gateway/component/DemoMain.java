@@ -3,6 +3,8 @@ package demo.gateway.component;
 import demo.gateway.api.GatewayService;
 import io.itara.runtime.ItaraRegistry;
 
+import java.util.logging.Logger;
+
 /**
  * Demo entry point.
  *
@@ -23,10 +25,12 @@ import io.itara.runtime.ItaraRegistry;
  */
 public class DemoMain {
 
+    private static final Logger log = Logger.getLogger(DemoMain.class.getName());
+
     public static void main(String[] args) throws Exception {
-        System.out.println("=".repeat(50));
-        System.out.println("Itara Demo starting...");
-        System.out.println("=".repeat(50));
+        log.info("=".repeat(50));
+        log.info("Itara Demo starting...");
+        log.info("=".repeat(50));
 
         // Small pause to let the agent's HTTP server start if needed
         Thread.sleep(500);
@@ -34,19 +38,19 @@ public class DemoMain {
         ItaraRegistry registry = ItaraRegistry.instance();
         GatewayService gateway = registry.get("gateway", GatewayService.class);
 
-        System.out.println();
-        System.out.println("--- Making calls ---");
-        System.out.println();
+        log.info("");
+        log.info("--- Making calls ---");
+        log.info("");
 
-        System.out.println(gateway.calculate(3, 4));
-        System.out.println();
-        System.out.println(gateway.calculate(10, 25));
-        System.out.println();
-        System.out.println(gateway.calculate(100, 200));
+        log.info(gateway.calculate(3, 4));
+        log.info("");
+        log.info(gateway.calculate(10, 25));
+        log.info("");
+        log.info(gateway.calculate(100, 200));
 
-        System.out.println();
-        System.out.println("=".repeat(50));
-        System.out.println("Done.");
-        System.out.println("=".repeat(50));
+        log.info("");
+        log.info("=".repeat(50));
+        log.info("Done.");
+        log.info("=".repeat(50));
     }
 }

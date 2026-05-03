@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Enumeration;
+import java.util.logging.Logger;
 
 /**
  * Discovers and registers transport implementations from the classpath.
@@ -31,6 +32,8 @@ import java.util.Enumeration;
  */
 public class TransportLoader {
 
+    private static final Logger log = Logger.getLogger(TransportLoader.class.getName());
+
     private static final String RESOURCE_PATH = "META-INF/itara/transport";
 
     /**
@@ -42,7 +45,7 @@ public class TransportLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
 
         if (!resources.hasMoreElements()) {
-            System.out.println("[Itara] WARNING: No transport implementations found "
+            log.warning("[Itara] WARNING: No transport implementations found "
                     + "on the classpath. Add at least one transport jar "
                     + "(e.g. itara-transport-http.jar) to the classpath.");
             return;
@@ -50,7 +53,7 @@ public class TransportLoader {
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            System.out.println("[Itara] Found transport descriptor: " + url);
+            log.info("[Itara] Found transport descriptor: " + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -67,18 +70,17 @@ public class TransportLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraTransport.class.isAssignableFrom(cls)) {
-                        System.err.println("[Itara] WARNING: " + line
-                                + " does not implement ItaraTransport — skipping.");
+                        log.warning("[Itara] WARNING: " + line + " does not implement ItaraTransport — skipping.");
                         continue;
                     }
                     ItaraTransport transport =
                             (ItaraTransport) cls.getDeclaredConstructor().newInstance();
                     TransportRegistry.instance().register(transport);
                 } catch (ClassNotFoundException e) {
-                    System.err.println("[Itara] WARNING: Transport class not found: "
+                    log.warning("[Itara] WARNING: Transport class not found: "
                             + line + ". Is the transport jar on the classpath?");
                 } catch (Exception e) {
-                    System.err.println("[Itara] WARNING: Failed to instantiate transport "
+                    log.warning("[Itara] WARNING: Failed to instantiate transport "
                             + line + ": " + e.getMessage());
                 }
             }

@@ -1,5 +1,7 @@
 package io.itara.runtime;
 
+import java.util.logging.Logger;
+
 /**
  * Built-in main class for components that only receive calls.
  *
@@ -22,8 +24,10 @@ package io.itara.runtime;
  */
 public class ItaraMain {
 
+    private static final Logger log = Logger.getLogger(ItaraMain.class.getName());
+
     public static void main(String[] args) throws InterruptedException {
-        System.out.println("[Itara] Component ready. Waiting for shutdown signal.");
+        log.info("[Itara] Component ready. Waiting for shutdown signal.");
         Thread.currentThread().join();
     }
 }

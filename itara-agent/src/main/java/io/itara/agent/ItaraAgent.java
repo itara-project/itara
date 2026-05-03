@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * The Itara Java agent.
@@ -44,19 +45,21 @@ import java.util.Set;
  */
 public class ItaraAgent {
 
+    private static final Logger log = Logger.getLogger(ItaraAgent.class.getName());
+
     public static void premain(String agentArgs, Instrumentation instrumentation) {
-        System.out.println("[Itara] Agent starting...");
+        log.info("[Itara] Agent starting...");
 
         try {
             setup(instrumentation);
         } catch (Exception e) {
-            System.err.println("[Itara] FATAL: Agent failed to initialize: "
+            log.severe("[Itara] FATAL: Agent failed to initialize: "
                     + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
 
-        System.out.println("[Itara] Agent ready. Handing control to application.");
+        log.info("[Itara] Agent ready. Handing control to application.");
     }
 
     private static void setup(Instrumentation instrumentation) throws Exception {
@@ -69,37 +72,36 @@ public class ItaraAgent {
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
-        System.out.println("[Itara] Loading wiring config from: "
-                + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
+        log.info("[Itara] Loading wiring config from: " + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
         WiringConfig config = ConfigLoader.load();
 
         // ── Step 2: Scan for contracts (@ComponentInterface) ───────────────
-        System.out.println("[Itara] Scanning classpath for component contracts...");
+        log.info("[Itara] Scanning classpath for component contracts...");
         Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
         if (contracts.isEmpty()) {
-            System.out.println("[Itara] WARNING: No @ComponentInterface classes found. "
+            log.warning("[Itara] WARNING: No @ComponentInterface classes found. "
                     + "Check that API jars are on the classpath.");
         }
 
         // ── Step 3: Scan for activators (META-INF/itara/activator) ─────────
-        System.out.println("[Itara] Scanning for activator descriptors...");
+        log.info("[Itara] Scanning for activator descriptors...");
         Map<String, Class<? extends ItaraActivator<?>>> activators =
                 ActivatorScanner.scan(itaraClassLoader);
 
         // ── Step 4: Load serializers (META-INF/itara/serializer) ─────────────
-        System.out.println("[Itara] Loading serializer implementations...");
+        log.info("[Itara] Loading serializer implementations...");
         SerializerLoader.load(itaraClassLoader);
 
         // ── Step 5: Load transports (META-INF/itara/transport) ─────────────
-        System.out.println("[Itara] Loading transport implementations...");
+        log.info("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
         // ── Step 6: Load OTEL bridge (META-INF/itara/otel-bridge) ─────────────
-        System.out.println("[Itara] Loading OTel bridge implementations...");
+        log.info("[Itara] Loading OTel bridge implementations...");
         final OtelBridge otelBridge = OtelBridgeLoader.load(itaraClassLoader);
 
         // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
-        System.out.println("[Itara] Loading observer implementations...");
+        log.info("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
 
         ObservabilityFacade.initialize(otelBridge);
@@ -155,7 +157,7 @@ public class ItaraAgent {
 
                 if ("direct".equalsIgnoreCase(type)) {
                     // Colocated — factory handles decoration on first get()
-                    System.out.println("[Itara] Connection: "
+                    log.info("[Itara] Connection: "
                             + conn.getFrom() + " -> " + conn.getTo()
                             + " [direct]");
                     continue;
@@ -185,7 +187,7 @@ public class ItaraAgent {
                                                          serializer);
                     registry.preRegister(conn.getTo(), proxy);
 
-                    System.out.println("[Itara] Connection: "
+                    log.info("[Itara] Connection: "
                             + conn.getFrom() + " -> " + conn.getTo()
                             + " [" + type + " outbound]");
 
@@ -196,11 +198,11 @@ public class ItaraAgent {
 
                     // Register shutdown hook to stop listener cleanly
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        System.out.println("[Itara] Stopping " + type + " listener...");
+                        log.info("[Itara] Stopping " + type + " listener...");
                         transport.stopListener();
                     }));
 
-                    System.out.println("[Itara] Connection: "
+                    log.info("[Itara] Connection: "
                             + (conn.isExternal() ? "[external]" : conn.getFrom())
                             + " -> " + conn.getTo()
                             + " [" + type + " inbound]");

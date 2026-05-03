@@ -3,6 +3,7 @@ package io.itara.agent;
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.logging.Logger;
 
 /**
  * Child-first classloader for Itara runtime jars.
@@ -21,6 +22,8 @@ import java.net.URLClassLoader;
  * falls back to the provided parent classloader transparently.
  */
 public class ItaraClassLoader extends URLClassLoader {
+
+    private static final Logger log = Logger.getLogger(ItaraClassLoader.class.getName());
 
     public static final String LIB_DIR_PROPERTY = "itara.lib.dir";
 
@@ -41,15 +44,13 @@ public class ItaraClassLoader extends URLClassLoader {
     public static ClassLoader build(ClassLoader parent) {
         String libDir = System.getProperty(LIB_DIR_PROPERTY);
         if (libDir == null || libDir.isBlank()) {
-            System.out.println("[Itara] No itara.lib.dir set — "
-                    + "transports and plugins must be on the classpath.");
+            log.info("[Itara] No itara.lib.dir set — " + "transports and plugins must be on the classpath.");
             return parent;
         }
 
         File dir = new File(libDir);
         if (!dir.exists() || !dir.isDirectory()) {
-            System.err.println("[Itara] WARNING: itara.lib.dir does not exist "
-                    + "or is not a directory: " + libDir);
+            log.warning("[Itara] WARNING: itara.lib.dir does not exist " + "or is not a directory: " + libDir);
             return parent;
         }
 
@@ -57,8 +58,7 @@ public class ItaraClassLoader extends URLClassLoader {
                 f.isFile() && f.getName().endsWith(".jar"));
 
         if (jars == null || jars.length == 0) {
-            System.out.println("[Itara] WARNING: itara.lib.dir is empty: "
-                    + libDir);
+            log.warning("[Itara] WARNING: itara.lib.dir is empty: " + libDir);
             return parent;
         }
 
@@ -66,15 +66,14 @@ public class ItaraClassLoader extends URLClassLoader {
         for (int i = 0; i < jars.length; i++) {
             try {
                 urls[i] = jars[i].toURI().toURL();
-                System.out.println("[Itara] Loading lib: " + jars[i].getName());
+                log.info("[Itara] Loading lib: " + jars[i].getName());
             } catch (Exception e) {
                 throw new RuntimeException(
                         "[Itara] Failed to resolve jar URL: " + jars[i], e);
             }
         }
 
-        System.out.println("[Itara] Loaded " + jars.length
-                + " lib(s) from: " + libDir);
+        log.info("[Itara] Loaded " + jars.length + " lib(s) from: " + libDir);
         return new ItaraClassLoader(urls, parent);
     }
 

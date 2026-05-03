@@ -2,6 +2,7 @@ package io.itara.runtime;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Logger;
 
 /**
  * Registry of active ItaraObserver implementations.
@@ -22,6 +23,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class ObserverRegistry {
 
+    private static final Logger log = Logger.getLogger(ObserverRegistry.class.getName());
+
     private static final ObserverRegistry INSTANCE = new ObserverRegistry();
 
     private final List<ItaraObserver> observers = new CopyOnWriteArrayList<>();
@@ -38,8 +41,7 @@ public final class ObserverRegistry {
 
     public void register(ItaraObserver observer) {
         observers.add(observer);
-        System.out.println("[Itara] Registered observer: "
-                + observer.getClass().getName());
+        log.info("[Itara] Registered observer: " + observer.getClass().getName());
     }
 
     public int size() {
