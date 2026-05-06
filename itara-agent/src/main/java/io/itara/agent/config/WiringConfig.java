@@ -11,25 +11,28 @@ import java.util.List;
  * Loaded by the agent at startup from the file specified by
  * -Ditara.config=/path/to/wiring.yaml
  *
- * Defines which components are present in this JVM slice and how
- * they connect to each other or to components in remote JVMs.
+ * Defines which nodes are present in this JVM slice and how
+ * they connect to each other or to nodes in remote JVMs.
  *
  * Example YAML:
  *
- *   components:
- *     - id: "order-service"
+ *   node:
+ *     - id: "order-service-node"
+ *       component: "order-service"
+ *     - id: "pricing-service-node"
+ *       component: "pricing-service"
  *
  *   connections:
- *     - from: "order-service"
- *       to:   "pricing-service"
- *       type: direct
+ *     - from: "order-service-node"
+ *       to:   "pricing-service-node"
+ *       type: "direct"
  *
  *     - from: ""
- *       to:   "order-service"
+ *       to:   "order-service-node"
  *       type: http
  *       host: "${ORDER_HOST:-localhost}"
  *       port: "${ORDER_PORT:-8080}"
- *       serializer: json
+ *       serializer: "json"
  *
  * Environment variable substitution is supported in all string values
  * using the syntax ${VAR_NAME:-default_value}. If the variable is not
@@ -44,12 +47,13 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WiringConfig {
 
-    private List<ComponentEntry> components = new ArrayList<>();
+    private List<NodeEntry> nodes = new ArrayList<>();
     private List<ConnectionEntry> connections = new ArrayList<>();
+    private List<String> localNodeIds = new ArrayList<>();
 
-    public List<ComponentEntry> getComponents() { return components; }
-    public void setComponents(List<ComponentEntry> components) {
-        this.components = components != null ? components : new ArrayList<>();
+    public List<NodeEntry> getNodes() { return nodes; }
+    public void setNodes(List<NodeEntry> nodes) {
+        this.nodes = nodes != null ? nodes : new ArrayList<>();
     }
 
     public List<ConnectionEntry> getConnections() { return connections; }
@@ -57,8 +61,27 @@ public class WiringConfig {
         this.connections = connections != null ? connections : new ArrayList<>();
     }
 
+    public List<String> getLocalNodeIds() { return localNodeIds; }
+    public void setLocalNodeIds(List<String> localNodeIds) {
+        this.localNodeIds = localNodeIds;
+    }
+
     public void validate() {
-        if (components != null) components.forEach(ComponentEntry::validate);
+        if (nodes != null) nodes.forEach(NodeEntry::validate);
         if (connections != null) connections.forEach(ConnectionEntry::validate);
+    }
+
+    public String getComponentOfNodeId(String nodeId) {
+        return nodes.stream().filter(node -> node.getId().equals(nodeId)).map(NodeEntry::getComponent)
+                .findFirst()
+                .orElseThrow( () -> new IllegalStateException("Cannot find node entry for nodeId " + nodeId));
+    }
+
+    public boolean isNodeLocal(NodeEntry nodeEntry) {
+        return localNodeIds.contains(nodeEntry.getId());
+    }
+
+    public List<NodeEntry> getLocalNodes() {
+        return nodes.stream().filter(this::isNodeLocal).toList();
     }
 }

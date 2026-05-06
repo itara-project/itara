@@ -6,6 +6,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,6 +40,7 @@ public class ConfigLoader {
     private static final Logger log = Logger.getLogger(ConfigLoader.class.getName());
 
     public static final String CONFIG_PROPERTY = "itara.config";
+    public static final String NODES_PROPERTY = "itara.nodes";
 
     /** Matches ${VAR_NAME} and ${VAR_NAME:-default} */
     private static final Pattern ENV_VAR_PATTERN =
@@ -61,7 +65,41 @@ public class ConfigLoader {
                     "[Itara] No wiring config specified. "
                     + "Start the JVM with -D" + CONFIG_PROPERTY + "=/path/to/config.yaml");
         }
-        return parse(path);
+
+        String nodes = System.getProperty(NODES_PROPERTY);
+        if (nodes == null || nodes.isBlank()) {
+            throw new IllegalStateException(
+                    "[Itara] No nodes specified. "
+                            + "Start the JVM with -D" + NODES_PROPERTY + "=node1,node2");
+        }
+        List<String> nodeIds = Arrays.stream(nodes.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isBlank())
+                .toList();
+        if (nodeIds.isEmpty()) {
+            throw new IllegalStateException("[Itara] Nodes cannot be parsed. "
+                    + "Check that you start the JVM with -D" + NODES_PROPERTY + "=node1,node2. "
+                    + "Current value is: " + nodes);
+        }
+        return relevantPartOf(parse(path), nodeIds);
+    }
+
+    static WiringConfig relevantPartOf(WiringConfig fullConfig, List<String> nodeIds) {
+        WiringConfig relevantConfig = new WiringConfig();
+        List<ConnectionEntry> connections = fullConfig.getConnections().stream()
+                .filter(conn -> conn.isRelatedToAnyOfNodes(nodeIds))
+                .toList();
+        List<String> relevantNodeIds = new ArrayList<>();
+        connections.forEach(connectionEntry -> {
+            relevantNodeIds.add(connectionEntry.getFrom());
+            relevantNodeIds.add(connectionEntry.getTo());
+        });
+        relevantConfig.setConnections(connections);
+        relevantConfig.setNodes(fullConfig.getNodes().stream().filter(e -> relevantNodeIds.contains(e.getId())).toList());
+        relevantConfig.setLocalNodeIds(nodeIds);
+
+        relevantConfig.validate();
+        return relevantConfig;
     }
 
     /**

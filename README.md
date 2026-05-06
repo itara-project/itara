@@ -40,11 +40,19 @@ The component code is identical regardless of whether it is called as a direct
 in-process method or over HTTP from a separate JVM.
 
 ```yaml
+# One master config describes the entire topology.
+# Each JVM is told which node it represents at startup.
 # Change this file. Restart the JVM. Topology changes.
 
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: calculatorNode
+    component: calculator
+
 connections:
-  - from: gateway
-    to:   calculator
+  - from: gatewayNode
+    to:   calculatorNode
     type: direct      # or: http, kafka — code does not change
 ```
 
@@ -159,9 +167,15 @@ Has no knowledge of transport or topology.
 Constructs the component's internal object graph and returns the root instance.
 Discovered via `META-INF/itara/activator`.
 
-**Wiring config** — a YAML file defining components and connections.
+**Master wiring config** — a single YAML file describing the complete topology
+of the system — all nodes, all connections. Each JVM is told which node it
+represents via `-Ditara.nodes=nodeId` at startup, and the agent self-selects
+the relevant parts. One source of truth for the entire distributed system.
 Supports environment variable substitution (`${VAR:-default}`).
-The agent reads this at JVM startup.
+
+**Node** — a deployment identity. Declared in the wiring config with an id
+and a component. Multiple nodes can run in the same JVM by passing a
+comma-separated list: `-Ditara.nodes=gatewayNode,calculatorNode`.
 
 **itara.lib.dir** — a directory of SPI jars loaded by the agent's child-first
 classloader. Transports, serializers, and observers go here. The application
@@ -202,29 +216,19 @@ cd itara-demo
 docker compose -f docker-compose-http.yml up
 ```
 
-Wait about 60 seconds (ElasticSearch takes a while to start up), then:
-- **Kibana APM**: http://localhost:5601 → Observability → APM → Services  
+Wait about 60 seconds (Elasticsearch takes a while to start), then:
+- **Kibana APM**: http://localhost:5601 → Observability → APM → Services
 - **Make a call**: `curl -X POST http://localhost:8082/itara/gateway/calculate -H "Content-Type: application/json" -d "[32, 41]"`
 - **View the trace** in Kibana
 
-### Option B — Docker without observability
-
-**Direct topology — both components in one container:**
-
-```bash
-cd itara-demo
-docker compose -f docker-compose-direct.yml up
-```
-
-The HTTP setup also works without observability of course, but since it's not the intended use, there is no demo for that. It is easy to modify the appropriate compose file though, if someone wants avoid the ELK stack.
-
-### Option C — Native (local JDK 21+)
+### Option B — Native (local JDK 21+)
 
 **Direct topology (one JVM):**
 
 ```bash
 java -Ditara.lib.dir=libs \
      -Ditara.config=itara-demo/wiring-direct.yaml \
+     -Ditara.nodes=calculatorNode,gatewayNode \
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
@@ -234,12 +238,13 @@ java -Ditara.lib.dir=libs \
      demo.gateway.component.DemoMain
 ```
 
-**HTTP topology — start calculator first, then gateway:**
+**HTTP topology — both JVMs use the same master config, started separately:**
 
 ```bash
 # Terminal 1 — calculator JVM
 java -Ditara.lib.dir=libs \
-     -Ditara.config=itara-demo/wiring-http-calculator.yaml \
+     -Ditara.config=itara-demo/wiring-http.yaml \
+     -Ditara.nodes=calculatorNode \
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
@@ -248,7 +253,8 @@ java -Ditara.lib.dir=libs \
 
 # Terminal 2 — gateway JVM (after calculator prints "Server listening on port 8081")
 java -Ditara.lib.dir=libs \
-     -Ditara.config=itara-demo/wiring-http-gateway.yaml \
+     -Ditara.config=itara-demo/wiring-http.yaml \
+     -Ditara.nodes=gatewayNode \
      -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
      -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
           itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
@@ -257,8 +263,11 @@ java -Ditara.lib.dir=libs \
      demo.gateway.component.DemoMain
 ```
 
-`calculator-component.jar` is absent from the gateway classpath.
-The gateway never sees the implementation.
+Both JVMs read the same `wiring-http.yaml`. Each self-selects its relevant
+slice based on `-Ditara.nodes`. `calculator-component.jar` is absent from
+the gateway classpath — the gateway never sees the implementation.
+
+On Windows, replace `:` with `;` in the `-cp` argument.
 
 ---
 
@@ -266,10 +275,11 @@ The gateway never sees the implementation.
 
 **Working:**
 - Direct and HTTP topologies
+- Master wiring config — one file describes the complete topology, each JVM self-selects its slice
 - Inbound HTTP server — any component can accept external HTTP calls via wiring config
 - JSON and Java serializers (pluggable via SPI)
 - Custom classloader for runtime/application classpath separation
-- Activator-based lazy instantiation
+- Activator-based lazy instantiation with missing-jar detection
 - Full observability with four-event model (CALL_SENT, CALL_RECEIVED, RETURN_SENT, RETURN_RECEIVED)
 - OpenTelemetry bridge — distributed traces in Kibana/Jaeger/any OTel backend
 - W3C traceparent propagation across JVMs
@@ -282,11 +292,12 @@ The gateway never sees the implementation.
 **Planned:**
 - Kafka transport
 - Spring Boot adapter
-- Elastic sink for direct ELK export
+- itara-cli — topology inspection and validation tooling
 - Controller (Orca) for runtime topology management
+- Service discovery (Consul, Kubernetes DNS, controller registry)
 - Mathematical models for topology optimization
-- Build plugin
 - Language-neutral contract descriptor
+- Build plugin
 
 See VISION.md for the full architectural vision.
 

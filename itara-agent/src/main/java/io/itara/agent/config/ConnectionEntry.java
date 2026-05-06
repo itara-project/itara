@@ -4,10 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 
+import java.util.List;
+
 /**
  * A connection declared in the wiring configuration.
  *
- * Defines how one component calls another, including the transport
+ * Defines how one node calls another, including the transport
  * mechanism and any transport-specific properties.
  *
  * Example YAML:
@@ -22,7 +24,7 @@ import com.fasterxml.jackson.annotation.Nulls;
  *
  * The 'from' field may be absent or empty, indicating that the caller
  * is external to the Itara topology. This defines an inbound entry
- * point for the 'to' component.
+ * point for the 'to' node.
  *
  * Unknown fields are silently ignored — forward compatibility for
  * future fields such as timeout and retry configuration.
@@ -31,13 +33,13 @@ import com.fasterxml.jackson.annotation.Nulls;
 public class ConnectionEntry {
 
     /**
-     * The calling component id. Absent or empty means the caller is
+     * The calling node id. Absent or empty means the caller is
      * external — this connection exposes the 'to' component as an
      * inbound endpoint.
      */
     private String from;
 
-    /** The called component id. Required. */
+    /** The called node id. Required. */
     private String to;
 
     /**
@@ -137,5 +139,13 @@ public class ConnectionEntry {
         // host is not validated here — whether host is required depends on
         // whether this JVM is the caller or the callee, which is determined
         // by the agent after classpath scanning, not by the config loader.
+    }
+
+    public boolean isRelatedToAnyOfNodes(List<String> nodeIds) {
+        //if it is a source of a communication
+        if (from != null && !from.isBlank() && nodeIds.contains(from)) return true;
+        if (to != null && !to.isBlank() && nodeIds.contains(to)) return true;
+
+        return false;
     }
 }

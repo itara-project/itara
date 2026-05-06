@@ -1,6 +1,6 @@
 package io.itara.agent;
 
-import io.itara.agent.config.ComponentEntry;
+import io.itara.agent.config.NodeEntry;
 import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.WiringConfig;
@@ -86,7 +86,7 @@ public class ItaraAgent {
         // ── Step 3: Scan for activators (META-INF/itara/activator) ─────────
         log.info("[Itara] Scanning for activator descriptors...");
         Map<String, Class<? extends ItaraActivator<?>>> activators =
-                ActivatorScanner.scan(itaraClassLoader);
+                ActivatorScanner.scan(itaraClassLoader, config);
 
         // ── Step 4: Load serializers (META-INF/itara/serializer) ─────────────
         log.info("[Itara] Loading serializer implementations...");
@@ -137,15 +137,15 @@ public class ItaraAgent {
         });
 
         // ── Step 9: Register activators for local components ───────────────
-        if (config.getComponents() != null) {
-            for (ComponentEntry entry : config.getComponents()) {
-                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getId());
+        if (config.getNodes() != null) {
+            for (NodeEntry entry : config.getNodes()) {
+                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getComponent());
 
                 if (activatorClass != null) {
                     registry.registerActivator(
-                            entry.getId(),
+                            entry.getComponent(),
                             activatorClass,
-                            contracts.get(entry.getId()));
+                            contracts.get(entry.getComponent()));
                 }
             }
         }
@@ -168,11 +168,11 @@ public class ItaraAgent {
                 ItaraSerializer serializer = serializerRegistry.get(conn.getSerializer());
 
                 // Build properties map from the connection entry
-                Map<String, String> props = buildProperties(conn);
+                Map<String, String> props = buildProperties(conn, config);
 
-                if (isOutbound(conn)) {
+                if (isOutbound(conn, config)) {
                     // This JVM calls a remote component — create a proxy
-                    Class<?> contractClass = contracts.get(conn.getTo());
+                    Class<?> contractClass = contracts.get(config.getComponentOfNodeId(conn.getTo()));
                     if (contractClass == null) {
                         throw new IllegalStateException(
                                 "[Itara] Cannot create proxy for '" + conn.getTo()
@@ -180,12 +180,12 @@ public class ItaraAgent {
                                 + "Is the API jar on the classpath?");
                     }
 
-                    Object proxy = transport.createProxy(conn.getTo(),
+                    Object proxy = transport.createProxy(config.getComponentOfNodeId(conn.getTo()),
                                                          contractClass,
                                                          props,
                                                          itaraClassLoader,
                                                          serializer);
-                    registry.preRegister(conn.getTo(), proxy);
+                    registry.preRegister(config.getComponentOfNodeId(conn.getTo()), proxy);
 
                     log.info("[Itara] Connection: "
                             + conn.getFrom() + " -> " + conn.getTo()
@@ -193,8 +193,8 @@ public class ItaraAgent {
 
                 } else {
                     // This JVM exposes a component — start a listener
-                    transport.startListener(conn.getTo(), props, registry, serializer);
-                    transportHandled.add(conn.getTo()); // mark as handled by transport
+                    transport.startListener(config.getComponentOfNodeId(conn.getTo()), props, registry, serializer);
+                    transportHandled.add(config.getComponentOfNodeId(conn.getTo())); // mark as handled by transport
 
                     // Register shutdown hook to stop listener cleanly
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -217,18 +217,12 @@ public class ItaraAgent {
      * Outbound = this JVM is the caller, needs a proxy.
      * Inbound  = this JVM is the callee, needs a listener.
      *
-     * A connection is outbound if:
-     *   - it has a non-empty 'from' (not external entry point)
-     *   - it has a host specified (the remote host to call)
+     * A connection is outbound if a local node is marked as from in the connection
      *
-     * A connection is inbound if:
-     *   - it has no host (this JVM IS the host)
-     *   - or it is an external entry point (from is empty)
+     * A connection is inbound if it's not outbound.
      */
-    private static boolean isOutbound(ConnectionEntry conn) {
-        return !conn.isExternal()
-                && conn.getHost() != null
-                && !conn.getHost().isBlank();
+    private static boolean isOutbound(ConnectionEntry conn, WiringConfig config) {
+        return config.getLocalNodeIds().contains(conn.getFrom());
     }
 
     /**
@@ -241,12 +235,12 @@ public class ItaraAgent {
      *   from     - caller component id
      *   to       - callee component id
      */
-    private static Map<String, String> buildProperties(ConnectionEntry conn) {
+    private static Map<String, String> buildProperties(ConnectionEntry conn, WiringConfig config) {
         Map<String, String> props = new HashMap<>();
         if (conn.getHost() != null)  props.put("host", conn.getHost());
         if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
-        if (conn.getFrom() != null)  props.put("from", conn.getFrom());
-        if (conn.getTo() != null)    props.put("to", conn.getTo());
+        if (conn.getFrom() != null)  props.put("from", config.getComponentOfNodeId(conn.getFrom()));
+        if (conn.getTo() != null)    props.put("to", config.getComponentOfNodeId(conn.getTo()));
         // Future: additional connection properties from the YAML will be added here
         return props;
     }

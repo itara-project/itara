@@ -1,15 +1,17 @@
 package io.itara.agent;
 
+import io.itara.agent.config.ConnectionEntry;
+import io.itara.agent.config.NodeEntry;
+import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Discovers activator classes from component jars.
@@ -44,7 +46,7 @@ public class ActivatorScanner {
      * @return Map of component-id -> activator class
      */
     @SuppressWarnings("unchecked")
-    public static Map<String, Class<? extends ItaraActivator<?>>> scan(ClassLoader classLoader)
+    public static Map<String, Class<? extends ItaraActivator<?>>> scan(ClassLoader classLoader, WiringConfig wiringConfig)
             throws IOException, ClassNotFoundException {
 
         Map<String, Class<? extends ItaraActivator<?>>> result = new HashMap<>();
@@ -89,6 +91,22 @@ public class ActivatorScanner {
             log.info("[Itara] Registered activator: " + componentId + " -> " + activatorClassName);
         }
 
+        verify(result, wiringConfig);
         return result;
+    }
+
+    private static void verify(Map<String, Class<? extends ItaraActivator<?>>> activators, WiringConfig wiringConfig) {
+        Set<String> components = wiringConfig.getLocalNodes().stream().map(NodeEntry::getComponent).collect(Collectors.toSet());
+
+        boolean hasMissing = false;
+        for (String component : components) {
+            if (!activators.containsKey(component)) {
+                hasMissing = true;
+                log.severe("[Itara] FATAL: Activator not found for component " + component + ". Application cannot start.");
+            }
+        }
+        if (hasMissing) {
+            throw new IllegalStateException("There are missing activators!");
+        }
     }
 }
