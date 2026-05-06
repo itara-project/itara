@@ -22,6 +22,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring-direct.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=calculatorNode,gatewayNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
       - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/gateway-api.jar:/app/gateway-component.jar"

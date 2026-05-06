@@ -30,6 +30,7 @@ echo "[CI] Starting direct topology demo..."
 java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CONFIG \
+  -Ditara.nodes="calculatorNode,gatewayNode" \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain

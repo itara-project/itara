@@ -103,7 +103,7 @@ services:
       - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
       - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
       - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
-      - ./wiring-http-calculator-docker.yaml:/app/config/wiring.yaml:ro
+      - ./wiring-http-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
@@ -122,6 +122,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=calculatorNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
       - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
@@ -143,7 +144,7 @@ services:
       - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
       - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
       - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
-      - ./wiring-http-gateway-docker.yaml:/app/config/wiring.yaml:ro
+      - ./wiring-http-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
@@ -162,6 +163,7 @@ services:
     command:
       - "-Ditara.lib.dir=/app/libs"
       - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.nodes=gatewayNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
       - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"

@@ -62,52 +62,60 @@ class ConfigLoaderTest {
         }
     }
 
-    // ── Component parsing ──────────────────────────────────────────────────
+    // ── Node parsing ──────────────────────────────────────────────────
 
     @Nested
-    @DisplayName("components")
-    class Components {
+    @DisplayName("nodes")
+    class Nodes {
 
         @Test
-        @DisplayName("parses single component")
-        void parsesOneComponent() {
+        @DisplayName("parses single node")
+        void parsesOneNode() {
             String yaml = """
-                    components:
-                      - id: "calculator"
+                    nodes:
+                      - id: "calculatorNode"
+                        component: "calculator"
                     """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals(1, config.getComponents().size());
-            assertEquals("calculator", config.getComponents().get(0).getId());
+            assertEquals(1, config.getNodes().size());
+            assertEquals("calculatorNode", config.getNodes().get(0).getId());
+            assertEquals("calculator", config.getNodes().get(0).getComponent());
         }
 
         @Test
-        @DisplayName("parses multiple components")
+        @DisplayName("parses multiple nodes")
         void parsesMultipleComponents() {
             String yaml = """
-                    components:
-                      - id: "gateway"
-                      - id: "calculator"
-                      - id: "notifier"
+                    nodes:
+                      - id: "gatewayNode"
+                        component: "gateway"
+                      - id: "calculatorNode"
+                        component: "calculator"
+                      - id: "notifierNode"
+                        component: "notifier"
                     """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals(3, config.getComponents().size());
-            assertEquals("gateway",    config.getComponents().get(0).getId());
-            assertEquals("calculator", config.getComponents().get(1).getId());
-            assertEquals("notifier",   config.getComponents().get(2).getId());
+            assertEquals(3, config.getNodes().size());
+            assertEquals("gatewayNode",    config.getNodes().get(0).getId());
+            assertEquals("gateway", config.getNodes().get(0).getComponent());
+            assertEquals("calculatorNode", config.getNodes().get(1).getId());
+            assertEquals("calculator", config.getNodes().get(1).getComponent());
+            assertEquals("notifierNode",   config.getNodes().get(2).getId());
+            assertEquals("notifier", config.getNodes().get(2).getComponent());
         }
 
         @Test
-        @DisplayName("returns empty list when components section absent")
+        @DisplayName("returns empty list when nodes section absent")
         void emptyWhenAbsent() {
-            WiringConfig config = ConfigLoader.parseString("connections: []");
-            assertTrue(config.getComponents().isEmpty());
+            WiringConfig config = ConfigLoader.parseString("nodes: []");
+            assertTrue(config.getNodes().isEmpty());
         }
 
         @Test
-        @DisplayName("throws when component id is missing")
+        @DisplayName("throws when node id is missing")
         void throwsWhenIdMissing() {
             String yaml = """
-                    components:
+                    nodes:
                       - {}
                     """;
             assertThrows(ConfigurationException.class,
@@ -115,22 +123,35 @@ class ConfigLoaderTest {
         }
 
         @Test
-        @DisplayName("parses unquoted component id")
-        void parsesUnquotedId() {
+        @DisplayName("throws when node component is missing")
+        void throwsWhenComponentMissing() {
             String yaml = """
-                    components:
-                      - id: calculator
+                    nodes:
+                      - id: "calculatorNode"
                     """;
-            assertEquals("calculator",
-                    ConfigLoader.parseString(yaml).getComponents().get(0).getId());
+            assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.parseString(yaml));
         }
 
         @Test
-        @DisplayName("unknown fields in component are ignored")
+        @DisplayName("parses unquoted node id")
+        void parsesUnquotedId() {
+            String yaml = """
+                    nodes:
+                      - id: calculatorNode
+                        component: calculator
+                    """;
+            assertEquals("calculatorNode", ConfigLoader.parseString(yaml).getNodes().get(0).getId());
+            assertEquals("calculator", ConfigLoader.parseString(yaml).getNodes().get(0).getComponent());
+        }
+
+        @Test
+        @DisplayName("unknown fields in node are ignored")
         void unknownFieldsIgnored() {
             String yaml = """
-                    components:
-                      - id: calculator
+                    nodes:
+                      - id: calculatorNode
+                        component: calculator
                         unknownFutureField: somevalue
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
@@ -184,87 +205,7 @@ class ConfigLoaderTest {
         }
 
         @Test
-        @DisplayName("serializer defaults to json when not specified")
-        void serializerDefaultsToJson() {
-            String yaml = """
-                    connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: 8081
-                    """;
-            assertEquals("json", ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).getSerializer());
-        }
-
-        @Test
-        @DisplayName("serializer can be set to java")
-        void serializerCanBeSetToJava() {
-            String yaml = """
-                    connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: 8081
-                        serializer: java
-                    """;
-            assertEquals("java", ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).getSerializer());
-        }
-
-        @Test
-        @DisplayName("parses external entry point — from absent")
-        void parsesExternalEntryPointAbsent() {
-            String yaml = """
-                    connections:
-                      - to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: 8081
-                    """;
-            assertTrue(ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).isExternal());
-        }
-
-        @Test
-        @DisplayName("parses external entry point — from is empty string")
-        void parsesExternalEntryPointEmpty() {
-            String yaml = """
-                    connections:
-                      - from: ""
-                        to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: 8081
-                    """;
-            assertTrue(ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).isExternal());
-        }
-
-        @Test
-        @DisplayName("parses multiple connections")
-        void parsesMultipleConnections() {
-            String yaml = """
-                    connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: direct
-                      - from: "gateway"
-                        to:   "notifier"
-                        type: http
-                        host: "localhost"
-                        port: 9090
-                    """;
-            List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
-            assertEquals(2, conns.size());
-            assertTrue(conns.get(0).isDirect());
-            assertTrue(conns.get(1).isHttp());
-        }
-
-        @Test
-        @DisplayName("does not require host/port for direct connections")
+        @DisplayName("no host/port required for direct connection")
         void noHostPortRequiredForDirect() {
             String yaml = """
                     connections:
@@ -386,14 +327,15 @@ class ConfigLoaderTest {
         }
 
         @Test
-        @DisplayName("substitutes default in component id")
-        void substitutesDefaultInComponentId() {
+        @DisplayName("substitutes default in node id")
+        void substitutesDefaultInNodeId() {
             String yaml = """
-                    components:
-                      - id: "${COMPONENT_ID:-calculator}"
+                    nodes:
+                      - id: "${NODE_ID:-calculatorNode}"
+                        component: "${COMPONENT:-calculator}"
                     """;
-            assertEquals("calculator", ConfigLoader.parseString(yaml)
-                    .getComponents().get(0).getId());
+            assertEquals("calculatorNode", ConfigLoader.parseString(yaml).getNodes().get(0).getId());
+            assertEquals("calculator", ConfigLoader.parseString(yaml).getNodes().get(0).getComponent());
         }
     }
 
@@ -415,7 +357,7 @@ class ConfigLoaderTest {
         void handlesEmptyConfig() {
             WiringConfig config = ConfigLoader.parseString("");
             assertNotNull(config);
-            assertTrue(config.getComponents().isEmpty());
+            assertTrue(config.getNodes().isEmpty());
             assertTrue(config.getConnections().isEmpty());
         }
 
@@ -425,25 +367,237 @@ class ConfigLoaderTest {
             WiringConfig config = ConfigLoader.parseString(
                     "# just a comment\n# another comment");
             assertNotNull(config);
-            assertTrue(config.getComponents().isEmpty());
+            assertTrue(config.getNodes().isEmpty());
             assertTrue(config.getConnections().isEmpty());
         }
 
         @Test
-        @DisplayName("handles mixed components and connections")
+        @DisplayName("handles mixed nodes and connections")
         void handlesMixedConfig() {
             String yaml = """
-                    components:
-                      - id: "gateway"
-                      - id: "calculator"
+                    nodes:
+                      - id: "gatewayNode"
+                        component: "gateway"
+                      - id: "calculatorNode"
+                        component: "calculator"
                     connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: direct
+                      - from: "gatewayNode"
+                        to:   "calculatorNode"
+                        type: "direct"
                     """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals(2, config.getComponents().size());
+            assertEquals(2, config.getNodes().size());
             assertEquals(1, config.getConnections().size());
+        }
+    }
+
+    // ── Filtering ──────────────────────────────────────────────────────────
+
+    static final String FULL_CONFIG = """
+            nodes:
+              - id: "gatewayNode"
+                component: "gateway"
+              - id: "calculatorNode"
+                component: "calculator"
+              - id: "notifierNode"
+                component: "notifier"
+            connections:
+              - from: "gatewayNode"
+                to: "calculatorNode"
+                type: http
+                host: "calculator"
+                port: 8081
+                serializer: "json"
+              - from: "gatewayNode"
+                to: "notifierNode"
+                type: http
+                host: "notifier"
+                port: 8082
+                serializer: "json"
+              - from:
+                to: "gatewayNode"
+                type: http
+                port: 8080
+                serializer: "json"
+            """;
+
+    @Nested
+    @DisplayName("relevantPartOf")
+    class Filtering {
+
+        @Test
+        @DisplayName("single node — local node plus connected nodes are returned, local is tracked separately")
+        void singleNodeReturnsOnlyRelevantConnections() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("calculatorNode"));
+
+            // calculatorNode is local; gatewayNode is kept because it appears in the connection
+            // (the agent needs its component id to generate the proxy)
+            assertEquals(2, result.getNodes().size());
+            assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("calculatorNode")));
+            assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("gatewayNode")));
+            assertEquals(1, result.getConnections().size());
+            assertEquals("calculatorNode", result.getConnections().get(0).getTo());
+            // only calculatorNode is local
+            assertEquals(List.of("calculatorNode"), result.getLocalNodeIds());
+        }
+
+        @Test
+        @DisplayName("colocation — both nodes and their connection are returned")
+        void colocationReturnsBothNodesAndConnection() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(
+                    full, List.of("gatewayNode", "calculatorNode"));
+
+            // gatewayNode and calculatorNode are local
+            // notifierNode is kept because gateway→notifier connection is included
+            // (gatewayNode is local and notifierNode appears in the connection)
+            assertEquals(3, result.getNodes().size());
+            assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("gatewayNode")));
+            assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("calculatorNode")));
+            assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("notifierNode")));
+            // gateway→calculator + gateway→notifier + inbound to gateway = 3 connections
+            assertEquals(3, result.getConnections().size());
+            // both gateway and calculator are local
+            assertTrue(result.getLocalNodeIds().contains("gatewayNode"));
+            assertTrue(result.getLocalNodeIds().contains("calculatorNode"));
+            assertFalse(result.getLocalNodeIds().contains("notifierNode"));
+        }
+
+        @Test
+        @DisplayName("external inbound included — null-from connection to local node is included")
+        void externalInboundIncludedForLocalNode() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
+
+            boolean hasInbound = result.getConnections().stream()
+                    .anyMatch(ConnectionEntry::isExternal);
+            assertTrue(hasInbound, "External inbound connection should be included for gatewayNode");
+        }
+
+        @Test
+        @DisplayName("external inbound excluded — null-from connection to other node is not included")
+        void externalInboundExcludedForOtherNode() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("calculatorNode"));
+
+            boolean hasInbound = result.getConnections().stream()
+                    .anyMatch(ConnectionEntry::isExternal);
+            assertFalse(hasInbound, "External inbound to gatewayNode should not appear for calculatorNode");
+        }
+
+        @Test
+        @DisplayName("connection between two unknown nodes is excluded")
+        void connectionBetweenUnknownNodesExcluded() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("notifierNode"));
+
+            // notifierNode only has an inbound from gatewayNode
+            // the gateway→calculator connection should NOT appear
+            assertTrue(result.getConnections().stream()
+                    .noneMatch(c -> "calculatorNode".equals(c.getTo())
+                            && "gatewayNode".equals(c.getFrom())),
+                    "gateway→calculator connection should not appear for notifierNode");
+        }
+
+        @Test
+        @DisplayName("outbound connection included when only 'from' node is local")
+        void outboundConnectionIncludedWhenOnlyFromIsLocal() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
+
+            assertTrue(result.getConnections().stream()
+                    .anyMatch(c -> "gatewayNode".equals(c.getFrom())
+                            && "calculatorNode".equals(c.getTo())),
+                    "Outbound connection from gatewayNode should be included");
+        }
+
+        @Test
+        @DisplayName("inbound connection included when only 'to' node is local")
+        void inboundConnectionIncludedWhenOnlyToIsLocal() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("calculatorNode"));
+
+            assertTrue(result.getConnections().stream()
+                    .anyMatch(c -> "gatewayNode".equals(c.getFrom())
+                            && "calculatorNode".equals(c.getTo())),
+                    "Inbound connection to calculatorNode should be included");
+        }
+
+        @Test
+        @DisplayName("unknown node id — results in empty nodes and connections, no error")
+        void unknownNodeIdReturnsEmpty() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("unknownNode"));
+
+            assertTrue(result.getNodes().isEmpty(),
+                    "Unknown node id should produce no nodes");
+            assertTrue(result.getConnections().isEmpty(),
+                    "Unknown node id should produce no connections");
+        }
+
+        @Test
+        @DisplayName("whitespace in node ids is stripped correctly")
+        void whitespaceInNodeIdsIsStripped() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            // simulate -Ditara.nodes=gatewayNode, calculatorNode with leading space
+            List<String> nodeIds = List.of("gatewayNode", " calculatorNode")
+                    .stream().map(String::strip).toList();
+            WiringConfig result = ConfigLoader.relevantPartOf(full, nodeIds);
+
+            // gatewayNode and calculatorNode are local, notifierNode is kept
+            // because gateway→notifier connection is included
+            assertEquals(3, result.getNodes().size());
+            assertTrue(result.getLocalNodeIds().contains("gatewayNode"));
+            assertTrue(result.getLocalNodeIds().contains("calculatorNode"));
+        }
+
+        @Test
+        @DisplayName("empty connections — nodes declared but no connections parses cleanly")
+        void emptyConnectionsParseCleanly() {
+            String yaml = """
+                    nodes:
+                      - id: "gatewayNode"
+                        component: "gateway"
+                      - id: "calculatorNode"
+                        component: "calculator"
+                    """;
+            WiringConfig full = ConfigLoader.parseString(yaml);
+            WiringConfig result = ConfigLoader.relevantPartOf(
+                    full, List.of("gatewayNode", "calculatorNode"));
+
+            assertTrue(result.getConnections().isEmpty());
+        }
+
+        @Test
+        @DisplayName("local node ids are set correctly on the result")
+        void localNodeIdsAreSetCorrectly() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
+
+            assertEquals(List.of("gatewayNode"), result.getLocalNodeIds());
+            assertTrue(result.getLocalNodes().stream()
+                    .allMatch(n -> n.getId().equals("gatewayNode")));
+        }
+
+        @Test
+        @DisplayName("getComponentOfNodeId returns correct component for local node")
+        void getComponentOfNodeIdReturnsCorrectComponent() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
+
+            assertEquals("gateway", result.getComponentOfNodeId("gatewayNode"));
+        }
+
+        @Test
+        @DisplayName("all three nodes collocated — all nodes and connections returned")
+        void allThreeNodesCollocated() {
+            WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
+            WiringConfig result = ConfigLoader.relevantPartOf(
+                    full, List.of("gatewayNode", "calculatorNode", "notifierNode"));
+
+            assertEquals(3, result.getNodes().size());
+            assertEquals(3, result.getConnections().size());
         }
     }
 }

@@ -1,7 +1,3 @@
-# wiring-direct.yaml
-# Both components run in the same JVM.
-# Gateway calls Calculator as a direct method call — no network involved.
-
 nodes:
   - id: "gatewayNode"
     component: "gateway"
@@ -12,4 +8,13 @@ nodes:
 connections:
   - from: "gatewayNode"
     to: "calculatorNode"
-    type: "direct"
+    type: http
+    host: "calculator"
+    port: 8081
+    serializer: "json"
+
+  - from:
+    to: "gatewayNode"
+    type: http
+    port: 8082
+    serializer: "json"

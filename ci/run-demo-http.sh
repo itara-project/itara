@@ -18,8 +18,8 @@ CALC_API=itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar
 CALC_IMPL=itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar
 GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
 GW_IMPL=itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar
-CALC_CONFIG=itara-demo/wiring-http-calculator.yaml
-GW_CONFIG=itara-demo/wiring-http-gateway.yaml
+CALC_CONFIG=itara-demo/wiring-http.yaml
+GW_CONFIG=itara-demo/wiring-http.yaml
 
 CALC_LOG=/tmp/itara-calculator.log
 CALC_PID=""
@@ -51,6 +51,7 @@ echo "[CI] Starting calculator JVM..."
 java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CALC_CONFIG \
+  -Ditara.nodes="calculatorNode" \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL" \
   io.itara.runtime.ItaraMain \
@@ -94,6 +95,7 @@ echo "[CI] Starting gateway JVM..."
 java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$GW_CONFIG \
+  -Ditara.nodes="gatewayNode" \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain
