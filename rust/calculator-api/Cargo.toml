@@ -1,0 +1,10 @@
+[package]
+name = "calculator-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itara-core = { path = "../itara-core" }
+
+[lib]
+crate-type = ["rlib"]

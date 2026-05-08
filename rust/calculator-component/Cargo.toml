@@ -1,0 +1,20 @@
+[package]
+name = "calculator-component"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itara-core = { path = "../itara-core" }
+calculator-api = { path = "../calculator-api" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tiny_http = "0.12"
+
+# cdylib = the .so the agent loads for direct colocation
+# rlib   = allows the bin to use the same code
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "calculator-server"
+path = "src/main.rs"
