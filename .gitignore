@@ -13,3 +13,4 @@ target/
 .DS_Store
 Thumbs.db
 itara-demo/libs/
+Cargo.lock

@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "itara-core",
+    "calculator-api",
+    "calculator-component",
+    "gateway-api",
+    "gateway-component",
+]
+resolver = "2"

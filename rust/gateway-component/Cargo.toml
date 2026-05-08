@@ -1,0 +1,21 @@
+[package]
+name = "gateway-component"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itara-core     = { path = "../itara-core" }
+calculator-api = { path = "../calculator-api" }
+gateway-api    = { path = "../gateway-api" }
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+ureq           = "2"
+# calculator-component is intentionally absent.
+# The gateway never sees the implementation — only the contract.
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "gateway"
+path = "src/main.rs"
