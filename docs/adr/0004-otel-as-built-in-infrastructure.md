@@ -1,0 +1,37 @@
+# ADR 0004 — OpenTelemetry Bridge as Special-Cased Infrastructure
+
+**Date:** April 2026  
+**Status:** Accepted
+
+## Context
+
+Itara drives its own observability context — span IDs, trace IDs, request IDs, correlation IDs, edge path. The original design called for a generic observer SPI where OTel would be one pluggable implementation alongside logging, metrics, and custom sinks. Under this model, Itara would generate all context IDs and feed them to whatever observers were registered.
+
+This design works for every observer except OpenTelemetry. OTel cannot accept an externally generated root trace ID — it owns its own context propagation and does not expose an API to inject a pre-existing trace ID as the root. Attempting to feed Itara-generated IDs into OTel produces incorrect or disconnected traces.
+
+## Decision
+
+OpenTelemetry is special-cased as a bridge rather than a standard observer SPI implementation.
+
+When OTel is present: OTel drives the context IDs (trace ID, span ID). Itara copies OTel's span IDs at event boundaries and uses them for the Itara call graph. The two systems produce correlated but independent trees — OTel's tree for standard instrumentation, Itara's tree for the topology-aware call graph.
+
+When OTel is absent: Itara's built-in no-op bridge is used. Itara generates its own context IDs and drives context propagation independently. The observer SPI works as originally designed — any observer implementation receives Itara-generated context.
+
+The OTel bridge interface lives in itara-core. The no-op implementation is the default. The full OTel implementation is loaded from the lib directory when OTel SDK jars are present.
+
+This special-casing applies to the Java implementation. Other language implementations that do not face the same OTel API constraint can implement OTel as a standard observer SPI without special treatment.
+
+## Consequences
+
+- Distributed tracing with OTel works correctly when OTel jars are present. W3C traceparent headers carry context across process boundaries. Itara-specific fields (requestId, correlationId, sourceNode, edgePath) are carried in the tracestate header.
+- OTel is optional. Teams that do not use OTel get Itara's built-in context IDs with no overhead and no configuration.
+- The observer SPI remains the correct extension point for all other observability implementations — logging, custom metrics, audit sinks. OTel is the exception, not the model.
+- OTel bridge implementations must be on the system classpath in Java, not in the lib directory, because they need access to GlobalOpenTelemetry. This is a JVM classloading constraint specific to the Java implementation.
+- The decision to special-case OTel is a pragmatic concession to OTel's ecosystem value. The correct architectural solution — OTel exposing an API to accept external context IDs — would make this unnecessary. If OTel's API changes to support this, the bridge can be replaced with a standard observer SPI implementation.
+- Other language runtimes that do not share this OTel API constraint should implement OTel as a standard SPI observer and not replicate the special-casing.
+
+## Alternatives Considered
+
+**Custom OTel API implementation:** Itara could have implemented its own version of the OTel API, allowing full control over context ID injection. This was rejected for two reasons. First, the engineering cost of maintaining a credible OTel-compatible implementation is high relative to the benefit. Second, and more importantly, the OTel Java ecosystem is mature, well-architected, and widely adopted. Requiring teams to replace their existing OTel setup with a custom Itara variant would discourage adoption — teams already invested in OTel would face a forced migration to an unproven alternative.
+
+The exception made for OTel reflects a deliberate trade-off: usability beats architectural purity when only one of them can be achieved. The OTel ecosystem is valuable enough that working around its constraints is the right call, even if it introduces a special case into an otherwise uniform SPI model.
