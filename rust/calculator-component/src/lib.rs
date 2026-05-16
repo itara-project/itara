@@ -41,7 +41,7 @@ impl ItaraComponent for CalculatorServiceImpl {
 
 /// The activator — the single exported symbol the agent looks for in the .so.
 /// No parameters. Returns type-erased ownership to the registry.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn itara_activator(_registry: *const ItaraRegistry) -> Box<dyn ItaraComponent> {
     println!("[calculator] activator called");
     Box::new(CalculatorServiceImpl)
