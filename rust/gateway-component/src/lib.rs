@@ -42,7 +42,7 @@ impl ItaraComponent for GatewayServiceImpl {
 /// Pulls CalculatorService from the global registry — receives either a direct
 /// instance (collocated topology) or an HTTP proxy (remote topology).
 /// This code does not change between topologies. That is the point.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn itara_activator(registry: *const ItaraRegistry) -> Box<dyn ItaraComponent> {
     println!("[gateway] activator called — pulling calculator from registry");
     let registry = unsafe { &*registry };
