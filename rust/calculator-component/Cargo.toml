@@ -5,10 +5,11 @@ edition = "2021"
 
 [dependencies]
 itara-core = { path = "../itara-core" }
+itara-agent = { path = "../itara-agent" }
+itara-transport-http = { path = "../itara-transport-http" }
 calculator-api = { path = "../calculator-api" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tiny_http = "0.12"
 
 # cdylib = the .so the agent loads for direct colocation
 # rlib   = allows the bin to use the same code
