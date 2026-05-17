@@ -1,0 +1,33 @@
+package demo.gateway.springcomponent;
+
+import demo.calculator.api.CalculatorService;
+import demo.gateway.api.GatewayService;
+
+import java.util.logging.Logger;
+
+/**
+ * The gateway implementation.
+ * Accepts a request, delegates to CalculatorService, prints and returns the result.
+ *
+ * Has no knowledge of whether CalculatorService is a direct call or HTTP.
+ * The registry provides whichever the topology config dictates.
+ */
+public class GatewayServiceImpl implements GatewayService {
+
+    private static final Logger log = Logger.getLogger(GatewayServiceImpl.class.getName());
+
+    private final CalculatorService calculator;
+
+    public GatewayServiceImpl(CalculatorService calculator) {
+        this.calculator = calculator;
+    }
+
+    @Override
+    public String calculate(int a, int b) {
+        log.info("[Gateway] Received request: add(" + a + ", " + b + ")");
+        int result = calculator.add(a, b);
+        String message = "The result of " + a + " + " + b + " = " + result;
+        log.info("[Gateway] Returning: " + message);
+        return message;
+    }
+}

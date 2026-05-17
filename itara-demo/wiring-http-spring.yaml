@@ -1,0 +1,14 @@
+nodes:
+  - id: "gatewayNodeSpring"
+    component: "gateway"
+
+  - id: "calculatorNode"
+    component: "calculator"
+
+connections:
+  - from: "gatewayNodeSpring"
+    to: "calculatorNode"
+    type: http
+    host: "localhost"
+    port: 8081
+    serializer: "json"

@@ -73,8 +73,20 @@ public class ItaraRegistry {
     public void registerActivator(String id,
                                   Class<? extends ItaraActivator<?>> activatorClass,
                                   Class<?> contractClass) {
+        if (activatorClass == null) {
+            throw new IllegalArgumentException(String.format(
+                    "[Itara] Received null value for activator class to be registered for component with id: %s%n" +
+                    "Check ComponentInterface definitions", id));
+        }
         activators.put(id, activatorClass);
+
+        if (contractClass == null) {
+            throw new IllegalArgumentException(String.format(
+                    "[Itara] Received null value for contract class to be registered for component with id: %s%n" +
+                    "Check ComponentInterface definitions", id));
+        }
         contracts.put(id, contractClass);
+
         log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
     }
 
@@ -155,5 +167,45 @@ public class ItaraRegistry {
         } finally {
             activating.remove(id);
         }
+    }
+
+    /**
+     * Try retrieve a component by contract/interface type.
+     *
+     * If exactly one component matches the type, returns it.
+     * If none match, throws IllegalStateException.
+     * If multiple match, throws IllegalStateException.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T get(Class<T> type) {
+
+        String matchedId = null;
+
+        // Search all known component contracts
+        for (Map.Entry<String, Class<?>> entry : contracts.entrySet()) {
+
+            String id = entry.getKey();
+            Class<?> contract = entry.getValue();
+
+            if (type.isAssignableFrom(contract)) {
+
+                if (matchedId != null) {
+                    throw new IllegalStateException(
+                            "[Itara] Multiple components match type: "
+                                    + type.getName()
+                                    + " -> '" + matchedId + "', '" + id + "'");
+                }
+
+                matchedId = id;
+            }
+        }
+
+        if (matchedId == null) {
+            throw new IllegalStateException(
+                    "[Itara] No component registered for type: "
+                            + type.getName());
+        }
+
+        return get(matchedId, type);
     }
 }
