@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "itara-core",
+    "itara-config",
+    "itara-agent",
     "calculator-api",
     "calculator-component",
     "gateway-api",

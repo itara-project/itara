@@ -158,6 +158,12 @@ impl ItaraRegistry {
         self.activators.insert(id.to_string(), activator);
     }
 
+    /// Returns true if a component is already registered as a proxy or activator.
+    pub fn is_registered(&self, id: &str) -> bool {
+        unsafe { &*self.instances.get() }.contains_key(id)
+            || self.activators.contains_key(id)
+    }
+
     // ── Application / activator API ───────────────────────────────────────
 
     /// Retrieve a component by id as a reference to the requested trait T.
