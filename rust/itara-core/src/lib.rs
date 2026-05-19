@@ -33,8 +33,13 @@ pub trait ItaraTransport: Send + Sync {
     fn start(&self);
 }
 
-/// Factory function signature exported by every transport .so.
-pub type TransportFactoryFn = unsafe extern "C" fn() -> Box<dyn ItaraTransport>;
+/// Factory function signature exported by every transport cdylib.
+/// The agent passes host/port from the wiring config — the transport
+/// is ignorant of topology and component ids.
+pub type TransportFactoryFn = unsafe extern "C" fn(
+    base_url_ptr: *const std::os::raw::c_char,
+    listen_port:  u16,
+) -> Box<dyn ItaraTransport>;
 
 // ── Component marker trait ────────────────────────────────────────────────────
 //
@@ -143,11 +148,11 @@ impl ItaraRegistry {
 
     // ── Agent setup API ───────────────────────────────────────────────────
 
-    /// Pre-register a remote proxy constructed by the agent.
+    /// Register a remote proxy constructed by the agent.
     /// The proxy implements the component's API trait and routes calls
     /// over the configured transport.
-    pub fn preregister(&mut self, id: &str, proxy: Box<dyn ItaraComponent>) {
-        println!("[Itara] Pre-registered proxy for: {}", id);
+    pub fn register_proxy(&mut self, id: &str, proxy: Box<dyn ItaraComponent>) {
+        println!("[Itara] Registered proxy for: {}", id);
         self.instances.get_mut().insert(id.to_string(), proxy);
     }
 
@@ -162,6 +167,48 @@ impl ItaraRegistry {
     pub fn is_registered(&self, id: &str) -> bool {
         unsafe { &*self.instances.get() }.contains_key(id)
             || self.activators.contains_key(id)
+    }
+
+    // ── Agent post-install API ────────────────────────────────────────────
+
+    /// Return the raw fat pointer words for a registered component.
+    ///
+    /// Used by the agent after install_global() to pass a type-erased component
+    /// reference to an API cdylib dispatcher factory. The cdylib reconstructs
+    /// the typed fat pointer internally — the agent never knows the concrete type.
+    ///
+    /// Triggers lazy activation if the component has not been activated yet.
+    /// Returns None if the component is not registered.
+    pub fn get_fat_ptr(&self, id: &str) -> Option<(*const (), *const ())> {
+        self.ensure_activated(id);
+        let instances = unsafe { &*self.instances.get() };
+        let component = instances.get(id)?;
+        // cast_to() with TypeId::of::<()>() will return None for any real trait.
+        // We need to retrieve the fat pointer for the component's own primary trait.
+        // Since we don't know the TypeId here, we expose the raw component pointer
+        // directly: the cdylib dispatcher factory accepts (data, vtable) as two
+        // words and performs its own transmute back to the concrete trait reference.
+        //
+        // We obtain the two words by transmuting the Box's raw pointer. A
+        // Box<dyn ItaraComponent> is itself a fat pointer — (data, vtable) —
+        // pointing to the concrete type and its ItaraComponent vtable. However,
+        // the cdylib needs the API trait vtable (e.g. dyn CalculatorService),
+        // not the ItaraComponent vtable.
+        //
+        // We call cast_to() with a sentinel TypeId and iterate over known trait IDs.
+        // Since we don't know the TypeId here, we delegate to the component itself:
+        // the component implements cast_to() and returns the correct API trait fat pointer.
+        // The agent stores the TypeId when the component is first registered via
+        // the API cdylib — but that mechanism is not yet implemented.
+        //
+        // Interim: cast_to() is called from the cdylib side with the correct TypeId.
+        // Here we return the raw pointer to the ItaraComponent box content — the
+        // cdylib is responsible for knowing the correct TypeId and calling cast_to()
+        // directly. We pass the ItaraComponent fat pointer words; the cdylib unwraps
+        // them using its own knowledge of the concrete type.
+        let raw: *const dyn ItaraComponent = component.as_ref() as *const dyn ItaraComponent;
+        let fat: (*const (), *const ()) = unsafe { std::mem::transmute(raw) };
+        Some(fat)
     }
 
     // ── Application / activator API ───────────────────────────────────────
@@ -260,8 +307,60 @@ pub fn load_and_register(
     }
 }
 
-/// Load a transport .so and return a configured instance.
-pub fn load_transport(lib_path: &str) -> Result<Box<dyn ItaraTransport>, String> {
+/// Proxy factory function signature exported by every API cdylib.
+/// Called by the agent to create a remote proxy wrapping the given transport.
+/// The agent never knows the concrete proxy type — only this C symbol.
+pub type ProxyFactoryFn = unsafe extern "C" fn(
+    transport: Box<dyn ItaraTransport>,
+) -> Box<dyn ItaraComponent>;
+
+/// Dispatcher factory function signature exported by every API cdylib.
+/// Called by the agent to create an inbound dispatcher for a local component.
+///
+/// Receives the two fat pointer words of a *const dyn ItaraComponent.
+/// The cdylib calls cast_to(TypeId::of::<dyn MyApiTrait>()) internally to
+/// obtain the correctly-typed reference — the agent never needs to know
+/// the concrete API trait type.
+pub type DispatcherFactoryFn = unsafe extern "C" fn(
+    data:   *const (),   // data word of *const dyn ItaraComponent fat pointer
+    vtable: *const (),   // vtable word of *const dyn ItaraComponent fat pointer
+) -> Dispatcher;
+
+/// Load an API cdylib and return its proxy and dispatcher factory functions.
+/// The caller is responsible for leaking the library (components are process-lifetime).
+pub fn load_api_cdylib(
+    lib_path: &str,
+) -> Result<(ProxyFactoryFn, DispatcherFactoryFn), String> {
+    unsafe {
+        let lib = libloading::Library::new(lib_path)
+            .map_err(|e| format!("[Itara] Failed to load API cdylib '{}': {}", lib_path, e))?;
+
+        let proxy_factory: libloading::Symbol<ProxyFactoryFn> = lib
+            .get(b"itara_create_proxy\0")
+            .map_err(|e| format!("[Itara] No itara_create_proxy in '{}': {}", lib_path, e))?;
+
+        let dispatcher_factory: libloading::Symbol<DispatcherFactoryFn> = lib
+            .get(b"itara_create_dispatcher\0")
+            .map_err(|e| format!("[Itara] No itara_create_dispatcher in '{}': {}", lib_path, e))?;
+
+        let proxy_fn: ProxyFactoryFn = *proxy_factory;
+        let dispatcher_fn: DispatcherFactoryFn = *dispatcher_factory;
+
+        // Leak — the proxy and dispatcher factories must remain valid for process lifetime.
+        std::mem::forget(lib);
+
+        Ok((proxy_fn, dispatcher_fn))
+    }
+}
+
+/// Load a transport cdylib and return a configured instance.
+/// base_url is the outbound URL (empty string for inbound-only).
+/// listen_port is the inbound port (0 for outbound-only).
+pub fn load_transport(
+    lib_path:    &str,
+    base_url:    &str,
+    listen_port: u16,
+) -> Result<Box<dyn ItaraTransport>, String> {
     unsafe {
         let lib = libloading::Library::new(lib_path)
             .map_err(|e| format!("[Itara] Failed to load transport '{}': {}", lib_path, e))?;
@@ -270,11 +369,14 @@ pub fn load_transport(lib_path: &str) -> Result<Box<dyn ItaraTransport>, String>
             .get(b"itara_transport_factory\0")
             .map_err(|e| format!("[Itara] No itara_transport_factory in '{}': {}", lib_path, e))?;
 
-        let transport = factory();
+        let factory_fn: TransportFactoryFn = *factory;
 
-        // Leak the library — the transport lives for the process lifetime.
         std::mem::forget(lib);
 
+        let c_url = std::ffi::CString::new(base_url)
+            .map_err(|e| format!("[Itara] Invalid base_url string: {}", e))?;
+
+        let transport = factory_fn(c_url.as_ptr(), listen_port);
         Ok(transport)
     }
 }

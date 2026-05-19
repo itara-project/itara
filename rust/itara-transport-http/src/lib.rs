@@ -105,12 +105,24 @@ fn err_response(msg: &str, status: u16) -> tiny_http::Response<std::io::Cursor<V
         .with_status_code(status)
 }
 
-/// Factory function exported from the .dll — agent loads this to get a transport.
+/// Factory function exported from the cdylib.
+/// The agent calls this with the host and port from the wiring config.
+/// The transport is ignorant of component ids and topology — it just moves bytes.
+///
+/// base_url: null-terminated UTF-8 string for the outbound base URL
+///           (e.g. "http://localhost:8081"). Pass empty string for inbound-only.
+/// listen_port: port to listen on for inbound requests. Pass 0 for outbound-only.
 #[unsafe(no_mangle)]
-pub extern "C" fn itara_transport_factory() -> Box<dyn ItaraTransport> {
-    let base_url = std::env::var("CALCULATOR_URL")
-        .unwrap_or_else(|_| "http://localhost:8081".to_string());
-    let port = std::env::var("ITARA_HTTP_PORT")
-        .ok().and_then(|p| p.parse().ok()).unwrap_or(8081);
-    Box::new(HttpTransport::new(base_url, port))
+pub extern "C" fn itara_transport_factory(
+    base_url_ptr: *const std::os::raw::c_char,
+    listen_port:  u16,
+) -> Box<dyn ItaraTransport> {
+    let base_url = if base_url_ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(base_url_ptr) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    Box::new(HttpTransport::new(base_url, listen_port))
 }
