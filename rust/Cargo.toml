@@ -2,6 +2,7 @@
 members = [
     "itara-core",
     "itara-config",
+    "itara-libdir",
     "itara-agent",
     "calculator-api",
     "calculator-component",

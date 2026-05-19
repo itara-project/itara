@@ -11,4 +11,4 @@ tiny_http  = "0.12"
 
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["rlib", "cdylib"]

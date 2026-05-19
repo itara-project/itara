@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-itara-core           = { path = "../itara-core" }
-itara-config         = { path = "../itara-config" }
-itara-transport-http = { path = "../itara-transport-http" }
+itara-core    = { path = "../itara-core" }
+itara-config  = { path = "../itara-config" }
+itara-libdir  = { path = "../itara-libdir" }
 
 [lib]
 crate-type = ["rlib"]
