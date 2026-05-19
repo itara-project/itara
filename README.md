@@ -2,47 +2,33 @@
 
 **Make software soft again.**
 
-Itara is a JVM runtime that treats distributed system topology as a
-configuration decision, not a code decision.
+Itara is a language-neutral specification for treating distributed system topology as a configuration decision, not a code decision. Reference implementations exist in Java and Rust. More languages are planned.
 
-Change how your components communicate — collocated direct calls, HTTP,
-message queues — by changing a config file. No code changes. No redeployment
-ceremony. No migration scripts. Restart the JVM with a new config and the
-topology changes.
+Change how your components communicate — collocated direct calls, HTTP, message queues — by changing a config file. No code changes. No redeployment ceremony. No migration scripts. Restart with a new config and the topology changes.
 
 ---
 
 ## The problem
 
 Every production system in the world handles topology change through ritual.
-Want to split a service? Months of parallel running, dual-write patterns,
-careful traffic migration. Want to merge two services? Same thing in reverse.
-Want to change from HTTP to a message queue between two components? Touch
-both services, coordinate deployment, pray.
+Want to split a service? Months of parallel running, dual-write patterns, careful traffic migration. Want to merge two services? Same thing in reverse. Want to change from HTTP to a message queue between two components? Touch both services, coordinate deployment, pray.
 
-This is the state of the art. The patterns are elegant — blue-green deployments,
-expand-and-contract, strangler fig — but every one of them is ceremony. External
-scaffolding bolted around systems that fundamentally cannot evolve themselves.
+This is the state of the art. The patterns are elegant — blue-green deployments, expand-and-contract, strangler fig — but every one of them is ceremony. External scaffolding bolted around systems that fundamentally cannot evolve themselves.
 
-Itara proposes that topology should be a continuously adjustable variable,
-not a hardcoded consequence of how services were originally written.
+Itara proposes that topology should be a continuously adjustable variable, not a hardcoded consequence of how services were originally written.
 
 ---
 
 ## The idea
 
-A component declares its contract — what it accepts and what it returns.
-It does not declare how it is called. That is the runtime's decision.
+A component declares its contract — what it accepts and what it returns. It does not declare how it is called. That is the runtime's decision.
 
-The Itara agent intercepts the JVM startup, reads a wiring config, and
-connects components to each other using whatever transport the config specifies.
-The component code is identical regardless of whether it is called as a direct
-in-process method or over HTTP from a separate JVM.
+The Itara agent reads a wiring config at startup and connects components to each other using whatever transport the config specifies. The component code is identical regardless of whether it is called as a direct in-process method or over HTTP from a separate process — in any supported language.
 
 ```yaml
 # One master config describes the entire topology.
-# Each JVM is told which node it represents at startup.
-# Change this file. Restart the JVM. Topology changes.
+# Each process is told which node it represents at startup.
+# Change this file. Restart. Topology changes.
 
 nodes:
   - id: gatewayNode
@@ -60,9 +46,9 @@ connections:
 
 ## The proof of concept
 
-Two components. One adds numbers. One accepts requests and delegates.
+Two components. One adds numbers. One accepts requests and delegates. Implemented in both Java and Rust.
 
-**Direct topology — both components in one JVM:**
+**Direct topology — both components in one process:**
 
 ```
 [Gateway] Received request: add(3, 4)
@@ -70,25 +56,22 @@ Two components. One adds numbers. One accepts requests and delegates.
 [Gateway] Returning: The result of 3 + 4 = 7
 ```
 
-**HTTP topology — two separate JVMs:**
+**HTTP topology — two separate processes:**
 
 ```
-# Gateway JVM:
+# Gateway process:
 [Gateway] Received request: add(3, 4)
 [Itara/HTTP] -> add on calculator at localhost:8081
 [Gateway] Returning: The result of 3 + 4 = 7
 
-# Calculator JVM:
+# Calculator process:
 [Itara/HTTP] <- add on calculator
 [Calculator] add(3, 4) = 7
 ```
 
-Same gateway code. Same calculator code. Different config file.
-The gateway JVM does not have calculator-component.jar on its classpath
-in the HTTP run — it never sees the implementation. The agent generates
-a proxy from the API jar alone.
+Same gateway code. Same calculator code. Different config file. This works across Java and Rust — a Java gateway can call a Rust calculator and vice versa, with no code changes in either component.
 
-**External HTTP entry point — call the gateway directly:**
+**External HTTP entry point:**
 
 ```bash
 curl -X POST http://localhost:8082/itara/gateway/calculate \
@@ -97,209 +80,107 @@ curl -X POST http://localhost:8082/itara/gateway/calculate \
 # → "The result of 32 + 41 = 73"
 ```
 
-Add an inbound HTTP connection to any component in the wiring config and
-Itara automatically starts an HTTP server for it. No code changes.
+Add an inbound HTTP connection to any component in the wiring config and Itara automatically starts an HTTP server for it. No code changes.
+
+---
+
+## Language support
+
+| Language | Status | Notes |
+|----------|--------|-------|
+| Java | Reference implementation | JVM agent, full observability, Spring Boot compatible |
+| Rust | Working implementation | Transport SPI, config parser, agent library |
+| Go | Planned | — |
+| Python | Planned | — |
+| C++ | Planned | — |
+
+Components in different languages participate in the same topology graph and produce the same distributed traces.
 
 ---
 
 ## Observability
 
-Itara treats observability as a first-class citizen. Every component call
-produces four events regardless of transport:
+Itara treats observability as a first-class citizen. Every component call produces four events regardless of transport:
 
 - **CALL_SENT** — caller side, before dispatch
-- **CALL_RECEIVED** — callee side, on arrival
+- **CALL_RECEIVED** — callee side, on arrival  
 - **RETURN_SENT** — callee side, before response
 - **RETURN_RECEIVED** — caller side, on return
 
-This makes network latency directly observable: the gap between CALL_SENT
-and CALL_RECEIVED is the transport overhead. The gap between RETURN_SENT
-and RETURN_RECEIVED is the return path. Both sides of every call are measured
-independently.
+This makes network latency directly observable: the gap between CALL_SENT and CALL_RECEIVED is the outbound transport cost. The gap between RETURN_SENT and RETURN_RECEIVED is the return path. Component processing time is measured independently of transport cost on both sides.
 
-**OpenTelemetry is built in.** Drop `itara-observability-otel` into
-`itara.lib.dir` and add the OTel SDK to your classpath. Itara generates
-distributed traces with correct parent-child relationships across JVMs,
-using W3C traceparent headers for propagation. No code changes required.
-
-Each span carries:
-- `itara.component` — the component being called
-- `itara.method` — the method name
-- `itara.transport` — actual transport used (direct, http, kafka)
-- `itara.edge.path` — the full call chain (e.g. `[gateway, calculator]`)
-- `itara.request.id` — for cross-signal correlation
-- `itara.source.node` — the originating node
-
-Latency metrics are recorded as a histogram (`itara.call.duration`)
-with component, method, transport, and error dimensions — sufficient
-for latency alerting and SLO tracking without additional configuration.
-
-**The observer SPI** allows custom observability implementations. Multiple
-observers can run simultaneously — a logging observer and a custom metrics
-sink, for example. OTel is built-in infrastructure, not an observer
-implementation; the SPI is for passive consumers of events.
+**OpenTelemetry is built in** for the Java implementation. Distributed traces appear in Kibana with correct parent-child relationships across JVMs, using W3C traceparent headers for propagation. No code changes required. OTel support for Rust is planned.
 
 ---
 
-## Structure
+## Repository structure
 
 ```
-itara-common/                  SPIs, registries, ItaraContext, OtelBridge, ObservabilityFacade
-itara-agent/                   JVM premain, classloader, wiring, OtelBridgeLoader, ObserverLoader
-itara-transport-http/          HttpTransport, HttpRemoteProxy, ItaraHttpServer
-itara-serializer-json/         JSON serializer (default, shaded Jackson)
-itara-serializer-java/         Java serializer (legacy opt-in)
-itara-observability-otel/      OtelBridgeImpl — spans and metrics via OTel API
-itara-observability-logging/   LoggingObserver — structured event logging
-itara-integration-tests/       HttpTransportIntegrationTest
-itara-demo/                    calculator-api, calculator-component, gateway-api, gateway-component
+java/          Java reference implementation (JVM agent, Spring Boot compatible)
+rust/          Rust implementation (transport SPI, config parser, agent library)
+docs/
+  adr/         Architecture Decision Records
+spec/          VISION.md, MANIFESTO.md, SPEC.md
 ```
-
-### Key concepts
-
-**Contract** — an interface annotated `@ComponentInterface`. Lives in an
-API jar. Defines what the component does. Says nothing about how it is called.
-
-**Component** — one implementation of a contract. Lives in a component jar.
-Has no knowledge of transport or topology.
-
-**Activator** — one class per component jar implementing `ItaraActivator`.
-Constructs the component's internal object graph and returns the root instance.
-Discovered via `META-INF/itara/activator`.
-
-**Master wiring config** — a single YAML file describing the complete topology
-of the system — all nodes, all connections. Each JVM is told which node it
-represents via `-Ditara.nodes=nodeId` at startup, and the agent self-selects
-the relevant parts. One source of truth for the entire distributed system.
-Supports environment variable substitution (`${VAR:-default}`).
-
-**Node** — a deployment identity. Declared in the wiring config with an id
-and a component. Multiple nodes can run in the same JVM by passing a
-comma-separated list: `-Ditara.nodes=gatewayNode,calculatorNode`.
-
-**itara.lib.dir** — a directory of SPI jars loaded by the agent's child-first
-classloader. Transports, serializers, and observers go here. The application
-classpath never needs to change.
 
 ---
 
-## Running the demo
-
-**Build everything from the repo root:**
+## Running the Java demo
 
 ```bash
-mvn install
-```
-
-### Option A — Docker (recommended)
-
-Requires Docker Desktop.
-
-**Collect OTel jars** (needed for distributed tracing):
-
-```bash
-# From itara-demo/
-chmod +x collect-otel-libs.sh && ./collect-otel-libs.sh
-```
-
-**Direct topology — both components in one container:**
-
-```bash
-cd itara-demo
-docker compose -f docker-compose-direct.yml up
-```
-
-**HTTP topology — two separate containers with full observability:**
-
-```bash
-cd itara-demo
+cd java && mvn install
+cd java/itara-demo
 docker compose -f docker-compose-http.yml up
 ```
 
-Wait about 60 seconds (Elasticsearch takes a while to start), then:
+Wait ~60 seconds, then:
 - **Kibana APM**: http://localhost:5601 → Observability → APM → Services
 - **Make a call**: `curl -X POST http://localhost:8082/itara/gateway/calculate -H "Content-Type: application/json" -d "[32, 41]"`
-- **View the trace** in Kibana
 
-### Option B — Native (local JDK 21+)
-
-**Direct topology (one JVM):**
+## Running the Rust demo
 
 ```bash
-java -Ditara.lib.dir=libs \
-     -Ditara.config=itara-demo/wiring-direct.yaml \
-     -Ditara.nodes=calculatorNode,gatewayNode \
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
-          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:\
-          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:\
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar" \
-     demo.gateway.component.DemoMain
+cd rust
+
+# Direct topology
+ITARA_CONFIG=../demo/wiring-direct.yaml \
+ITARA_NODES=gatewayNode,calculatorNode \
+cargo run -p gateway-component --bin gateway
+
+# HTTP topology — two terminals
+ITARA_CONFIG=../demo/wiring-http.yaml ITARA_NODES=calculatorNode \
+cargo run -p calculator-component --bin calculator-server
+
+ITARA_CONFIG=../demo/wiring-http.yaml ITARA_NODES=gatewayNode \
+CALCULATOR_URL=http://127.0.0.1:8081 \
+cargo run -p gateway-component --bin gateway
 ```
-
-**HTTP topology — both JVMs use the same master config, started separately:**
-
-```bash
-# Terminal 1 — calculator JVM
-java -Ditara.lib.dir=libs \
-     -Ditara.config=itara-demo/wiring-http.yaml \
-     -Ditara.nodes=calculatorNode \
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
-          itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar" \
-     io.itara.runtime.ItaraMain
-
-# Terminal 2 — gateway JVM (after calculator prints "Server listening on port 8081")
-java -Ditara.lib.dir=libs \
-     -Ditara.config=itara-demo/wiring-http.yaml \
-     -Ditara.nodes=gatewayNode \
-     -javaagent:itara-agent/target/itara-agent-1.0-SNAPSHOT.jar \
-     -cp "itara-common/target/itara-common-1.0-SNAPSHOT.jar:\
-          itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:\
-          itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:\
-          itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar" \
-     demo.gateway.component.DemoMain
-```
-
-Both JVMs read the same `wiring-http.yaml`. Each self-selects its relevant
-slice based on `-Ditara.nodes`. `calculator-component.jar` is absent from
-the gateway classpath — the gateway never sees the implementation.
-
-On Windows, replace `:` with `;` in the `-cp` argument.
 
 ---
 
 ## Current state
 
 **Working:**
-- Direct and HTTP topologies
-- Master wiring config — one file describes the complete topology, each JVM self-selects its slice
-- Inbound HTTP server — any component can accept external HTTP calls via wiring config
-- JSON and Java serializers (pluggable via SPI)
-- Custom classloader for runtime/application classpath separation
-- Activator-based lazy instantiation with missing-jar detection
-- Full observability with four-event model (CALL_SENT, CALL_RECEIVED, RETURN_SENT, RETURN_RECEIVED)
-- OpenTelemetry bridge — distributed traces in Kibana/Jaeger/any OTel backend
-- W3C traceparent propagation across JVMs
-- Edge path tracking across the call chain
-- Error taxonomy (CHECKED / RUNTIME / TRANSPORT) with correct HTTP status codes
+- Direct and HTTP topologies in Java and Rust
+- Cross-language topology (Java ↔ Rust over HTTP)
+- Master wiring config — one file, each process self-selects its slice
+- Inbound HTTP server — any component can accept external calls via config
+- JSON serializer (pluggable via SPI)
+- Full observability — four-event model across all transports and languages
+- OpenTelemetry bridge — distributed traces in Kibana across JVMs and Rust processes
+- W3C traceparent propagation
+- Spring Boot compatible — components as Spring beans fetched from the Itara registry
 - YAML wiring config with environment variable substitution
-- Logging observer SPI
-- Integration tests
 
 **Planned:**
 - Kafka transport
-- Spring Boot adapter
-- itara-cli — topology inspection and validation tooling
+- Rust observability SPI and OTel bridge
+- Language-neutral contract descriptor (IDL)
 - Controller (Orca) for runtime topology management
-- Service discovery (Consul, Kubernetes DNS, controller registry)
-- Mathematical models for topology optimization
-- Language-neutral contract descriptor
-- Build plugin
+- itara-cli — topology inspection and validation
+- Service discovery integration
 
-See VISION.md for the full architectural vision.
+See [VISION.md](spec/VISION.md) for the full architectural vision and [SPEC.md](spec/SPEC.md) for the formal specification.
 
 ---
 
