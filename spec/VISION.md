@@ -51,15 +51,19 @@ Every Itara application has two levels:
 
 The wiring config is a directed graph. Nodes are components. Edges are typed connections. The same component can be reached by different callers via different connection types. This is the data structure the controller will reason about, the visualisation tool will render, and the engineer will eventually plan graphically.
 
+Today the wiring config is a file — a practical entry point for a system at its current scale. As systems grow to hundreds of components and thousands of connections, the backing store will evolve: a document store, a graph database, a relational schema, or something not yet decided. The runtime always works from a concrete configuration snapshot, but where that snapshot lives and how it is managed is an operational concern.
+
 ---
 
 ## The full system architecture
 
 **The agent (exists)** — reads the wiring config, loads SPI implementations, generates proxies and listeners, hands off to the application. Implemented as a JVM premain for Java and as a library (`itara_init()`) for Rust. Other language implementations follow the same pattern.
 
-**The orchestrator (no new tool required)** — Itara is designed to be orchestrator-agnostic. Kubernetes, Nomad, plain systemd, or any other process management tool can serve as the orchestrator. The framework's job is to make components orchestrator-friendly — each process is a self-contained unit that reads a wiring config at startup. The orchestrator's job is what it already does: start, stop, and monitor processes.
+**The CLI (planned)** — the primary authoring and validation tool for wiring configurations. Understands the system completely from its metadata, guides engineers to correct configurations interactively, and runs in CI as a topology compiler. Incorrect configurations cannot be produced by the tooling — they are caught before deployment, not discovered in production.
 
-**The controller (planned)** — the intelligent layer above the orchestrator. Observes metrics, builds a model of system behavior, and recommends or executes topology changes.
+**The orchestrator (no new tool required)** — Itara is designed to be orchestrator-agnostic. Kubernetes, Nomad, plain systemd, or any other process management tool can serve as the orchestrator. The framework's job is to make components orchestrator-friendly — each process is a self-contained unit that reads its wiring configuration at startup. The orchestrator's job is what it already does: start, stop, and monitor processes.
+
+**The controller (planned)** — the intelligent layer above the orchestrator. Observes metrics, builds a model of system behaviour, and recommends or executes topology changes. The trust ladder governs how much autonomy the controller is granted — from recommendations the engineer approves, to prepared reversible actions, to full automation that is always auditable and always stoppable.
 
 Trust ladder:
 1. Self-service: engineer decides, tool makes it cheap and reversible
@@ -96,6 +100,21 @@ This is a delay differential equation. Linearization enables standard linear con
 This mathematical work is a research direction, not a committed implementation plan. Academic collaboration is the realistic path for taking it from theory to a runtime the controller can use.
 
 ---
+
+
+## The tooling ecosystem
+
+Declaring topology in configuration only moves the problem if the configuration itself is unsafe to produce. A wiring config that can be misconfigured — mismatched serializers, missing components, incompatible contract versions — is not a step forward. It is the same class of error in a different location.
+
+Itara's answer is a tooling ecosystem that makes incorrect configurations impossible to produce, not merely detectable after the fact. The tools are the safety net, not the runtime. A topology that does not pass validation does not deploy.
+
+The primary authoring tool is a CLI that understands the system completely — which components exist, what contracts they implement, what serializers and transports they support — and guides engineers to correct configurations interactively. It is a compiler for distributed system topology: it takes intent, validates it against what the system actually contains, and produces a verified artifact. The wiring config it produces is correct by construction.
+
+The same validation logic powers the Orca visual editor. Engineers draw topology on a graph; the tool validates each connection in real time. The CLI and the UI are the same engine with different rendering layers. Everything checkable in one is checkable in the other.
+
+This tooling direction extends further than configuration authoring. As the system matures, the tooling becomes capable of reasoning about the entire lifecycle of a distributed system: validating that a topology change is safe before it is applied, predicting the effect of splitting or merging components against observed behaviour, and eventually driving automated topology decisions that the engineer approves rather than initiates. The tooling is not a convenience layer — it is the mechanism through which a distributed system becomes understandable, auditable, and ultimately self-improving.
+
+The long-range vision: a distributed system that can recompile its own components with updated contracts, redeploy them with the new topology, and verify the result — all driven by the same tooling that started as an interactive CLI. Not autonomous in the sense of opaque, but autonomous in the sense of tireless, consistent, and always verifiable.
 
 ## Open questions
 

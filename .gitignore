@@ -14,3 +14,4 @@ target/
 Thumbs.db
 itara-demo/libs/
 Cargo.lock
+rust/itara-libs/

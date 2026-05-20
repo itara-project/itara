@@ -309,9 +309,16 @@ pub fn load_and_register(
 
 /// Proxy factory function signature exported by every API cdylib.
 /// Called by the agent to create a remote proxy wrapping the given transport.
+///
+/// serializer_id — null-terminated UTF-8 string identifying the serializer
+/// declared for this connection in the wiring config (e.g. "json", "protobuf").
+/// The proxy stores this id and dispatches to the correct serialization path
+/// at call time. The string is owned by the agent and valid for process lifetime.
+///
 /// The agent never knows the concrete proxy type — only this C symbol.
 pub type ProxyFactoryFn = unsafe extern "C" fn(
-    transport: Box<dyn ItaraTransport>,
+    transport:     Box<dyn ItaraTransport>,
+    serializer_id: *const std::os::raw::c_char,
 ) -> Box<dyn ItaraComponent>;
 
 /// Dispatcher factory function signature exported by every API cdylib.
@@ -321,9 +328,15 @@ pub type ProxyFactoryFn = unsafe extern "C" fn(
 /// The cdylib calls cast_to(TypeId::of::<dyn MyApiTrait>()) internally to
 /// obtain the correctly-typed reference — the agent never needs to know
 /// the concrete API trait type.
+///
+/// serializer_id — null-terminated UTF-8 string identifying the serializer
+/// declared for this connection in the wiring config. The dispatcher uses it
+/// to dispatch to the correct deserialization path for inbound args and the
+/// correct serialization path for the response.
 pub type DispatcherFactoryFn = unsafe extern "C" fn(
-    data:   *const (),   // data word of *const dyn ItaraComponent fat pointer
-    vtable: *const (),   // vtable word of *const dyn ItaraComponent fat pointer
+    data:          *const (),   // data word of *const dyn ItaraComponent fat pointer
+    vtable:        *const (),   // vtable word of *const dyn ItaraComponent fat pointer
+    serializer_id: *const std::os::raw::c_char,
 ) -> Dispatcher;
 
 /// Load an API cdylib and return its proxy and dispatcher factory functions.

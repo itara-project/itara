@@ -41,6 +41,17 @@ pub struct ItaraMeta {
     #[serde(rename = "core-version", default)]
     pub core_version: String,
 }
+ 
+/// Serializer declarations for api artifacts.
+/// Lists the serializer ids the artifact was compiled with support for.
+/// Used by tooling to validate wiring config connections at configuration time.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SerializersMeta {
+    /// Serializer ids supported by this artifact (e.g. ["json", "protobuf"]).
+    /// Populated for kind = "api" artifacts only.
+    #[serde(default)]
+    pub supported: Vec<String>,
+}
 
 /// Parsed contents of a single `.itara` metadata file.
 #[derive(Debug, Clone, Deserialize)]
@@ -52,6 +63,10 @@ pub struct MetadataFile {
 
     #[serde(default)]
     pub itara: Option<ItaraMeta>,
+ 
+    /// Declared serializers — present on kind = "api" artifacts.
+    #[serde(default)]
+    pub serializers: Option<SerializersMeta>,
 }
 
 // ── LibEntry ──────────────────────────────────────────────────────────────────
@@ -168,6 +183,20 @@ impl LibIndex {
         self.entries
             .get(&("transport".to_string(), transport_type.to_lowercase()))
             .map(|e| e.lib_path.as_path())
+    }
+ 
+    /// Return the serializer ids declared as supported by an API artifact.
+    /// Returns an empty slice if the artifact is not in the index or
+    /// declares no serializers.
+    ///
+    /// Used by tooling to validate that the serializer declared in a wiring
+    /// config connection is supported by both ends before the system starts.
+    pub fn supported_serializers(&self, api_id: &str) -> &[String] {
+        self.entries
+            .get(&("api".to_string(), api_id.to_lowercase()))
+            .and_then(|e| e.meta.serializers.as_ref())
+            .map(|s| s.supported.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Iterate over all entries for debugging / CLI use.
@@ -341,6 +370,40 @@ language = "rust"
     fn scan_returns_error_for_missing_dir() {
         let result = LibIndex::scan(Path::new("/nonexistent/path/itara-libs"));
         assert!(result.is_err());
+    }
+ 
+    #[test]
+    fn parses_api_serializers() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+api-version = "1.x"
+ 
+[runtime]
+language = "rust"
+ 
+[serializers]
+supported = ["json", "protobuf"]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let serializers = meta.serializers.unwrap();
+        assert_eq!(serializers.supported, vec!["json", "protobuf"]);
+    }
+ 
+    #[test]
+    fn api_without_serializers_returns_empty() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+[runtime]
+language = "rust"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.serializers.is_none());
     }
 
     #[test]
