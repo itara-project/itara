@@ -6,6 +6,7 @@ use itara_core::{
     DispatcherFactoryFn, ItaraRegistry, ItaraTransport,
     load_and_register, load_api_cdylib, load_transport,
 };
+use std::ffi::CString;
 use itara_libdir::LibIndex;
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -41,10 +42,12 @@ pub fn itara_init() {
 
     let mut registry = ItaraRegistry::new();
 
-    // Deferred: (component_id, dispatcher_factory, transport).
+    // Deferred: (component_id, dispatcher_factory, serializer_cstring, transport).
     // Deferred until after install_global() because dispatcher creation
     // requires the component to be activated, which requires the registry.
-    let mut deferred: Vec<(String, DispatcherFactoryFn, Box<dyn ItaraTransport>)> = Vec::new();
+    // The CString is kept alive here so the pointer remains valid when we
+    // call the dispatcher factory after install_global().
+    let mut deferred: Vec<(String, DispatcherFactoryFn, CString, Box<dyn ItaraTransport>)> = Vec::new();
     let mut plain_transports: Vec<Box<dyn ItaraTransport>> = Vec::new();
 
     wire(&config, &index, &mut registry, &mut plain_transports, &mut deferred);
@@ -52,7 +55,7 @@ pub fn itara_init() {
     ItaraRegistry::install_global(registry);
 
     // Apply deferred dispatcher registrations now that the registry is live.
-    for (component_id, dispatcher_fn, transport) in deferred {
+    for (component_id, dispatcher_fn, serializer_cstring, transport) in deferred {
         let (data, vtable) = ItaraRegistry::global()
             .get_fat_ptr(&component_id)
             .unwrap_or_else(|| panic!(
@@ -64,7 +67,9 @@ pub fn itara_init() {
         // SAFETY: (data, vtable) are the two words of a *const dyn ItaraComponent
         // fat pointer for a component stored in the global registry (process lifetime).
         // The cdylib calls cast_to() internally to recover the correctly-typed reference.
-        let dispatcher = unsafe { dispatcher_fn(data, vtable) };
+        // serializer_cstring is kept alive for the duration of this loop iteration —
+        // the dispatcher copies the string internally, so the pointer need not outlive this call.
+        let dispatcher = unsafe { dispatcher_fn(data, vtable, serializer_cstring.as_ptr()) };
         transport.register_listener(&component_id, dispatcher);
         transport.start();
     }
@@ -94,7 +99,7 @@ fn wire(
     index:  &LibIndex,
     registry: &mut ItaraRegistry,
     plain_transports: &mut Vec<Box<dyn ItaraTransport>>,
-    deferred: &mut Vec<(String, DispatcherFactoryFn, Box<dyn ItaraTransport>)>,
+    deferred: &mut Vec<(String, DispatcherFactoryFn, CString, Box<dyn ItaraTransport>)>,
 ) {
     for conn in &config.connections {
         if conn.is_external() {
@@ -127,13 +132,15 @@ fn wire_inbound(
     conn:   &ConnectionEntry,
     _registry: &mut ItaraRegistry,
     plain_transports: &mut Vec<Box<dyn ItaraTransport>>,
-    deferred: &mut Vec<(String, DispatcherFactoryFn, Box<dyn ItaraTransport>)>,
+    deferred: &mut Vec<(String, DispatcherFactoryFn, CString, Box<dyn ItaraTransport>)>,
 ) {
     let port = conn.port.unwrap_or(8080);
     let component_id = config.component_of_node(&conn.to)
         .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
 
-    println!("[Itara] Inbound {} on port {} for '{}'", conn.transport_type, port, component_id);
+    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport_type, port, component_id, conn.serializer);
+ 
+    validate_serializer(index, component_id, &conn.serializer);
 
     let transport = load_transport_for(index, &conn.transport_type, "", port);
 
@@ -147,7 +154,9 @@ fn wire_inbound(
                         "[Itara] Loaded API cdylib for '{}' — deferring dispatcher registration",
                         component_id
                     );
-                    deferred.push((component_id.to_string(), dispatcher_fn, transport));
+                    let serializer_cstring = CString::new(conn.serializer.as_str())
+                        .expect("[Itara] serializer id contains null byte");
+                    deferred.push((component_id.to_string(), dispatcher_fn, serializer_cstring, transport));
                 }
                 Err(e) => {
                     eprintln!(
@@ -182,7 +191,9 @@ fn wire_outbound(
     let port     = conn.port.unwrap_or(8080);
     let base_url = format!("http://{}:{}", host, port);
 
-    println!("[Itara] Outbound {} -> '{}' at {}", conn.transport_type, component_id, base_url);
+    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport_type, component_id, base_url, conn.serializer);
+ 
+    validate_serializer(index, component_id, &conn.serializer);
 
     // Load the API cdylib and call itara_create_proxy with the configured transport.
     let api_lib = index.api_lib(component_id)
@@ -199,10 +210,17 @@ fn wire_outbound(
         ));
 
     let transport = load_transport_for(index, &conn.transport_type, &base_url, 0);
+ 
+    // The serializer id is passed to the proxy factory as a null-terminated C string.
+    // The proxy copies it into a Rust String internally, so the CString only needs
+    // to live for the duration of this call.
+    let serializer_cstring = CString::new(conn.serializer.as_str())
+        .expect("[Itara] serializer id contains null byte");
 
     // SAFETY: proxy_fn is itara_create_proxy from the API cdylib.
     // It consumes the transport Box and returns a type-erased proxy Box.
-    let proxy = unsafe { proxy_fn(transport) };
+    // serializer_cstring is valid for this call — the proxy copies the string.
+    let proxy = unsafe { proxy_fn(transport, serializer_cstring.as_ptr()) };
     registry.register_proxy(component_id, proxy);
 }
 
@@ -252,6 +270,35 @@ fn load_local_component_by_id(
     let lib_str = lib.to_string_lossy();
     load_and_register(registry, component_id, &lib_str)
         .unwrap_or_else(|e| panic!("{}", e));
+}
+ 
+// ── Serializer validation ─────────────────────────────────────────────────────
+ 
+/// Validate that the serializer declared in the wiring config is supported
+/// by the API artifact at the other end of this connection.
+///
+/// Panics at startup if the serializer is not in the artifact's supported list.
+/// This is a topology configuration error — it must surface before any
+/// component is activated or any listener is started.
+///
+/// If the artifact declares no serializers (empty list or missing section),
+/// validation is skipped with a warning — the artifact may predate the
+/// [serializers] metadata section.
+fn validate_serializer(index: &LibIndex, component_id: &str, serializer_id: &str) {
+    let supported = index.supported_serializers(component_id);
+    if supported.is_empty() {
+        eprintln!(
+            "[Itara] Warning: no serializer declarations found for api '{}'.              Add a [serializers] section to {}_api.itara to enable validation.",
+            component_id, component_id
+        );
+        return;
+    }
+    if !supported.iter().any(|s| s == serializer_id) {
+        panic!(
+            "[Itara] Serializer mismatch for component '{}':              wiring config declares '{}' but the API artifact only supports {:?}.              Fix the wiring config or recompile the API with '{}' support.",
+            component_id, serializer_id, supported, serializer_id
+        );
+    }
 }
 
 // ── Lib dir resolution ────────────────────────────────────────────────────────

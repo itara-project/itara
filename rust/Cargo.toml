@@ -9,5 +9,6 @@ members = [
     "gateway-api",
     "gateway-component",
     "itara-transport-http",
+    "itara-serializer-json",
 ]
 resolver = "2"
