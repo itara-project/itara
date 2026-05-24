@@ -21,6 +21,7 @@
         <module>calculator-component</module>
         <module>gateway-api</module>
         <module>gateway-component</module>
+        <module>gateway-springcomponent</module>
     </modules>
 
     <dependencyManagement>

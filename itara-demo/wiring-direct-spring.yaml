@@ -1,0 +1,15 @@
+# wiring-direct.yaml
+# Both components run in the same JVM.
+# Gateway calls Calculator as a direct method call — no network involved.
+
+nodes:
+  - id: "gatewayNodeSpring"
+    component: "gateway"
+
+  - id: "calculatorNode"
+    component: "calculator"
+
+connections:
+  - from: "gatewayNodeSpring"
+    to: "calculatorNode"
+    type: "direct"
