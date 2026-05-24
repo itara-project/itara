@@ -10,5 +10,8 @@ members = [
     "gateway-component",
     "itara-transport-http",
     "itara-serializer-json",
+    "itara-observability-logging",
+    "itara-observability-otel",
+    "itara-context-handler",
 ]
 resolver = "2"

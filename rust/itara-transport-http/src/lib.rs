@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use itara_core::{Dispatcher, ItaraTransport};
+use itara_core::{Dispatcher, ItaraTransport, HEADER_TRACEPARENT, HEADER_TRACESTATE};
 
 pub struct HttpTransport {
     base_url:    String,
@@ -19,29 +19,47 @@ impl HttpTransport {
 }
 
 impl ItaraTransport for HttpTransport {
-    fn invoke(&self, component_id: &str, method: &str, args: &[u8]) -> Vec<u8> {
+    fn invoke(
+        &self,
+        component_id: &str,
+        method:       &str,
+        args:         &[u8],
+        traceparent:  &str,
+        tracestate:   &str,
+    ) -> Vec<u8> {
         let url = format!("{}/itara/{}/{}", self.base_url, component_id, method);
         println!("[Itara/HTTP] -> {} to {}", method, url);
 
-        let response = ureq::post(&url)
-            .set("Content-Type", "application/octet-stream")
+        let mut request = ureq::post(&url)
+            .set("Content-Type", "application/octet-stream");
+ 
+        // Forward W3C trace context headers if present.
+        // Empty strings mean no active trace — omit the headers entirely
+        // rather than sending empty values.
+        if !traceparent.is_empty() {
+            request = request.set(HEADER_TRACEPARENT, traceparent);
+        }
+        if !tracestate.is_empty() {
+            request = request.set(HEADER_TRACESTATE, tracestate);
+        }
+ 
+        let response = request
             .send_bytes(args)
-            .unwrap_or_else(|e| panic!("[Itara/HTTP] Call to {}/{} failed: {}", component_id, method, e));
+            .unwrap_or_else(|e| panic!(
+                "[Itara/HTTP] Call to {}/{} failed: {}", component_id, method, e
+            ));
 
         let mut bytes = Vec::new();
         response.into_reader()
             .read_to_end(&mut bytes)
             .expect("[Itara/HTTP] Failed to read response body");
-
         bytes
-
-   //     serde_json::from_str(&response_str)
-    //        .expect("[Itara/HTTP] Failed to parse response as JSON")
     }
 
     fn register_listener(&self, component_id: &str, dispatcher: Dispatcher) {
         println!("[Itara/HTTP] Registered listener for: {}", component_id);
-        self.dispatchers.lock().unwrap().insert(component_id.to_string(), dispatcher);
+        self.dispatchers.lock().unwrap()
+            .insert(component_id.to_string(), dispatcher);
     }
 
     fn start(&self) {
@@ -52,7 +70,9 @@ impl ItaraTransport for HttpTransport {
 
         std::thread::spawn(move || {
             let server = tiny_http::Server::http(&addr)
-                .unwrap_or_else(|e| panic!("[Itara/HTTP] Failed to start server on {}: {}", addr, e));
+                .unwrap_or_else(|e| panic!(
+                    "[Itara/HTTP] Failed to start server on {}: {}", addr, e
+                ));
 
             println!("[Itara/HTTP] Server listening on {}", addr);
 
@@ -61,29 +81,49 @@ impl ItaraTransport for HttpTransport {
                 let path        = request.url().to_string();
                 let parts: Vec<&str> = path.splitn(5, '/').collect();
 
-                if http_method != "POST" || parts.len() < 4 || parts.get(1) != Some(&"itara") {
+                if http_method != "POST"
+                    || parts.len() < 4
+                    || parts.get(1) != Some(&"itara")
+                {
                     request.respond(err_response(
-                        &format!("expected POST /itara/{{componentId}}/{{method}}, got {} {}", http_method, path), 400,
+                        &format!(
+                            "expected POST /itara/{{componentId}}/{{method}}, got {} {}",
+                            http_method, path
+                        ),
+                        400,
                     )).ok();
                     continue;
                 }
 
                 let component_id = parts[2].to_string();
                 let method_name  = parts[3].to_string();
+ 
+                // Extract W3C trace context headers — empty string if absent.
+                let traceparent = header_value(request.headers(), HEADER_TRACEPARENT);
+                let tracestate  = header_value(request.headers(), HEADER_TRACESTATE);
 
                 let mut body_bytes = Vec::new();
                 request.as_reader().read_to_end(&mut body_bytes).unwrap_or(0);
 
-                println!("[Itara/HTTP] <- {}/{} {:?}", component_id, method_name, body_bytes.as_slice());
+                println!(
+                    "[Itara/HTTP] <- {}/{} {:?}",
+                    component_id, method_name, body_bytes.as_slice()
+                );
 
                 let result = {
                     let dispatchers = dispatchers.lock().unwrap();
                     match dispatchers.get(&component_id) {
-                        Some(dispatcher) => dispatcher(&method_name, body_bytes.as_slice()),
+                        Some(dispatcher) => dispatcher(
+                            &method_name,
+                            body_bytes.as_slice(),
+                            &traceparent,
+                            &tracestate,
+                        ),
                         None => {
                             drop(dispatchers);
                             request.respond(err_response(
-                                &format!("no listener for component: {}", component_id), 404,
+                                &format!("no listener for component: {}", component_id),
+                                404,
                             )).ok();
                             continue;
                         }
@@ -98,6 +138,14 @@ impl ItaraTransport for HttpTransport {
         });
     }
 }
+ 
+/// Extract a header value by name (case-insensitive). Returns empty string if absent.
+fn header_value(headers: &[tiny_http::Header], name: &str) -> String {
+    headers.iter()
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
+        .map(|h| h.value.as_str().to_string())
+        .unwrap_or_default()
+}
 
 fn err_response(msg: &str, status: u16) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
     tiny_http::Response::from_string(format!("{{\"error\":\"{}\"}}",
@@ -106,12 +154,6 @@ fn err_response(msg: &str, status: u16) -> tiny_http::Response<std::io::Cursor<V
 }
 
 /// Factory function exported from the cdylib.
-/// The agent calls this with the host and port from the wiring config.
-/// The transport is ignorant of component ids and topology — it just moves bytes.
-///
-/// base_url: null-terminated UTF-8 string for the outbound base URL
-///           (e.g. "http://localhost:8081"). Pass empty string for inbound-only.
-/// listen_port: port to listen on for inbound requests. Pass 0 for outbound-only.
 #[unsafe(no_mangle)]
 pub extern "C" fn itara_transport_factory(
     base_url_ptr: *const std::os::raw::c_char,

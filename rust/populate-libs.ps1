@@ -7,11 +7,14 @@ $TargetDir = ".\target\debug"
 $LibDir    = ".\itara-libs"
 
 $Copies = @(
-    @{ Src = "calculator_component.dll"; Dst = "calculator_component.dll" },
-    @{ Src = "calculator_api.dll";       Dst = "calculator_api.dll"       },
-    @{ Src = "gateway_component.dll";    Dst = "gateway_component.dll"    },
-    @{ Src = "gateway_api.dll";          Dst = "gateway_api.dll"          },
-    @{ Src = "itara_transport_http.dll"; Dst = "itara_transport_http.dll" }
+    @{ Src = "calculator_component.dll";        Dst = "calculator_component.dll"        },
+    @{ Src = "calculator_api.dll";              Dst = "calculator_api.dll"              },
+    @{ Src = "gateway_component.dll";           Dst = "gateway_component.dll"           },
+    @{ Src = "gateway_api.dll";                 Dst = "gateway_api.dll"                 },
+    @{ Src = "itara_transport_http.dll";        Dst = "itara_transport_http.dll"        },
+    @{ Src = "itara_observability_logging.dll"; Dst = "itara_observability_logging.dll" },
+    @{ Src = "itara_observability_otel.dll";    Dst = "itara_observability_otel.dll"    },
+    @{ Src = "itara_context_handler.dll";       Dst = "itara_context_handler.dll"       }
 )
 
 foreach ($copy in $Copies) {
