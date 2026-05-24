@@ -198,6 +198,27 @@ impl LibIndex {
             .map(|s| s.supported.as_slice())
             .unwrap_or(&[])
     }
+ 
+    /// Return the lib paths of all observer artifacts in the index.
+    /// Unlike transports and serializers — which are one per connection —
+    /// multiple observers can be active simultaneously. All discovered
+    /// observer artifacts are returned and the agent loads all of them.
+    pub fn observer_libs(&self) -> Vec<&Path> {
+        self.entries
+            .iter()
+            .filter(|((kind, _), _)| kind == "observer")
+            .map(|(_, entry)| entry.lib_path.as_path())
+            .collect()
+    }
+ 
+    /// Return the lib path of the context handler artifact, if present.
+    /// Exactly one context handler is expected — the first found is returned.
+    pub fn context_handler_lib(&self) -> Option<&Path> {
+        self.entries
+            .iter()
+            .find(|((kind, _), _)| kind == "context-handler")
+            .map(|(_, entry)| entry.lib_path.as_path())
+    }
 
     /// Iterate over all entries for debugging / CLI use.
     pub fn all(&self) -> impl Iterator<Item = &LibEntry> {
@@ -404,6 +425,29 @@ language = "rust"
 "#;
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         assert!(meta.serializers.is_none());
+    }
+ 
+    #[test]
+    fn scan_discovers_observer() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path();
+ 
+        write_temp(dir_path, "itara_observer_logging.itara", r#"
+[artifact]
+kind = "observer"
+id = "logging"
+version = "0.1.0"
+[runtime]
+language = "rust"
+"#);
+ 
+        #[cfg(target_os = "windows")]
+        write_temp(dir_path, "itara_observer_logging.dll", "fake");
+        #[cfg(not(target_os = "windows"))]
+        write_temp(dir_path, "libitara_observer_logging.so", "fake");
+ 
+        let index = LibIndex::scan(dir_path).unwrap();
+        assert_eq!(index.observer_libs().len(), 1);
     }
 
     #[test]

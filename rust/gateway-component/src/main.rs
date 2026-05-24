@@ -1,10 +1,11 @@
 use gateway_api::GatewayService;
-use itara_agent::{itara_init, itara_get};
+use itara_agent::{itara_init, itara_get, itara_run};
  
 fn main() {
     itara_init();
+    itara_run();
  
-    let gateway = itara_get::<dyn GatewayService>("gateway");
+ /*   let gateway = itara_get::<dyn GatewayService>("gateway");
 
     println!("[app] running calculations\n");
 
@@ -16,4 +17,7 @@ fn main() {
 
     let chained = gateway.calculate("add", sum, product);
     println!("[app] {} + {} = {}\n", sum, product, chained);
+ 
+    // Allow async observers (e.g. OTLP exporter) to flush before exit.
+    std::thread::sleep(std::time::Duration::from_secs(3));*/
 }

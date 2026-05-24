@@ -1,0 +1,12 @@
+[artifact]
+kind = "context-handler"
+id = "thread-local"
+version = "0.1.0"
+
+[runtime]
+language = "rust"
+compiler = "1.78+"
+
+[itara]
+spec-version = "0.1"
+core-version = "0.1+"
