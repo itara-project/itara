@@ -5,20 +5,13 @@ import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.WiringConfig;
 import io.itara.api.ItaraActivator;
-import io.itara.runtime.ItaraRegistry;
-import io.itara.runtime.ObserverRegistry;
-import io.itara.runtime.ObservabilityFacade;
-import io.itara.runtime.OtelBridge;
-import io.itara.runtime.SerializerRegistry;
-import io.itara.runtime.TransportRegistry;
+import io.itara.runtime.*;
 import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
 
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -106,37 +99,7 @@ public class ItaraAgent {
 
         ObservabilityFacade.initialize(otelBridge);
 
-        // ── Step 8: Register ComponentFactory ──────────────────────────────
-        // The factory is called lazily by the registry on first component access.
-        // It activates the component and wraps it in an observability decorator
-        // so all four events fire for every direct (colocated) call.
-        final Set<String> transportHandled = new HashSet<>();
-        registry.setComponentFactory((activatorClass, componentId, contractClass) -> {
-            try {
-                ItaraActivator<?> activator =
-                        activatorClass.getDeclaredConstructor().newInstance();
-                Object instance = activator.activate(registry);
-
-                if (transportHandled.contains(componentId)) {
-                    return instance; // transport handles observability — no decorator
-                }
-
-                // Wrap in observability decorator only if observers are registered
-                // and the contract class is known — no-op overhead if no observers
-                if (ObserverRegistry.instance().size() > 0 && contractClass != null) {
-                    return ObservabilityDecorator.wrap(
-                            instance, componentId, contractClass, itaraClassLoader);
-                }
-                return instance;
-
-            } catch (Exception e) {
-                throw new RuntimeException(
-                        "[Itara] Failed to activate component '"
-                        + componentId + "': " + e.getMessage(), e);
-            }
-        });
-
-        // ── Step 9: Register activators for local components ───────────────
+        // ── Step 8: Register activators for local components ───────────────
         if (config.getNodes() != null) {
             for (NodeEntry entry : config.getNodes()) {
                 Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getComponent());
@@ -150,7 +113,7 @@ public class ItaraAgent {
             }
         }
 
-        // ── Step 10: Process connections ────────────────────────────────────
+        // ── Step 9: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
@@ -171,8 +134,9 @@ public class ItaraAgent {
                 Map<String, String> props = buildProperties(conn, config);
 
                 if (isOutbound(conn, config)) {
-                    // This JVM calls a remote component — create a proxy
-                    Class<?> contractClass = contracts.get(config.getComponentOfNodeId(conn.getTo()));
+                    // Outbound — agent owns the proxy, transport is just a byte carrier
+                    String remoteComponentId = config.getComponentOfNodeId(conn.getTo());
+                    Class<?> contractClass = contracts.get(remoteComponentId);
                     if (contractClass == null) {
                         throw new IllegalStateException(
                                 "[Itara] Cannot create proxy for '" + conn.getTo()
@@ -180,21 +144,24 @@ public class ItaraAgent {
                                 + "Is the API jar on the classpath?");
                     }
 
-                    Object proxy = transport.createProxy(config.getComponentOfNodeId(conn.getTo()),
-                                                         contractClass,
-                                                         props,
-                                                         itaraClassLoader,
-                                                         serializer);
-                    registry.preRegister(config.getComponentOfNodeId(conn.getTo()), proxy);
+                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
+                            itaraClassLoader,
+                            new Class<?>[]{ contractClass },
+                            new ItaraProxyHandler(remoteComponentId, serializer, transport, props)
+                    );
+                    registry.preRegister(remoteComponentId, proxy);
 
-                    log.info("[Itara] Connection: "
-                            + conn.getFrom() + " -> " + conn.getTo()
+                    log.info("[Itara] Connection: " + conn.getFrom() + " -> " + conn.getTo()
                             + " [" + type + " outbound]");
 
                 } else {
-                    // This JVM exposes a component — start a listener
-                    transport.startListener(config.getComponentOfNodeId(conn.getTo()), props, registry, serializer);
-                    transportHandled.add(config.getComponentOfNodeId(conn.getTo())); // mark as handled by transport
+                    // Inbound — agent owns the dispatcher, transport delivers bytes to it
+                    String localComponentId = config.getComponentOfNodeId(conn.getTo());
+
+                    DispatchHandler dispatcher = new ItaraDispatcher(
+                            localComponentId, type, serializer, registry
+                    );
+                    transport.startListener(localComponentId, props, dispatcher);
 
                     // Register shutdown hook to stop listener cleanly
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {

@@ -5,11 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.itara.exceptions.ItaraRemoteException;
 import io.itara.spi.ItaraSerializer;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * JSON serializer implementation using Jackson.
@@ -27,12 +23,9 @@ import java.util.Map;
  *     7
  *     {"id": 1, "name": "example"}
  *
- *   Error responses are serialized as a structured JSON object:
- *     {
- *       "errorKind": "CHECKED",
- *       "remoteExceptionClass": "com.example.ValidationException",
- *       "message": "amount must be positive"
- *     }
+ *   Error responses are serialized as ItaraErrorPayload — a plain DTO
+ *   handled by the caller before reaching the serializer. The serializer
+ *   sees it as any other object.
  *
  * Timestamp handling:
  *   java.time types (Instant, LocalDateTime, ZonedDateTime, etc.) are
@@ -52,10 +45,6 @@ import java.util.Map;
  *   known limitation — see transport layer tech debt note.
  */
 public class JsonItaraSerializer implements ItaraSerializer {
-
-    private static final String ERROR_KIND_FIELD       = "errorKind";
-    private static final String ERROR_CLASS_FIELD      = "remoteExceptionClass";
-    private static final String ERROR_MESSAGE_FIELD    = "message";
 
     private final ObjectMapper mapper;
 
@@ -106,28 +95,17 @@ public class JsonItaraSerializer implements ItaraSerializer {
     /**
      * Serializes a return value or a Throwable as JSON.
      *
-     * If the result is a Throwable, it is serialized as a structured error
-     * object containing the error kind, the original exception class name,
-     * and the message. The error kind is inferred from the exception type:
-     * RuntimeException and Error are RUNTIME, all others are CHECKED.
-     *
-     * Normal results are serialized as their natural JSON representation.
-     * Null (void method) serializes as JSON null.
+     * The caller is responsible for preparing the correct object before
+     * serialization — error payloads arrive as ItaraErrorPayload, not as
+     * Throwables. Null (void method) serializes as JSON null.
      */
     @Override
     public byte[] serializeResult(Object result) throws Exception {
-        if (result instanceof Throwable t) {
-            return serializeThrowable(t);
-        }
         return mapper.writeValueAsBytes(result);
     }
 
     /**
-     * Deserializes a return value or an ItaraRemoteException from JSON.
-     *
-     * If the target type is ItaraRemoteException, the payload is treated
-     * as a structured error object and reconstructed accordingly.
-     * Otherwise the payload is deserialized as the declared return type.
+     * Deserializes a return value from JSON using the declared return type.
      *
      * For void methods (Void.TYPE), returns null regardless of payload.
      */
@@ -136,44 +114,7 @@ public class JsonItaraSerializer implements ItaraSerializer {
         if (returnType == Void.TYPE || returnType == Void.class) {
             return null;
         }
-        if (returnType == ItaraRemoteException.class) {
-            return deserializeError(bytes);
-        }
         JavaType javaType = mapper.getTypeFactory().constructType(returnType);
         return mapper.readValue(bytes, javaType);
-    }
-
-    // — private helpers —
-
-    private byte[] serializeThrowable(Throwable t) throws Exception {
-        ItaraRemoteException.ErrorKind kind =
-                (t instanceof RuntimeException || t instanceof Error)
-                        ? ItaraRemoteException.ErrorKind.RUNTIME
-                        : ItaraRemoteException.ErrorKind.CHECKED;
-
-        Map<String, String> error = new LinkedHashMap<>();
-        error.put(ERROR_KIND_FIELD,    kind.name());
-        error.put(ERROR_CLASS_FIELD,   t.getClass().getName());
-        error.put(ERROR_MESSAGE_FIELD, t.getMessage());
-        return mapper.writeValueAsBytes(error);
-    }
-
-    private ItaraRemoteException deserializeError(byte[] bytes) throws Exception {
-        Map<?, ?> error = mapper.readValue(bytes, Map.class);
-
-        String kindStr   = (String) error.get(ERROR_KIND_FIELD);
-        String className = (String) error.get(ERROR_CLASS_FIELD);
-        String message   = (String) error.get(ERROR_MESSAGE_FIELD);
-
-        ItaraRemoteException.ErrorKind kind;
-        try {
-            kind = ItaraRemoteException.ErrorKind.valueOf(kindStr);
-        } catch (IllegalArgumentException e) {
-            // Unrecognized error kind — treat as transport failure rather
-            // than silently swallowing the error or crashing deserialization
-            kind = ItaraRemoteException.ErrorKind.TRANSPORT;
-        }
-
-        return new ItaraRemoteException(kind, className, message);
     }
 }

@@ -20,11 +20,6 @@
             <groupId>io.itara</groupId>
             <artifactId>itara-common</artifactId>
         </dependency>
-        <!-- ByteBuddy for proxy generation -->
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-        </dependency>
     </dependencies>
 
 </project>

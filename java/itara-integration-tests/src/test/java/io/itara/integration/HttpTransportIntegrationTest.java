@@ -2,7 +2,9 @@ package io.itara.integration;
 
 import demo.calculator.api.ArithmeticOperationException;
 import demo.calculator.api.CalculatorService;
-import demo.calculator.component.CalculatorServiceImpl;
+import demo.calculator.component.CalculatorActivator;
+import io.itara.agent.ItaraDispatcher;
+import io.itara.agent.ItaraProxyHandler;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
@@ -27,12 +29,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * via a real HttpRemoteProxy. No mocks, no Docker — pure localhost socket
  * communication. Safe to run in any CI environment.
  *
+ * Wired the same way the agent wires at startup:
+ *   - ItaraDispatcher owns the inbound pipeline (observability, serialization, registry)
+ *   - ItaraProxyHandler owns the outbound pipeline (observability, serialization, transport)
+ *   - HttpTransport moves bytes — knows nothing else
+ *
  * Covers:
  *   - Success path — correct return values over the wire
  *   - Checked exception path — CHECKED ErrorKind, 422 status
  *   - Runtime exception path — RUNTIME ErrorKind, 500 status
- *   - Infrastructure failures — TRANSPORT ErrorKind, 400/503 status
- *   - Complex type roundtrip — types survive serialization over HTTP
+ *   - Infrastructure failures — TRANSPORT ErrorKind
+ *   - Error message preservation across the wire
  */
 @DisplayName("HTTP Transport Integration")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -43,63 +50,65 @@ class HttpTransportIntegrationTest {
     private static ItaraHttpServer server;
     private static CalculatorService proxy;
     private static int port;
-    private static ItaraSerializer serializer;
 
     @BeforeAll
     static void startServer() throws IOException {
         port = findFreePort();
-        serializer = new JsonItaraSerializer();
 
-        // Registry backed by the real component implementation
-        ItaraRegistry registry = ItaraRegistry.instance();
-        registry.preRegister(COMPONENT_ID, new CalculatorServiceImpl());
-
-        server = new ItaraHttpServer(port, registry, serializer);
-        server.start();
-
-        // Build a proxy the same way the agent would
+        ItaraSerializer serializer = new JsonItaraSerializer();
         HttpTransport transport = new HttpTransport();
-        Object rawProxy = transport.createProxy(
-                COMPONENT_ID,
-                CalculatorService.class,
-                Map.of("host", "localhost", "port", String.valueOf(port)),
-                Thread.currentThread().getContextClassLoader(),
-                serializer
-        );
-        proxy = (CalculatorService) rawProxy;
 
         ObservabilityFacade.initialize(new NoOpOtelBridge());
+
+        // Registry — pre-register the raw implementation for the dispatcher
+        ItaraRegistry registry = ItaraRegistry.instance();
+        registry.registerActivator(COMPONENT_ID,
+                CalculatorActivator.class,
+                CalculatorService.class
+        );
+
+        // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
+        ItaraDispatcher dispatcher = new ItaraDispatcher(
+                COMPONENT_ID, HttpTransport.TYPE, serializer, registry
+        );
+        server = new ItaraHttpServer(port, dispatcher);
+        server.start();
+
+        // Outbound — proxy handler owns the pipeline, transport is a byte carrier
+        proxy = (CalculatorService) Proxy.newProxyInstance(
+                Thread.currentThread().getContextClassLoader(),
+                new Class<?>[]{ CalculatorService.class },
+                new ItaraProxyHandler(
+                        COMPONENT_ID, serializer, transport,
+                        Map.of("host", "localhost", "port", String.valueOf(port))
+                )
+        );
     }
 
     @AfterAll
     static void stopServer() {
-        if (server != null) {
-            server.stop();
-        }
+        if (server != null) server.stop();
     }
 
     @Test
     @Order(1)
     @DisplayName("add() returns correct result over HTTP")
     void successPath() {
-        int result = proxy.add(3, 4);
-        assertEquals(7, result);
+        assertEquals(7, proxy.add(3, 4));
     }
 
     @Test
     @Order(2)
     @DisplayName("add() with negative numbers returns correct result")
     void successNegative() {
-        int result = proxy.add(-5, 3);
-        assertEquals(-2, result);
+        assertEquals(-2, proxy.add(-5, 3));
     }
 
     @Test
     @Order(3)
     @DisplayName("divide() returns correct result over HTTP")
     void divideSuccess() throws ArithmeticOperationException {
-        int result = proxy.divide(10, 2);
-        assertEquals(5, result);
+        assertEquals(5, proxy.divide(10, 2));
     }
 
     @Test
@@ -136,14 +145,15 @@ class HttpTransportIntegrationTest {
     @Order(6)
     @DisplayName("calling unknown component produces TRANSPORT kind")
     void unknownComponentProducesTransport() throws IOException {
-        // Build a proxy pointing at a valid server but unknown component id
-        HttpTransport transport = new HttpTransport();
-        CalculatorService badProxy = (CalculatorService) transport.createProxy(
-                "nonexistent-component",
-                CalculatorService.class,
-                Map.of("host", "localhost", "port", String.valueOf(port)),
+        CalculatorService badProxy = (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
-                serializer
+                new Class<?>[]{ CalculatorService.class },
+                new ItaraProxyHandler(
+                        "nonexistent-component",
+                        new JsonItaraSerializer(),
+                        new HttpTransport(),
+                        Map.of("host", "localhost", "port", String.valueOf(port))
+                )
         );
         ItaraRemoteException ex = assertThrows(
                 ItaraRemoteException.class,
@@ -157,13 +167,15 @@ class HttpTransportIntegrationTest {
     @DisplayName("calling unreachable server produces TRANSPORT kind")
     void unreachableServerProducesTransport() throws IOException {
         int deadPort = findFreePort(); // Nothing listening here
-        HttpTransport transport = new HttpTransport();
-        CalculatorService badProxy = (CalculatorService) transport.createProxy(
-                COMPONENT_ID,
-                CalculatorService.class,
-                Map.of("host", "localhost", "port", String.valueOf(deadPort)),
+        CalculatorService badProxy = (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
-                serializer
+                new Class<?>[]{ CalculatorService.class },
+                new ItaraProxyHandler(
+                        COMPONENT_ID,
+                        new JsonItaraSerializer(),
+                        new HttpTransport(),
+                        Map.of("host", "localhost", "port", String.valueOf(deadPort))
+                )
         );
         ItaraRemoteException ex = assertThrows(
                 ItaraRemoteException.class,

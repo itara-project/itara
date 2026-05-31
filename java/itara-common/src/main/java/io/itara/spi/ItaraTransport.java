@@ -1,23 +1,32 @@
 package io.itara.spi;
 
-import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ItaraContext;
 
 import java.util.Map;
 
 /**
  * Service Provider Interface for Itara transports.
  *
- * A transport is responsible for two things:
- *   1. Creating a proxy object that the caller uses to reach a remote component
- *   2. Starting a listener that receives inbound calls and dispatches them
- *      to the local component implementation via the registry
+ * A transport moves bytes. Nothing else.
  *
- * Implementations live in separate jars (Itara-transport-http,
- * Itara-transport-jms, Itara-transport-kafka, etc.) and are discovered
- * by the agent at startup via META-INF/Itara/transport on the classpath.
+ * It does not know about serialization format, observability, or the registry.
+ * Those concerns belong to the proxy handler and dispatcher, which are owned
+ * by the agent and call this transport as a delegate.
  *
- * The transport type string (e.g. "http", "jms", "kafka") must match
- * the type field in the wiring config connection entries.
+ * Outbound: send(bytes) → bytes. The proxy handler owns serialization and
+ * observability; the transport owns the connection and the wire protocol.
+ *
+ * Inbound: the transport calls the DispatchHandler with raw request bytes and
+ * receives raw response bytes. The dispatcher owns deserialization, component
+ * invocation, result serialization, and observability.
+ *
+ * Context propagation: the transport receives an ItaraContext on send() so it
+ * can inject W3C trace headers. It reads from the context but does not create,
+ * modify, or manage its lifecycle.
+ *
+ * Implementations live in separate jars (itara-transport-http, etc.) and are
+ * discovered by the agent at startup via META-INF/itara/transport.
  */
 public interface ItaraTransport {
 
@@ -29,47 +38,43 @@ public interface ItaraTransport {
     String type();
 
     /**
-     * Create a proxy object that implements the given contract class
-     * and routes calls to the remote component via this transport.
+     * Send pre-serialized bytes to a remote component and return the
+     * raw response bytes. The transport injects W3C trace headers from
+     * the provided context but does not own context lifecycle.
      *
-     * Called by the agent for each outbound connection of this transport type.
-     * The returned object is pre-registered in the ItaraRegistry before
-     * any activator runs.
-     *
-     * @param componentId  The id of the remote component (matches @ComponentInterface id)
-     * @param contractClass The contract abstract class to proxy
-     * @param properties   Connection-specific properties from the wiring config
-     *                     (e.g. host, port, queue name, topic, etc.)
-     * @param classLoader  The classloader to define the generated proxy class in
-     * @return             A proxy instance implementing contractClass
+     * @param componentId  The id of the remote component
+     * @param methodName   The method being called
+     * @param payload      Pre-serialized argument bytes
+     * @param context      The current call context — for header propagation only
+     * @param properties   Connection properties from the wiring config
+     * @return             Raw response bytes
+     * @throws Exception   On any transport-level failure
      */
-    Object createProxy(String componentId,
-                       Class<?> contractClass,
-                       Map<String, String> properties,
-                       ClassLoader classLoader,
-                       ItaraSerializer serializer);
+    byte[] send(String componentId,
+                String methodName,
+                byte[] payload,
+                ItaraContext context,
+                Map<String, String> properties) throws Exception;
 
     /**
-     * Start a listener that receives inbound calls for the given component
-     * and dispatches them to the implementation via the registry.
+     * Start a listener that receives inbound calls for the given component.
+     * The listener delivers raw request bytes to the dispatcher and writes
+     * raw response bytes back. It knows nothing about serialization or
+     * observability.
      *
-     * Called by the agent for each inbound connection of this transport type.
-     * The listener must be started asynchronously — this method returns
-     * immediately after the listener is ready to accept connections.
+     * Must return immediately after the listener is ready to accept connections.
      *
      * @param componentId  The id of the component being exposed
-     * @param properties   Connection-specific properties (port, queue name, etc.)
-     * @param registry     The registry to retrieve the component instance from
+     * @param properties   Connection properties from the wiring config
+     * @param dispatcher   The dispatcher to call with raw request bytes
      */
     void startListener(String componentId,
                        Map<String, String> properties,
-                       ItaraRegistry registry,
-                       ItaraSerializer serializer);
+                       DispatchHandler dispatcher);
 
     /**
-     * Stop the listener started by startListener(), if any.
-     * Called by the agent's shutdown hook.
-     * Implementations that have no listener may leave this as a no-op.
+     * Stop the listener. Called by the agent's shutdown hook.
+     * No-op by default.
      */
     default void stopListener() {}
 }

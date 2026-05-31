@@ -1,7 +1,4 @@
-package io.itara.agent;
-
-import io.itara.runtime.ItaraContext;
-import io.itara.runtime.ObservabilityFacade;
+package io.itara.runtime;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
