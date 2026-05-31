@@ -25,6 +25,10 @@ No component shall ever encode:
 Topology belongs to configuration.  
 Code expresses intent — nothing more.
 
+How this separation is achieved is a language-level implementation detail.  
+Dynamic loading, recompilation, configuration — the mechanism follows the language.  
+The separation itself does not.
+
 ---
 
 ## **2. Semantics Are Explicit. Mechanics Are Abstracted.**
@@ -120,7 +124,7 @@ Itara must support:
  - C++
  - Go
  - Python
- - Any language capable of dynamic linking or RPC
+ - Any language with sufficient metaprogramming or build-time automation capability
 
 The universal layer is sacred.  
 It must not drift.  
@@ -128,14 +132,18 @@ It must not fragment.
 
 ---
 
-## **8. The Runtime Is Pluggable**
-Transports are pluggable.  
-Activators are pluggable.  
-Serialization is pluggable.  
-Observability sinks are pluggable.  
-Deployment strategies are pluggable.
+## **8. Itara Takes Responsibility For The Complexity It Creates**
+Itara introduces a new layer. That layer introduces new concepts.
+New concepts have a learning curve. New failure modes become possible.
 
-Itara defines the *shape* of the world, not the implementation of every detail.
+Itara does not pretend otherwise.
+
+The tooling exists because the runtime creates obligations.
+A wiring config that can be misconfigured is not a step forward.
+Incorrect topologies must be caught before deployment, not discovered in production.
+
+The tooling is Itara's answer to its own complexity.
+It is not optional polish — it is the platform keeping its promise.
 
 ---
 
@@ -162,6 +170,8 @@ To make boundaries reversible.
 To make refactoring cheap.  
 To make topology declarative.  
 To make systems evolvable.  
+To make incorrect topologies impossible to deploy.  
+To make every connection auditable and every change traceable.  
 To free developers from plumbing.  
 To let intent shine without mechanics leaking through.
 
