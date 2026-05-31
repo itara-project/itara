@@ -2,9 +2,11 @@
 
 **Make software soft again.**
 
-Itara is a language-neutral specification for treating distributed system topology as a configuration decision, not a code decision. Reference implementations exist in Java and Rust. More languages are planned.
+Itara is a compiler and linker for distributed system topology. It treats topology — how components connect, communicate, and are observed — as a concentrated, separately declared layer, not a consequence of how code was written.
 
-Change how your components communicate — collocated direct calls, HTTP, message queues — by changing a config file. No code changes. No redeployment ceremony. No migration scripts. Restart with a new config and the topology changes.
+This is achieved through two co-equal parts: a language-specific wiring agent that reads the wiring config before the application starts, resolves all connections once, wires the components together, and then steps aside — the application runs at full speed with no intermediary, no proxy in the call path, no decisions made at call time — and a tooling ecosystem that makes the topology layer safe and manageable. The tooling validates configurations before deployment, catches mismatches and incompatibilities at authoring time, visualises the topology as a graph, and guides engineers through changes. Incorrect topologies cannot be deployed silently. The layer Itara introduces is the layer the tooling understands completely.
+
+Change how your components communicate — collocated direct calls, HTTP, message queues — by changing a config file. No code changes. No redeployment ceremony. No migration scripts. Reference implementations of the wiring agent exist in Java and Rust. More languages are planned. The tooling ecosystem is under active development — the CLI, the validator, and the visual editor are the next major milestone.
 
 ---
 
@@ -13,9 +15,9 @@ Change how your components communicate — collocated direct calls, HTTP, messag
 Every production system in the world handles topology change through ritual.
 Want to split a service? Months of parallel running, dual-write patterns, careful traffic migration. Want to merge two services? Same thing in reverse. Want to change from HTTP to a message queue between two components? Touch both services, coordinate deployment, pray.
 
-This is the state of the art. The patterns are elegant — blue-green deployments, expand-and-contract, strangler fig — but every one of them is ceremony. External scaffolding bolted around systems that fundamentally cannot evolve themselves.
+This is the state of the art. The patterns are elegant — blue-green deployments, expand-and-contract, strangler fig — but every one of them is ceremony. External scaffolding bolted around systems that fundamentally cannot evolve themselves. And ceremony is where mistakes live: in the coordination between teams, in the timing of deployments, in the assumptions that were true last week and aren't today.
 
-Itara proposes that topology should be a continuously adjustable variable, not a hardcoded consequence of how services were originally written.
+The deeper problem is that topology is invisible. It lives in HTTP clients, retry policies, timeout configurations, and message producer settings scattered across every service. Nobody has the full picture. Changes are made by reading code, making assumptions, and hoping the assumptions hold. The system cannot tell you what it is. It cannot tell you what will break if you change it. It cannot tell you if the change you just made is correct.
 
 ---
 
