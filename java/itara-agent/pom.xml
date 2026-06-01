@@ -23,15 +23,6 @@
             <groupId>io.itara</groupId>
             <artifactId>itara-common</artifactId>
         </dependency>
-        <!-- ByteBuddy for proxy generation and class transformation -->
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy-agent</artifactId>
-        </dependency>
         <!-- Jackson YAML for wiring config parsing.
                  Shaded into the fat jar to avoid version conflicts with any
                  YAML or Jackson library the application may use.
@@ -52,8 +43,8 @@
     <build>
         <plugins>
             <!--
-                Shade plugin produces a fat jar containing itara-common
-                and ByteBuddy. This ensures the agent is self-contained:
+                Shade plugin produces a fat jar containing itara-common.
+                This ensures the agent is self-contained:
                 it must be loadable before the application classloader
                 is initialized, so it cannot rely on application classpaths.
 

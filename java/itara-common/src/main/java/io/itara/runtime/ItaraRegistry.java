@@ -13,15 +13,21 @@ import java.util.logging.Logger;
  *   - Remote connections:  preRegister() with a generated HTTP proxy
  *   - Local connections:   registerActivator() with the activator class
  *
- * Application code and activators call get() to retrieve components.
- * The first call to get() for a local component triggers its activator,
- * which may recursively call get() for its own dependencies.
+ * Two explicit retrieval methods reflect two fundamentally different use cases:
  *
- * If a ComponentFactory is registered by the agent, it is called instead
- * of the default activation path — allowing the agent to wrap the instance
- * in an observability decorator before storing it. Falls back to direct
- * activation if no factory is registered, so the registry works correctly
- * without the agent (e.g. in unit tests).
+ *   get()             — for application code and activators. Returns the
+ *                       pre-registered remote proxy, or activates and wraps
+ *                       the local instance in an ObservabilityDecorator on
+ *                       first call. Lazy — safe to call from activators that
+ *                       depend on Spring or other frameworks initialising first.
+ *
+ *   getRawImplementation() — for the inbound dispatcher only. Always returns the
+ *                            raw activated instance with no wrapping. The dispatcher
+ *                            owns its own observability pipeline — a decorated instance
+ *                            would cause double event firing.
+ *
+ * No ComponentFactory. No transportHandled set. The distinction between
+ * "needs decoration" and "needs raw instance" is expressed in the API.
  *
  * Singleton — one registry per JVM, accessed via ItaraRegistry.instance().
  */
@@ -31,22 +37,22 @@ public class ItaraRegistry {
 
     private static final ItaraRegistry INSTANCE = new ItaraRegistry();
 
-    // Fully initialized instances — remote proxies and activated locals
-    private final Map<String, Object> instances = new ConcurrentHashMap<>();
+    // Decorated instances and remote proxies — served to application code
+    private final Map<String, Object> proxies = new ConcurrentHashMap<>();
+
+    // Raw activated instances — served to the dispatcher only
+    private final Map<String, Object> rawInstances = new ConcurrentHashMap<>();
 
     // Activator classes for local components, registered by the agent
     private final Map<String, Class<? extends ItaraActivator<?>>> activators =
             new ConcurrentHashMap<>();
 
-    // Contract classes per component id — needed by the factory to create the proxy
+    // Contract classes per component id — needed to create the observability proxy
     private final Map<String, Class<?>> contracts = new ConcurrentHashMap<>();
 
     // Tracks which component ids are currently being activated
-    // to detect circular dependencies. Best-effort in v1.
+    // to detect circular dependencies. Best-effort.
     private final Map<String, Thread> activating = new ConcurrentHashMap<>();
-
-    // Optional factory registered by the agent — wraps instances in decorators
-    private volatile ComponentFactory componentFactory;
 
     private ItaraRegistry() {}
 
@@ -62,13 +68,15 @@ public class ItaraRegistry {
      * calls to the remote JVM over the transport.
      */
     public void preRegister(String id, Object proxy) {
-        instances.put(id, proxy);
+        proxies.put(id, proxy);
         log.info("[Itara] Pre-registered remote proxy for: " + id);
     }
 
     /**
      * Called by the agent to register how to activate a local component.
-     * The activator is instantiated and invoked lazily on first get().
+     * Activation is lazy — triggered on first getProxy() or getRawImplementation().
+     * This preserves Spring and framework compatibility: the activator runs
+     * after the application context is ready, not during premain.
      */
     public void registerActivator(String id,
                                   Class<? extends ItaraActivator<?>> activatorClass,
@@ -78,38 +86,45 @@ public class ItaraRegistry {
         log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
     }
 
-    /**
-     * Registers the ComponentFactory used to activate and decorate local
-     * components. Called by the agent at startup after observers are loaded.
-     * If not set, falls back to direct activation without decoration.
-     */
-    public void setComponentFactory(ComponentFactory factory) {
-        this.componentFactory = factory;
-    }
-
     // ── Application API ───────────────────────────────────────────────────────
 
     /**
-     * Retrieve a component by id and expected type.
+     * Retrieve a component for use by application code or activators.
      *
-     * If the component is already initialized (remote proxy or previously
-     * activated local), returns immediately.
-     *
-     * If the component is local and not yet activated, invokes the factory
-     * if registered, or falls back to direct activation.
+     * Remote components: returns the pre-registered proxy immediately
+     * (preRegister put it in the map; computeIfAbsent never fires).
+     * Local components: activates on first call, wraps in ObservabilityDecorator
+     * if observers are registered. Atomic — concurrent callers receive the same instance.
      *
      * @throws IllegalStateException if the component id is not registered
      *         in this JVM slice — indicates a topology config error.
      */
     @SuppressWarnings("unchecked")
     public <T> T get(String id, Class<T> type) {
-        // Fast path — already initialized
-        Object existing = instances.get(id);
-        if (existing != null) {
-            return type.cast(existing);
-        }
+        return type.cast(proxies.computeIfAbsent(id, key -> decorate(activateRaw(key), key)));
+    }
 
-        // Circular dependency detection (best-effort)
+    /**
+     * Retrieve the raw implementation of a local component.
+     *
+     * For use by the inbound dispatcher ONLY. The dispatcher owns its
+     * observability pipeline — it must receive the raw instance, not a
+     * decorated one, or events will fire twice.
+     *
+     * computeIfAbsent guarantees a single instance even under concurrent
+     * dispatch — all listeners share the same activated instance.
+     *
+     * @throws IllegalStateException if the component is not a local component
+     *         registered in this JVM slice.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getRawImplementation(String id, Class<T> type) {
+        return type.cast(rawInstances.computeIfAbsent(id, this::activateRaw));
+    }
+
+    // ── Internal ─────────────────────────────────────────────────────────────
+
+    private Object activateRaw(String id) {
         Thread current = Thread.currentThread();
         Thread already = activating.putIfAbsent(id, current);
         if (already != null && already == current) {
@@ -118,42 +133,39 @@ public class ItaraRegistry {
         }
 
         try {
-            Object instance = instances.computeIfAbsent(id, key -> {
-                Class<? extends ItaraActivator<?>> activatorClass = activators.get(key);
-                if (activatorClass == null) {
-                    throw new IllegalStateException(
-                            "[Itara] Topology error: component '" + key
-                            + "' is not registered in this JVM slice. "
-                            + "Check your wiring config.");
-                }
+            Class<? extends ItaraActivator<?>> activatorClass = activators.get(id);
+            if (activatorClass == null) {
+                throw new IllegalStateException(
+                        "[Itara] Topology error: component '" + id
+                                + "' is not registered in this JVM slice. "
+                                + "Check your wiring config.");
+            }
 
-                log.info("[Itara] Activating: " + key);
+            log.info("[Itara] Activating: " + id);
+            ItaraActivator<?> activator = activatorClass.getDeclaredConstructor().newInstance();
+            Object instance = activator.activate(this);
+            log.info("[Itara] Activated:  " + id
+                    + " -> " + instance.getClass().getSimpleName());
+            return instance;
 
-                try {
-                    if (componentFactory != null) {
-                        // Agent-registered factory — activates and wraps in decorator
-                        Object result = componentFactory.create(
-                                activatorClass, key, contracts.get(key));
-                        log.info("[Itara] Activated:  " + key + " -> " + result.getClass().getSimpleName());
-                        return result;
-                    } else {
-                        // Fallback — direct activation, no decoration
-                        ItaraActivator<?> activator =
-                                activatorClass.getDeclaredConstructor().newInstance();
-                        Object result = activator.activate(ItaraRegistry.this);
-                        log.info("[Itara] Activated:  " + key + " -> " + result.getClass().getSimpleName());
-                        return result;
-                    }
-                } catch (IllegalStateException e) {
-                    throw e;
-                } catch (Exception e) {
-                    throw new RuntimeException(
-                            "[Itara] Failed to activate component: " + key, e);
-                }
-            });
-            return type.cast(instance);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "[Itara] Failed to activate component '" + id
+                            + "': " + e.getMessage(), e);
         } finally {
             activating.remove(id);
         }
+    }
+
+    private Object decorate(Object raw, String id) {
+        Class<?> contractClass = contracts.get(id);
+        if (ObserverRegistry.instance().size() > 0 && contractClass != null) {
+            return ObservabilityDecorator.wrap(
+                    raw, id, contractClass,
+                    Thread.currentThread().getContextClassLoader());
+        }
+        return raw;
     }
 }

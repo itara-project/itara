@@ -68,6 +68,20 @@ public class ItaraRemoteException extends RuntimeException {
     private final String remoteExceptionClass;
 
     /**
+     * Pre-serialized error payload for transport-level error propagation.
+     * Set by the dispatcher via withSerializedPayload() before throwing,
+     * so the transport server can write the bytes back to the caller
+     * without touching the serializer. Null for locally-originated failures.
+     */
+    private byte[] serializedPayload;
+
+    public ItaraRemoteException(byte[] responseBytes) {
+        this.errorKind = ErrorKind.TRANSPORT;
+        this.remoteExceptionClass = RuntimeException.class.getSimpleName();
+        this.serializedPayload = responseBytes;
+    }
+
+    /**
      * Constructs an ItaraRemoteException from a structured error payload.
      *
      * @param errorKind            classifies the failure category
@@ -104,6 +118,29 @@ public class ItaraRemoteException extends RuntimeException {
         this.remoteExceptionClass = remoteExceptionClass;
     }
 
+    // ── Payload conversion ────────────────────────────────────────────────
+
+    /**
+     * Produces a wire-safe ItaraErrorPayload from this exception.
+     * Called by the dispatcher before serializing the error — the payload
+     * is what crosses the wire, not the exception itself.
+     */
+    public ItaraErrorPayload toPayload() {
+        return new ItaraErrorPayload(errorKind, remoteExceptionClass, getMessage());
+    }
+
+    /**
+     * Reconstructs an ItaraRemoteException from a deserialized payload.
+     * Called by the proxy after deserializing the error response.
+     */
+    public static ItaraRemoteException from(ItaraErrorPayload payload) {
+        return new ItaraRemoteException(payload.getErrorKind(),
+                payload.getRemoteExceptionClass(),
+                payload.getMessage());
+    }
+
+    // ── Getters ───────────────────────────────────────────────────────────
+
     /**
      * Returns the failure category.
      *
@@ -128,6 +165,24 @@ public class ItaraRemoteException extends RuntimeException {
      */
     public String getRemoteExceptionClass() {
         return remoteExceptionClass;
+    }
+
+    /**
+     * Returns the pre-serialized error payload, or null if not set.
+     * The transport server writes these bytes back to the caller as-is.
+     */
+    public byte[] getSerializedPayload() {
+        return serializedPayload;
+    }
+
+    /**
+     * Attaches a pre-serialized error payload to this exception.
+     * Called by the dispatcher after serializing the error, before throwing.
+     * Returns this for fluent use: throw ex.withSerializedPayload(bytes).
+     */
+    public ItaraRemoteException withSerializedPayload(byte[] payload) {
+        this.serializedPayload = payload;
+        return this;
     }
 
     @Override
