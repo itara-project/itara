@@ -1,7 +1,7 @@
 # Itara Specification
 
-**Status:** Draft  
-**Version:** 0.1-draft  
+**Status:** Accepted  
+**Version:** 0.1  
 **Repository:** https://github.com/itara-project/itara  
 **License:** Apache 2.0
 
@@ -19,7 +19,7 @@ This specification defines the component model, the wiring model, the agent cont
 
 ## Status of This Document
 
-This is a **Draft** specification. It reflects the current design of the reference implementations and the decisions made by the core team as of the date of this document. Sections marked **[OPEN]** contain unresolved design questions. The specification SHOULD NOT be considered stable. Breaking changes are possible before a versioned release is published.
+This is version **0.1** of the Itara specification. It reflects the current design of the reference implementations and the decisions made by the core team as of the date of this document. Sections marked **[OPEN]** contain unresolved design questions that will be addressed in future versions. The specification is stable for the areas it covers. Breaking changes to covered areas will be communicated clearly before they are made.
 
 Feedback, objections, and proposals are welcome as GitHub issues on the Itara repository.
 
@@ -31,12 +31,13 @@ Feedback, objections, and proposals are welcome as GitHub issues on the Itara re
 2. Terminology
 3. Component Model
 4. Wiring Model
-5. Agent Contract
-6. Transport Interface
-7. Serializer Interface
-8. Observer Interface
-9. Context Propagation
-10. Conformance
+5. Plugin Artifact Metadata
+6. Agent Contract
+7. Transport Interface
+8. Serializer Interface
+9. Observer Interface
+10. Context Propagation
+11. Conformance
 
 ---
 
@@ -300,13 +301,121 @@ A conforming implementation MUST support a node being the target of connections 
 
 ---
 
-## 5. Agent Contract
+## 5. Plugin Artifact Metadata
 
-### 5.1 Summary
+### 5.1 Purpose
+
+Every Itara artifact — component implementations, API definitions, transport
+implementations, serializer implementations, and observer implementations —
+MUST ship a companion metadata file. The metadata file enables the agent and
+tooling to identify artifacts, verify compatibility, and make informed decisions
+before loading any code.
+
+The metadata file is the mechanism by which the agent scans the artifact
+directory without loading anything, and by which the CLI validates a topology
+before deployment. It is the symbol table the compiler and linker work from.
+
+### 5.2 Format
+
+The metadata file MUST be:
+
+- In TOML format
+- Human-readable and machine-editable without specialist tooling
+- Language-neutral — the same format is used regardless of the implementation
+  language of the artifact
+- Named with the same stem as the artifact and the `.itara` extension
+
+Example: `calculator-component.itara` alongside `calculator-component.so`
+
+Unknown fields MUST be silently ignored. This ensures forward compatibility —
+older agents and tooling can read metadata produced by newer artifacts without
+failing.
+
+### 5.3 Minimum Required Fields
+
+Every `.itara` metadata file MUST include an `[artifact]` section with at
+minimum:
+
+```toml
+[artifact]
+kind    = "component"   # component | api | transport | serializer | observer
+id      = "calculator"  # unique identifier for this artifact
+version = "1.2.0"       # semver — implementation version
+```
+
+Every `.itara` metadata file SHOULD include:
+
+```toml
+[runtime]
+language = "rust"       # rust | java | go | python | ...
+compiler = "1.78+"      # minimum compiler or runtime version required
+
+[itara]
+spec-version = "0.1"    # Itara spec version this artifact targets
+core-version = "0.1+"   # minimum itara-core version required
+```
+
+### 5.4 Kind-Specific Fields
+
+#### API Artifacts
+
+An artifact of `kind = "api"` MUST additionally declare the serializers its types support:
+
+```toml
+[artifact]
+kind    = "api"
+id      = "calculator"
+version = "1.0.0"
+
+[serializers]
+supported = ["json", "protobuf"]
+```
+
+An API artifact SHOULD declare which of its methods are not idempotent.
+Methods not listed are assumed idempotent. This information is used by
+tooling and future failure mechanism SPIs to apply appropriate retry and
+recovery strategies:
+
+```toml
+[methods]
+non_idempotent = ["divide", "transfer", "placeOrder"]
+```
+
+#### Component Artifacts
+
+An artifact of `kind = "component"` MUST declare the API version it implements.
+This is the field the tooling uses to verify that the component is compatible
+with the API artifact it is wired against:
+
+```toml
+[artifact]
+kind        = "component"
+id          = "calculator"
+version     = "1.2.0"
+api-version = "1.x"          # semver range of the API this component implements
+```
+
+### 5.5 Artifact Discovery
+
+The agent and CLI MUST scan for `.itara` files before loading any artifact.
+All metadata files MUST be read and validated before any artifact is loaded.
+
+A `.itara` file without a sibling loadable artifact MUST be treated as a
+warning, not an error — it may belong to a tool that does not produce a
+loadable library.
+
+Duplicate entries with the same `kind` and `id` MUST be flagged as a
+configuration error. The agent MUST NOT load duplicates silently.
+
+---
+
+## 6. Agent Contract
+
+### 6.1 Summary
 
 The agent bootstraps the system. It runs before application code, reads the wiring configuration, loads plugins, registers activators, and establishes connections. When the agent completes startup, the system is ready and application code may execute.
 
-### 5.2 Startup Sequence
+### 6.2 Startup Sequence
 
 A conforming implementation MUST perform the following operations, in the following order, before application code executes:
 
@@ -322,7 +431,7 @@ A conforming implementation MUST perform the following operations, in the follow
 7. **Freeze the registry** — no further registration is permitted after this point
 8. **Signal readiness** — a clear, observable log message MUST be emitted before control returns to application code
 
-### 5.3 Configuration Properties
+### 6.3 Configuration Properties
 
 A conforming implementation MUST support the following configuration properties:
 
@@ -334,7 +443,7 @@ A conforming implementation MUST support the following configuration properties:
 
 Implementations MAY use platform-specific naming conventions (system properties for Java, environment variables for Rust and others).
 
-### 5.4 Plugin Loading
+### 6.4 Plugin Loading
 
 All SPI implementations — transports, serializers, observers, and future plugin types — are loaded from the plugin artifact directory. A conforming implementation MUST:
 
@@ -345,7 +454,7 @@ All SPI implementations — transports, serializers, observers, and future plugi
 
 If the plugin directory is not specified, implementations MUST fall back to default implementations where available (e.g., a built-in JSON serializer, a built-in HTTP transport).
 
-### 5.5 Failure Handling
+### 6.5 Failure Handling
 
 A conforming implementation MUST fail at startup — with a clear error message — if:
 
@@ -356,15 +465,75 @@ A conforming implementation MUST fail at startup — with a clear error message 
 
 A conforming implementation MUST NOT start the application in a partially initialised state.
 
+### 6.6 Runtime Error Handling
+ 
+#### 6.6.1 Error Classification
+ 
+Every error that occurs during a component interaction MUST be classified into one of three categories before it is communicated to the caller:
+ 
+| Kind | Meaning |
+|------|---------|
+| `CHECKED` | The component executed and rejected the request through its declared error path. This is a contract condition the caller is expected to handle. |
+| `RUNTIME` | The component executed but failed in an uncontrolled way — an undeclared exception or error. |
+| `TRANSPORT` | The Itara infrastructure failed. The component may or may not have been invoked. Registry lookup, serialization, or the network layer failed. |
+ 
+Classification is the responsibility of the agent's dispatcher layer, not the transport.
+ 
+#### 6.6.2 Error Payload
+ 
+When an error occurs on the callee side, the agent MUST produce an `ItaraErrorPayload` before the error reaches the transport. `ItaraErrorPayload` is a plain structured object carrying:
+ 
+| Field | Type | Description |
+|-------|------|-------------|
+| `errorKind` | ErrorKind | One of `CHECKED`, `RUNTIME`, `TRANSPORT` |
+| `remoteExceptionClass` | String | Fully qualified class name of the original exception |
+| `message` | String | Message from the original exception |
+ 
+The payload MUST NOT include stack traces, cause chains, or any implementation-specific detail that would create a security concern or couple the caller to the callee's runtime environment. The serializer treats `ItaraErrorPayload` as a plain object — it has no special knowledge of error semantics.
+ 
+#### 6.6.3 Dispatcher Responsibilities
+ 
+The dispatcher MUST:
+ 
+- Classify every exception thrown by a component invocation into one of the three error kinds
+- Construct an `ItaraErrorPayload` from the classified error
+- Serialize the payload using the connection's configured serializer before the error propagates to the transport
+- Attach the serialized bytes to the error signal passed to the transport
+Every error that leaves the dispatcher MUST carry a serialized payload. The transport MUST NOT receive an error with an empty or absent payload.
+ 
+#### 6.6.4 Proxy Responsibilities
+ 
+The proxy MUST:
+ 
+- Receive the error signal and serialized payload from the transport
+- Deserialize the payload as `ItaraErrorPayload` using the connection's configured serializer
+- Reconstruct the caller-side error representation from the payload
+- If deserialization of the error payload fails for any reason, treat the failure as a `TRANSPORT` error
+A conforming proxy MUST NOT allow undeclared checked exceptions to propagate to calling code. All errors crossing a component boundary MUST be surfaced as the implementation's `ItaraRemoteException` equivalent.
+ 
+#### 6.6.5 Transport Responsibilities
+ 
+The transport carries error payloads as opaque bytes. It MUST NOT interpret or modify the payload. It MUST deliver the bytes intact to the caller side.
+ 
+The transport MAY map error kinds to transport-level status signals. For HTTP transports, the RECOMMENDED mapping is:
+ 
+| `ErrorKind` | HTTP Status |
+|-------------|-------------|
+| `CHECKED` | 422 Unprocessable Entity |
+| `RUNTIME` | 500 Internal Server Error |
+| `TRANSPORT` | 503 Service Unavailable |
+ 
+Protocol-level failures that prevent payload delivery — such as HTTP 400 or 405 — carry no error payload and MUST be treated as `TRANSPORT` errors by the proxy.
+
 ---
 
-## 6. Transport Interface
+## 7. Transport Interface
 
-### 6.1 Summary
+### 7.1 Summary
 
 A transport is a plugin that carries serialized bytes between components across a process boundary. A transport provides two capabilities: sending bytes on the caller side, and receiving bytes on the callee side. The transport is invisible to component code. It does not know about component contracts, method signatures, or serialization formats.
 
-### 6.2 Transport Type Identifier
+### 7.2 Transport Type Identifier
 
 Every transport implementation MUST declare a type identifier — a non-empty string — that matches the type name used in connection declarations in the wiring configuration. Type identifiers are case-insensitive. The following type identifiers are reserved:
 
@@ -377,11 +546,11 @@ Every transport implementation MUST declare a type identifier — a non-empty st
 
 Implementations MAY define additional transport types.
 
-### 6.3 Plugin Discovery
+### 7.3 Plugin Discovery
 
 Transport implementations are discovered via their companion `.itara` metadata file, which MUST declare `kind = "transport"`. The agent reads this file before loading the artifact. The transport artifact MUST export a factory symbol (`itara_transport_factory` for native implementations, or equivalent for managed runtimes) that the agent calls to obtain a configured transport instance.
 
-### 6.4 Caller Side
+### 7.4 Caller Side
 
 A transport MUST be capable of:
 
@@ -391,7 +560,27 @@ A transport MUST be capable of:
 
 The transport receives serialized bytes from the serializer. It does not perform serialization itself.
 
-### 6.5 Callee Side (Listener)
+**[OPEN] Header Handling**
+
+`ItaraHeaders` is referenced in this section as the mechanism for passing
+context and metadata between the agent and the transport layer. The design
+of this interface is an open question.
+
+Two concerns need to be addressed:
+
+- A standard data carrier — a language-neutral map-like structure, analogous
+  to `ItaraContext`, that the agent, transport, and observer SPIs can exchange
+  without coupling to each other's internals.
+- A header handler SPI — a pluggable extension point that allows organisations
+  to inject and extract headers that must travel with every call: authentication
+  tokens, audit identifiers, regulatory metadata, and similar.
+
+Whether these are one mechanism or two, and how they interact with the
+transport SPI, is unresolved. The reference implementations currently use
+ad-hoc header passing for context propagation. This will be formalised in a
+future version of this specification.
+
+### 7.5 Callee Side (Listener)
 
 A transport MUST be capable of starting a listener that:
 
@@ -400,11 +589,11 @@ A transport MUST be capable of starting a listener that:
 - Dispatches the byte payload to a registered `Dispatcher` for the component
 - Returns the response byte payload to the transport for transmission back to the caller
 
-### 6.6 Listener Lifecycle
+### 7.6 Listener Lifecycle
 
 A conforming implementation MUST stop all active listeners cleanly when the process terminates.
 
-### 6.7 Transport Independence
+### 7.7 Transport Independence
 
 A transport implementation MUST NOT:
 
@@ -414,13 +603,13 @@ A transport implementation MUST NOT:
 
 ---
 
-## 7. Serializer Interface
+## 8. Serializer Interface
 
-### 7.1 Summary
+### 8.1 Summary
 
 A serializer is a plugin that converts typed method arguments and return values to and from byte arrays. Serializers operate at the boundary between component code and the transport layer. Neither the component code nor the transport knows about the serializer — the agent wires them together.
 
-### 7.2 Serializer Type Identifier
+### 8.2 Serializer Type Identifier
 
 Every serializer implementation MUST declare a type identifier. The following are reserved:
 
@@ -430,11 +619,11 @@ Every serializer implementation MUST declare a type identifier. The following ar
 | `java` | Java object serialization. JVM-only. Legacy opt-in. |
 | `protobuf` | Protocol Buffers serialization. |
 
-### 7.3 Plugin Discovery
+### 8.3 Plugin Discovery
 
 Serializer implementations are discovered via their companion `.itara` metadata file, which MUST declare `kind = "serializer"`.
 
-### 7.4 Serializer Contract
+### 8.4 Serializer Contract
 
 A serializer MUST be capable of:
 
@@ -446,7 +635,7 @@ A serializer MUST be capable of:
 
 The content type declared by the serializer MUST be propagated to the transport via `ItaraHeaders` so the transport can set appropriate protocol-level metadata.
 
-### 7.5 Serializer Independence
+### 8.5 Serializer Independence
 
 A serializer implementation MUST NOT:
 
@@ -456,17 +645,17 @@ A serializer implementation MUST NOT:
 
 ---
 
-## 8. Observer Interface
+## 9. Observer Interface
 
-### 8.1 Summary
+### 9.1 Summary
 
 The observer interface is the mechanism by which the agent reports component interactions to external systems for monitoring, distributed tracing, and auditing. Observers are plugins loaded at startup. Multiple observers MAY be active simultaneously.
 
-### 8.2 Plugin Discovery
+### 9.2 Plugin Discovery
 
 Observer implementations are discovered via their companion `.itara` metadata file, which MUST declare `kind = "observer"`.
 
-### 8.3 Event Model
+### 9.3 Event Model
 
 A conforming implementation MUST emit the following four events for every component interaction, regardless of transport type. The placement of events relative to serialization is normative:
 
@@ -488,7 +677,7 @@ For direct (colocated) connections, the proxy fires all four events and then cal
 
 **Clarification on "emit":** Emitting an event means invoking the registered observer implementations at the point indicated. Observers are responsible for forwarding events to external backends. The agent MUST NOT wait for external delivery before continuing execution.
 
-### 8.4 Event Payload
+### 9.4 Event Payload
 
 Every event MUST carry at minimum:
 
@@ -499,23 +688,25 @@ Every event MUST carry at minimum:
 - A timestamp with at least millisecond precision
 - Whether the interaction resulted in an error, and if so the error cause
 
-### 8.5 Multiple Observers
+The `ItaraContext` carried by every event MUST include `itaraTraceId` and `itaraSpanId`. These are the canonical correlation keys available to all observers. `ItaraContext` is defined in `itara-common` so that observer SPI implementations can depend on it without coupling to any specific bridge or runtime.
+
+### 9.5 Multiple Observers
 
 A conforming implementation MUST support registering multiple observer implementations simultaneously. A failure in one observer MUST NOT prevent delivery to other observers.
 
-### 8.6 Observer Independence
+### 9.6 Observer Independence
 
 Observer implementations MUST NOT affect the outcome of component interactions or significantly delay the call path.
 
 ---
 
-## 9. Context Propagation
+## 10. Context Propagation
 
-### 9.1 Summary
+### 10.1 Summary
 
 Every request that enters the system is associated with a context object that travels with it through the entire call chain — within a process and across process boundaries. The context is managed by the agent. Component code MAY read the current context but MUST NOT be required to manage it.
 
-### 9.2 Context Fields
+### 10.2 Context Fields
 
 A conforming `ItaraContext` MUST carry at minimum:
 
@@ -526,10 +717,12 @@ A conforming `ItaraContext` MUST carry at minimum:
 | `traceId` | String | Distributed trace identifier, propagated across process boundaries |
 | `spanId` | String | Identifier for the current span within the trace |
 | `parentSpanId` | String | Identifier of the caller's span (null for root) |
+| `itaraTraceId` | String | Stable identifier for the full request chain. All spans in one logical operation share the same value. Generated by the agent at context creation time. |
+| `itaraSpanId` | String | Unique identifier for the current component invocation. Changes at each call boundary. Generated by the agent at each span boundary. |
 | `sourceNode` | String | Node identifier where the request originated |
 | `edgePath` | List of Strings | Ordered list of node identifiers traversed by this request |
 
-### 9.3 Context Lifecycle
+### 10.3 Context Lifecycle
 
 A conforming implementation MUST:
 
@@ -538,39 +731,53 @@ A conforming implementation MUST:
 - Make the current context accessible to component code without requiring the component to manage it explicitly
 - Clear the context when the request completes, including on exception
 
-### 9.4 Cross-Process Propagation
+### 10.4 Cross-Process Propagation
 
-When a transport dispatches a call to a remote component, the agent MUST serialise the current `ItaraContext` and include it in the transport-level message via `ItaraHeaders`. When the listener receives the message, it MUST deserialise the context and make it available for the duration of the call.
+When a transport dispatches a call to a remote component, the agent MUST propagate the full `ItaraContext` across the process boundary so that observers on the callee side receive the same context as those on the caller side. When the listener receives the message, it MUST restore the `ItaraContext` and make it available for the duration of the call.
 
-The reference implementation uses W3C `traceparent` and `tracestate` headers for HTTP transport. Itara-specific fields are Base64-encoded into the `tracestate` header. Implementations SHOULD follow this convention for HTTP transports to enable interoperability.
+Each observer is responsible for propagating its own additional context across process boundaries via the header handler SPI. The header handler SPI is the designated mechanism by which observers inject and extract their own headers independently of the Itara context propagation mechanism.
 
-### 9.5 Thread and Execution Model
+A transport implementation MUST propagate the full `ItaraContext`. A transport that does not propagate the `ItaraContext` — and therefore `itaraTraceId` and `itaraSpanId` — breaks cross-process correlation for all observers and is not conforming.
+
+The header handler SPI interface will be defined in a future version of this specification.
+
+### 10.5 Thread and Execution Model
 
 The reference implementation propagates context using thread-local storage. Conforming implementations targeting reactive or async execution models MUST provide an alternative propagation mechanism appropriate to the execution model and MUST document which execution models are supported.
 
+### 10.6 Observer Correlation
+
+`itaraTraceId` and `itaraSpanId` are fields on `ItaraContext`, generated by the agent and available to all observers via the context they receive on every event.
+
+A conforming observer MUST record `itaraTraceId` and `itaraSpanId` for every event it processes. These are the canonical cross-observer correlation keys — joining on them across observer outputs is how interactions are correlated across tools without requiring observers to share internal IDs.
+
+A conforming observer MAY maintain its own internal ID model in addition. An observer that brings its own IDs — such as OTel, which manages its own `traceId`/`spanId` tree — is not required to abandon them. It MUST, however, also record the Itara-native IDs so that correlation with other observers remains possible.
+
+An observer that does not bring its own ID model uses `ItaraContext` directly. The Itara-native IDs are sufficient for all correlation needs.
+
 ---
 
-## 10. Conformance
+## 11. Conformance
 
-### 10.1 Conformance Criteria
+### 11.1 Conformance Criteria
 
 A implementation is conforming if it satisfies all MUST and MUST NOT requirements in this specification.
 
 An implementation that satisfies all MUST and MUST NOT requirements but does not satisfy one or more SHOULD requirements is conforming with noted deviations.
 
-### 10.2 Reference Implementations
+### 11.2 Reference Implementations
 
 The Java implementation maintained at https://github.com/itara-project/itara is the primary reference implementation. The Rust implementation in the same repository is the reference for native language implementations. Where this specification is ambiguous, the behaviour of the Java reference implementation is normative. Where the Java and Rust implementations disagree, the discrepancy is treated as a specification gap and resolved via the issue tracker.
 
-### 10.3 Extensibility
+### 11.3 Extensibility
 
 Conforming implementations MAY provide capabilities beyond those specified here, provided those capabilities do not conflict with the requirements of this specification.
 
 New transport types, serializer formats, observer backends, and service discovery mechanisms are explicitly encouraged as independent contributions.
 
-### 10.4 Versioning
+### 11.4 Versioning
 
-This document is a Draft. It will be assigned a stable version number when the core team determines the specification is stable enough to build against.
+This document is version 0.1. It covers the core component model, wiring model, agent contract, transport interface, serializer interface, observer interface, and context propagation model. Open design questions are marked **[OPEN]** and will be addressed in future versions.
 
 ---
 
@@ -581,8 +788,8 @@ The following questions were open in earlier drafts and have since been resolved
 **A.1 Observer interface shape**  
 Resolved: separate default methods per event type — `onCallSent`, `onCallReceived`, `onReturnSent`, `onReturnReceived`. All methods have default no-op implementations so implementors override only the events they care about. Timestamps are provided by the observability facade at fire time so all observers receive the same value for the same event. See ADR 0003.
 
-**A.2 Context creation at entry point**  
-Resolved: the agent creates a new `ItaraContext` at inbound entry points where no context is present. The agent generates `requestId`. `traceId` is generated by the OTel bridge when present, or by the agent's built-in context generator otherwise. See ADR 0004.
+**A.2 Context creation and correlation ID generation**  
+Resolved: the agent creates a new `ItaraContext` at inbound entry points where no context is present. The agent generates `requestId`, `itaraTraceId`, and `itaraSpanId` at context creation time. Every observer receives the full `ItaraContext` on every event and MUST record the Itara-native IDs to enable cross-observer correlation. Observers MAY maintain their own internal ID model in addition. See ADR 0014 (supersedes ADR 0004).
 
 **A.5 Component versioning**  
 Resolved: component and API versions are declared in the `.itara` metadata file. The agent reads metadata before loading any artifact. External tooling uses metadata for compatibility checking and deployment validation. See ADR 0008.
@@ -604,4 +811,4 @@ The following are explicitly outside the scope of this specification:
 
 ---
 
-*End of Itara Specification — Draft 0.1*
+*End of Itara Specification — v0.1*
