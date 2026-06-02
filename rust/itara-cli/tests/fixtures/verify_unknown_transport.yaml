@@ -1,0 +1,14 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: workerNode
+    component: worker
+
+connections:
+  - to: gatewayNode
+    type: http
+    port: 8080
+  - from: gatewayNode
+    to: workerNode
+    type: grpc
+    port: 8081

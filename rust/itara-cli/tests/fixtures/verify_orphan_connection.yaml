@@ -1,0 +1,12 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+
+connections:
+  - to: gatewayNode
+    type: http
+    port: 8080
+  - from: gatewayNode
+    to: undeclaredNode
+    type: http
+    port: 8081

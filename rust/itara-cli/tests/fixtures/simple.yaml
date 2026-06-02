@@ -1,0 +1,14 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: calculatorNode
+    component: calculator
+
+connections:
+  - to: gatewayNode
+    type: http
+    port: 8080
+  - from: gatewayNode
+    to: calculatorNode
+    type: http
+    port: 8081

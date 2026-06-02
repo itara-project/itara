@@ -1,0 +1,17 @@
+nodes:
+  - id: apiNode
+    component: api
+  - id: workerNode
+    component: worker
+
+connections:
+  - to: apiNode
+    type: http
+    port: 8080
+  - to: apiNode
+    type: http
+    port: 9090
+  - from: apiNode
+    to: workerNode
+    type: http
+    port: 8081

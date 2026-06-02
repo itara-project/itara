@@ -1,0 +1,19 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: calculatorNode
+    component: calculator
+  - id: notifierNode
+    component: notifier
+
+connections:
+  - to: gatewayNode
+    type: http
+    port: 8080
+  - from: gatewayNode
+    to: calculatorNode
+    type: direct
+  - from: gatewayNode
+    to: notifierNode
+    type: http
+    port: 8090

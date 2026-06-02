@@ -1,0 +1,12 @@
+nodes:
+  - id: nodeA
+    component: compA
+
+connections:
+  - to: nodeA
+    type: http
+    port: 8080
+  - from: nodeA
+    to: nodeA
+    type: http
+    port: 8081

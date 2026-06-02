@@ -1,0 +1,16 @@
+nodes:
+  - id: nodeA
+    component: compA
+  - id: nodeA
+    component: compA-duplicate
+  - id: nodeB
+    component: compB
+
+connections:
+  - to: nodeA
+    type: http
+    port: 8080
+  - from: nodeA
+    to: nodeB
+    type: http
+    port: 8081
