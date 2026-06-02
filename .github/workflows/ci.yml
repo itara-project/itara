@@ -48,3 +48,27 @@ jobs:
 
       - name: Run demo (HTTP topology)
         run: ci/run-demo-http.sh
+ 
+  build-and-test-rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+ 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+ 
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+ 
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+ 
+      - name: Build
+        run: cargo build --workspace --locked
+ 
+      - name: Run tests
+        run: cargo test --workspace --locked
