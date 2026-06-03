@@ -6,7 +6,7 @@ Itara is a compiler and linker for distributed system topology. It treats topolo
 
 This is achieved through two co-equal parts: a language-specific wiring agent that reads the wiring config before the application starts, resolves all connections once, wires the components together, and then steps aside — the application runs at full speed with no intermediary, no proxy in the call path, no decisions made at call time — and a tooling ecosystem that makes the topology layer safe and manageable. The tooling validates configurations before deployment, catches mismatches and incompatibilities at authoring time, visualises the topology as a graph, and guides engineers through changes. Incorrect topologies cannot be deployed silently. The layer Itara introduces is the layer the tooling understands completely.
 
-Change how your components communicate — collocated direct calls, HTTP, message queues — by changing a config file. No code changes. No redeployment ceremony. No migration scripts. Reference implementations of the wiring agent exist in Java and Rust. More languages are planned. The tooling ecosystem is under active development — the CLI, the validator, and the visual editor are the next major milestone.
+Change how your components communicate — collocated direct calls, HTTP, message queues — by changing a config file. No code changes. No redeployment ceremony. No migration scripts. Reference implementations of the wiring agent exist in Java and Rust. More languages are planned. The tooling ecosystem has begun: `itara-cli` ships two commands — `itara inspect` to visualise a topology and `itara verify` to catch configuration errors before deployment. The visual editor and controller are planned.
 
 ---
 
@@ -120,6 +120,7 @@ This makes network latency directly observable: the gap between CALL_SENT and CA
 ```
 java/          Java reference implementation (JVM agent, Spring Boot compatible)
 rust/          Rust implementation (transport SPI, config parser, agent library)
+  itara-cli/   CLI tooling — itara inspect and itara verify
 docs/
   adr/         Architecture Decision Records
 spec/          VISION.md, MANIFESTO.md, SPEC.md
@@ -158,6 +159,21 @@ CALCULATOR_URL=http://127.0.0.1:8081 \
 cargo run -p gateway-component --bin gateway
 ```
 
+## Running the CLI
+
+```bash
+cd rust && cargo build -p itara-cli
+
+# Visualise a topology — nodes, connections, deployment groups, graph
+./target/debug/itara inspect ../java/itara-demo/wiring-http.yaml
+
+# Verify a topology — catches orphaned nodes, undeclared references,
+# duplicate ids, self-connections, and unknown transport types
+./target/debug/itara verify ../java/itara-demo/wiring-http.yaml
+```
+
+`itara verify` exits non-zero on errors, making it suitable for CI pipelines.
+
 ---
 
 ## Current state
@@ -173,13 +189,12 @@ cargo run -p gateway-component --bin gateway
 - W3C traceparent propagation
 - Spring Boot compatible — components as Spring beans fetched from the Itara registry
 - YAML wiring config with environment variable substitution
+- itara-cli — `itara inspect` visualises topology and deployment groups, `itara verify` catches configuration errors before deployment
 
 **Planned:**
 - Kafka transport
-- Rust observability SPI and OTel bridge
 - Language-neutral contract descriptor (IDL)
 - Controller (Orca) for runtime topology management
-- itara-cli — topology inspection and validation
 - Service discovery integration
 
 See [VISION.md](spec/VISION.md) for the full architectural vision and [SPEC.md](spec/SPEC.md) for the formal specification.

@@ -13,7 +13,7 @@ This document specifies Itara — a platform for building distributed software s
 
 **Pronunciation:** Itara is pronounced *ee-tah-rah* — each vowel as in Latin or Hungarian: the *i* as in *machine*, the *a* as in *father*. Not *eye-tara*.
 
-This specification defines the component model, the wiring model, the agent contract, the transport interface, the serializer interface, the observer interface, and the context propagation model. It does not prescribe any particular implementation language, framework, or deployment mechanism. The Java implementation maintained by the Itara project is the primary reference implementation. A Rust implementation is maintained alongside Java and serves as the reference for native language implementations. Conforming implementations MAY be built in any language or runtime environment.
+This specification defines the component model, the wiring model, the agent contract, the transport interface, the serializer interface, the observer interface, and the context propagation model. The reference CLI — `itara-cli` — implements the wiring configuration validation described in §5 and serves as the reference for conforming tooling implementations. It does not prescribe any particular implementation language, framework, or deployment mechanism. The Java implementation maintained by the Itara project is the primary reference implementation. A Rust implementation is maintained alongside Java and serves as the reference for native language implementations. Conforming implementations MAY be built in any language or runtime environment.
 
 ---
 
@@ -37,7 +37,8 @@ Feedback, objections, and proposals are welcome as GitHub issues on the Itara re
 8. Serializer Interface
 9. Observer Interface
 10. Context Propagation
-11. Conformance
+11. Tooling
+12. Conformance
 
 ---
 
@@ -757,25 +758,155 @@ An observer that does not bring its own ID model uses `ItaraContext` directly. T
 
 ---
 
-## 11. Conformance
+## 11. Tooling
 
-### 11.1 Conformance Criteria
+### 11.1 Summary
+
+Itara introduces a topology layer. That layer creates obligations — a wiring
+configuration that can be misconfigured silently is not a step forward. The
+tooling is Itara's answer to its own complexity. It is not optional polish.
+It is the platform keeping its promise.
+
+Tooling conformance is a platform-level requirement, not an implementation-level
+requirement. A language implementation of the Itara runtime is not required to
+ship its own tooling. The Itara platform provides conforming tooling that
+operates on the wiring configuration — a language-neutral artifact — and
+therefore serves all runtime implementations without modification.
+
+The core tooling MUST function as a standalone binary without external runtime
+dependencies. This makes it suitable for use in CI/CD pipelines without
+requiring a JVM, Python interpreter, Node.js runtime, or any other managed
+runtime to be present. The reference implementation is written in Rust for
+this reason.
+
+Extension mechanisms — for custom registries, custom CI/CD integrations,
+company-specific credential providers, or other environment-specific concerns
+— MAY introduce additional dependencies for the capabilities they provide.
+Extensions are not constraints on the core. Whether extensions are implemented
+as compiled-in plugins, dynamic libraries, subprocess-based extension points,
+or other mechanisms is not prescribed by this specification. Conforming
+implementations MAY choose any extension architecture appropriate to their
+platform and operational constraints.
+
+### 11.2 Inspect
+
+A conforming tooling implementation MUST provide an `inspect` command that
+operates on a wiring configuration and produces a human-readable summary of
+the topology.
+
+The wiring configuration MAY be provided as a file, fetched from a registry,
+or obtained through any mechanism the tooling supports. The source of the
+configuration does not affect the requirements of this section.
+
+The inspect command MUST output:
+
+- All declared nodes with their component identifiers, and whether each node
+  has at least one external inbound connection
+- All declared connections with their transport types and relevant parameters
+- Derived deployment groups (see §12.4)
+- A graph representation of the topology showing nodes as labelled boxes and
+  connections as labelled directed edges
+
+### 11.3 Verify
+
+A conforming tooling implementation MUST provide a `verify` command that
+validates the logical correctness of a wiring configuration.
+
+The wiring configuration MAY be provided as a file, fetched from a registry,
+or obtained through any mechanism the tooling supports. The source of the
+configuration does not affect the requirements of this section.
+
+The verify command MUST check for and report the following conditions:
+
+| Check | Severity | Condition |
+|-------|----------|-----------|
+| Duplicate node identifiers | ERROR | Two or more nodes declare the same `id` |
+| Self-connections | ERROR | A connection declares the same node as both `from` and `to` |
+| Orphaned nodes | ERROR | A node is declared but not referenced in any connection |
+| Orphaned connections | ERROR | A connection references a node identifier not declared in the nodes list |
+| Unknown transport type | ERROR | A connection declares a transport type not known to this tooling installation |
+
+The verify command MUST exit with a non-zero exit code if any ERROR is present.
+Warnings MUST NOT affect the exit code. This makes the verify command suitable
+for use as a CI gate — a topology that does not pass verify does not deploy.
+
+The following conditions are explicitly NOT checked, because static analysis
+cannot reliably determine whether they represent errors:
+
+- **Port conflicts** — ports interact with deployment topology and service
+  discovery in ways the wiring configuration does not fully express
+- **Circular dependencies** — a component calling another that calls it back
+  is not necessarily a deadlock; whether it causes problems depends on business
+  logic that static analysis cannot determine
+
+### 11.4 Deployment Groups
+
+Deployment groups are a derived property of the wiring configuration, computed
+by the inspect command. They are the unit on which deployment manifests are
+generated, startup ordering is determined, and dependency compatibility checks
+for colocated components are performed.
+
+A deployment group is a set of nodes that MUST be colocated in the same
+process. The grouping rule follows directly from the direct connection semantics
+defined in §4.6.1:
+
+- Nodes connected by `direct` connections are colocated and belong to the same
+  deployment group
+- Grouping is transitive: if A is direct with B, and B is direct with C, then
+  A, B, and C belong to the same group regardless of declaration order
+- A node with no direct connections forms its own group of one
+
+Formally, deployment groups are the connected components of the subgraph formed
+by retaining only `direct` edges and treating them as undirected.
+
+Deployment groups are load-bearing. They are the basis for:
+
+- Deployment manifest and orchestrator configuration generation — each group
+  maps to one deployable unit
+- Startup ordering and dependency readiness — groups that call other groups
+  over non-direct transports have an explicit, derivable startup dependency
+- Dependency compatibility checking — components in the same group share a
+  process and therefore a runtime, making dependency conflict detection both
+  necessary and statically determinable
+
+### 11.5 Exit Codes
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Command completed successfully. For verify: no errors (warnings may be present). |
+| `1` | Command failed. For verify: one or more errors found, or the configuration could not be parsed. |
+
+### 11.6 Future Commands
+
+The following commands are planned and will be specified in future versions:
+
+- `itara split` — extract the relevant configuration slice for a given set of
+  node identifiers, for use in deployment pipelines
+- `itara apply` — apply a topology change via a running controller
+- `itara status` — query current topology state from a running controller
+- `itara diff` — compare two topology configurations and describe the changes
+
+---
+
+## 12. Conformance
+
+### 12.1 Conformance Criteria
 
 A implementation is conforming if it satisfies all MUST and MUST NOT requirements in this specification.
 
 An implementation that satisfies all MUST and MUST NOT requirements but does not satisfy one or more SHOULD requirements is conforming with noted deviations.
 
-### 11.2 Reference Implementations
+### 12.2 Reference Implementations
 
 The Java implementation maintained at https://github.com/itara-project/itara is the primary reference implementation. The Rust implementation in the same repository is the reference for native language implementations. Where this specification is ambiguous, the behaviour of the Java reference implementation is normative. Where the Java and Rust implementations disagree, the discrepancy is treated as a specification gap and resolved via the issue tracker.
 
-### 11.3 Extensibility
+### 12.3 Extensibility
 
 Conforming implementations MAY provide capabilities beyond those specified here, provided those capabilities do not conflict with the requirements of this specification.
 
 New transport types, serializer formats, observer backends, and service discovery mechanisms are explicitly encouraged as independent contributions.
 
-### 11.4 Versioning
+### 12.4 Versioning
 
 This document is version 0.1. It covers the core component model, wiring model, agent contract, transport interface, serializer interface, observer interface, and context propagation model. Open design questions are marked **[OPEN]** and will be addressed in future versions.
 
