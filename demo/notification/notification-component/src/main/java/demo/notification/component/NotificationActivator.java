@@ -1,0 +1,18 @@
+package demo.notification.component;
+
+import demo.notification.api.NotificationService;
+import io.itara.api.ItaraActivator;
+import io.itara.runtime.ItaraRegistry;
+
+import java.util.logging.Logger;
+
+public class NotificationActivator implements ItaraActivator<NotificationService> {
+
+    private static final Logger log = Logger.getLogger(NotificationActivator.class.getName());
+
+    @Override
+    public NotificationService activate(ItaraRegistry registry) {
+        log.info("[NotificationActivator] Creating NotificationServiceImpl");
+        return new NotificationServiceImpl();
+    }
+}

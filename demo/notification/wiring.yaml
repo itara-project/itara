@@ -1,0 +1,11 @@
+nodes:
+  - id: "notificationNode"
+    component: "notification"
+
+connections:
+  - from:
+    to: "notificationNode"
+    type: http
+    host: "localhost"
+    port: 8081
+    serializer: "json"

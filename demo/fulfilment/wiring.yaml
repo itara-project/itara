@@ -1,0 +1,11 @@
+nodes:
+  - id: "fulfilmentNode"
+    component: "fulfilment"
+
+connections:
+  - from:
+    to: "fulfilmentNode"
+    type: http
+    host: "localhost"
+    port: 8081
+    serializer: "json"

@@ -1,0 +1,2 @@
+component-id=inventory
+activator=demo.inventory.component.InventoryActivator

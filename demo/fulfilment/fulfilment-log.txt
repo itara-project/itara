@@ -1,0 +1,4 @@
+2026-06-05T13:28:43.634959800  PROCESSED  orderId=order-1  productId=item-1  quantity=5
+2026-06-05T13:29:00.128882600  PROCESSED  orderId=order-2  productId=item-2  quantity=50
+2026-06-05T13:29:30.832409700  CANCELLED  orderId=order-1
+2026-06-05T13:29:38.203247600  CANCELLED  orderId=order-3

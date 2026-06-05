@@ -1,0 +1,11 @@
+[package]
+name = "payment-api"
+version = "0.1.0"
+edition = "2021"
+ 
+[dependencies]
+itara-core            = { path = "../../../rust/itara-core" }
+itara-serializer-json = { path = "../../../rust/itara-serializer-json" }
+ 
+[lib]
+crate-type = ["rlib", "cdylib"]

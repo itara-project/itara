@@ -1,0 +1,11 @@
+nodes:
+  - id: "paymentNode"
+    component: "payment"
+
+connections:
+  - from:
+    to: "paymentNode"
+    type: http
+    host: "localhost"
+    port: 8081
+    serializer: "json"
