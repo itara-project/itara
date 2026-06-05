@@ -18,6 +18,18 @@ The closest analogy is a classloader for distributed systems topology — someth
 
 ---
 
+### Isn't this the same as CORBA, Java RMI, or other transparency-oriented systems?
+
+No, and the distinction matters.
+
+CORBA, Java RMI, DCOM, and EJB all attempted to make remote calls indistinguishable from local calls — to hide the network from the developer entirely. The premise was that the network doesn't exist, or at least that you shouldn't have to think about it. This failed for well-documented reasons: the network does exist, it has latency and failure modes that local calls don't, and hiding those differences produces systems that are hard to reason about and harder to debug.
+
+Itara's premise is the opposite. The network exists and its presence is always visible — in the wiring config, in the traces, in the error contracts. What Itara removes from component code is not the awareness that a call might be remote, but the responsibility for encoding how that remote call works. Failure semantics, serialization, transport selection, context propagation — these are topology concerns declared in the wiring config, not infrastructure boilerplate written into the business logic.
+
+The difference in plain terms: CORBA made topology invisible. Itara makes it explicit and concentrated. Topology is declared, validated by tooling before deployment, and visible to everyone — the opposite of hidden.
+
+---
+
 ### How is this different from Dapr?
 
 The difference is where the abstraction sits.
@@ -40,21 +52,25 @@ The corollary: running two components colocated in Itara costs nothing compared 
 
 ---
 
-### If topology is hidden from code, how do I handle network failures?
+### Topology is no longer in the component code — how do I handle network failures?
 
-Failure semantics — retries, timeouts, circuit breaking — are connection-level configuration, not component-level code. They belong in the wiring config alongside the transport declaration. The component code never sees them.
+Topology is not hidden — it is explicitly declared in the wiring config, where it is visible, auditable, and validated before deployment. What is absent from component code is the responsibility for encoding how failures travel, not the awareness that failures can happen.
 
-This is on the roadmap and not yet implemented. The current implementation surfaces failures as panics or exceptions at the call site. Pluggable failure semantics are a pre-1.0 milestone.
+Failure semantics — retries, timeouts, circuit breaking — are connection-level configuration, not component-level code. They belong in the wiring config alongside the transport declaration. The component code never sees infrastructure boilerplate, but the failure contracts are explicit and declared.
+
+This is on the roadmap and not yet implemented. The current implementation surfaces failures as typed error contracts at the call site — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. Pluggable retry and circuit breaking semantics are a pre-1.0 milestone.
 
 ---
 
-### Doesn't hiding topology make debugging harder?
+### With topology out of the component code, doesn't that make debugging harder?
 
-The opposite, for two reasons.
+With topology being more visible than ever before, tracking down errors actually becomes easier.
 
-First, the wiring config is the single source of truth for how the system is connected. There is no need to read every service's code to understand the topology — it is all in one place, readable by a human and parseable by tooling.
+At the code level, every failure that crosses a component boundary surfaces as a typed error contract — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. The error carries the original exception class and message. Without reading a line of transport code, you know immediately whether the failure was in the business logic, the component implementation, or the infrastructure layer.
 
-Second, Itara's four-event observability model fires at every component boundary regardless of transport. `CALL_SENT`, `CALL_RECEIVED`, `RETURN_SENT`, `RETURN_RECEIVED` — these events give you precise latency decomposition: serialization cost, network cost, and component processing time are all separately measurable without any instrumentation in your code. When you switch a connection from direct to HTTP, the trace structure is identical and the latency numbers change. That is the topology switch made visible.
+At the system level, the four-event observability model fires at every component boundary regardless of transport. Every failed request leaves a trace across the full call chain. The trace shows exactly where the failure occurred, with serialization cost, network cost, and component processing time separately measurable.
+
+The error contract is extensible if needed. If proven necessary, future versions might carry more specific failure detail — timeout, serialization error, network failure — without changing how callers handle errors.
 
 ---
 
@@ -63,6 +79,16 @@ Second, Itara's four-event observability model fires at every component boundary
 No. As the manifesto puts it: Itara does not replace architecture, it concentrates it.
 
 You still design your bounded contexts, aggregates, and domain events exactly as before. What changes is where the plumbing lives. Instead of transport configuration, retry policies, and service discovery calls scattered across every service, the communication structure of your system is expressed in one place. The patterns are still yours. The topology that gives them shape is now auditable and changeable without touching code.
+
+---
+
+### Isn't the wiring config just a configuration file? What makes it architecture?
+
+The wiring config is not configuration in the sense of database connection strings or feature flags — values that tune a running system. It is the authoritative description of which components exist, how they communicate, and what topology they form. Every connection in the system, every deployment boundary, every transport choice is declared there and nowhere else.
+
+Traditional distributed systems encode this information across hundreds of files: HTTP clients, service discovery calls, retry policies, timeout settings, message producer configurations. Understanding the architecture means reading all of it. Changing the architecture means changing all of it, coordinated across teams, with no single place to validate correctness.
+
+When the wiring config is the single source of truth, it becomes what architecture diagrams have always aspired to be: a complete, accurate, machine-readable description of how the system is structured. The difference is that it isn't a diagram — it's the thing itself. The tooling validates it, the agent enforces it, and the traces reflect it. The diagram and the system are the same artifact.
 
 ---
 
@@ -112,7 +138,11 @@ In the meantime, colocation is a decision made by someone who controls the build
 
 ### What is the current state? Is it production-ready?
 
-Not yet. The current milestone is Show HN — a public demonstration of the core concepts working end-to-end. What works today: direct and HTTP topologies in Java and Rust, cross-language calls, pluggable serializers, self-describing lib dir via `.itara` metadata files, Spring Boot integration, and distributed traces via OTel. What is still in progress: Kafka transport, full observability SPI in Rust, the CLI, and the formal spec reaching v1.0. Use it for experimentation and architecture exploration. Production use requires the missing pieces.
+Not yet. The current milestone is Show HN — a public demonstration of the core concepts working end-to-end.
+
+What works today: direct and HTTP topologies in Java and Rust, cross-language calls, pluggable serializers, self-describing artifacts via `.itara` metadata files, Spring Boot integration, distributed traces via OTel, and `itara-cli` with `inspect` and `verify` commands. The specification is at v0.1.
+
+What is still in progress: Kafka transport, full observability SPI in Rust, and the Java reference implementation reaching full v0.1 spec conformance. Use it for experimentation and architecture exploration. Production use requires the missing pieces.
 
 ---
 
