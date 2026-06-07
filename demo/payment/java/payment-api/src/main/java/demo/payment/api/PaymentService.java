@@ -11,5 +11,5 @@ import io.itara.api.ContractMethod;
 public interface PaymentService {
 
     @ContractMethod
-    boolean processPayment(String orderId, long amountCents, String currency);
+    boolean process_payment(String orderId, long amountCents, String currency);
 }

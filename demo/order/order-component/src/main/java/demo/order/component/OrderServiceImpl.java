@@ -52,7 +52,7 @@ public class OrderServiceImpl implements OrderService {
             throw e;
         }
 
-        boolean paid = payment.processPayment(orderId, amountCents, currency);
+        boolean paid = payment.process_payment(orderId, amountCents, currency);
 
         if (paid) {
             inventory.releaseReservation(orderId, true);
