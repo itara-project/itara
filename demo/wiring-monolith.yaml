@@ -21,7 +21,7 @@ connections:
     to: "inventoryNode"
     type: http
     host: "localhost"
-    port: 8081
+    port: 8082
     serializer: "json"
   - from: "orderNode"
     to: "inventoryNode"
@@ -35,6 +35,6 @@ connections:
   - from: "orderNode"
     to: "paymentNode"
     type: http
-    host: "localhost"
+    host: payment
     port: 8083
     serializer: "json"

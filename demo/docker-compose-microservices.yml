@@ -1,0 +1,195 @@
+name: itara-demo-microservices
+ 
+# Microservices topology: each component runs in its own container.
+#
+# Prerequisite: itara-demo-otel stack must be running.
+#   docker compose -f docker-compose-otel.yml up -d
+#
+# Build payment binary (in WSL if running on Windows) first:
+#   cd demo/payment && cargo build --release
+ 
+services:
+ 
+  inventory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./inventory/inventory-api/target/inventory-api-1.0-SNAPSHOT.jar:/app/inventory-api.jar:ro
+      - ./inventory/inventory-component/target/inventory-component-1.0-SNAPSHOT.jar:/app/inventory-component.jar:ro
+      - ./inventory/inventory-component/target/lib/sqlite-jdbc-3.45.3.0.jar:/app/sqlite-jdbc.jar:ro
+      - ./inventory/inventory-component/target/lib/slf4j-api-1.7.36.jar:/app/slf4j-api.jar:ro
+      - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+    ports:
+      - "8082:8082"
+      - "8087:8087"
+    environment:
+      - OTEL_SERVICE_NAME=inventory
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=inventoryNode"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/inventory-api.jar:/app/inventory-component.jar:/app/sqlite-jdbc.jar:/app/slf4j-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    networks:
+      - itara-net
+ 
+  fulfilment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./fulfilment/fulfilment-api/target/fulfilment-api-1.0-SNAPSHOT.jar:/app/fulfilment-api.jar:ro
+      - ./fulfilment/fulfilment-component/target/fulfilment-component-1.0-SNAPSHOT.jar:/app/fulfilment-component.jar:ro
+      - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+    ports:
+      - "8085:8085"
+    environment:
+      - OTEL_SERVICE_NAME=fulfilment
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=fulfilmentNode"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/fulfilment-api.jar:/app/fulfilment-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    networks:
+      - itara-net
+ 
+  notification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./notification/notification-api/target/notification-api-1.0-SNAPSHOT.jar:/app/notification-api.jar:ro
+      - ./notification/notification-component/target/notification-component-1.0-SNAPSHOT.jar:/app/notification-component.jar:ro
+      - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+    ports:
+      - "8086:8086"
+    environment:
+      - OTEL_SERVICE_NAME=notification
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=notificationNode"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/notification-api.jar:/app/notification-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    networks:
+      - itara-net
+ 
+  payment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["./payment-server"]
+    volumes:
+      - ./payment/target/release/payment-server:/app/payment-server:ro
+      - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
+      - ./payment/itara-libs:/app/itara-libs:ro
+    ports:
+      - "8083:8083"
+    environment:
+      - ITARA_CONFIG=/app/config/wiring.yaml
+      - ITARA_NODES=paymentNode
+      - ITARA_OTLP_ENDPOINT=http://otel-collector:4318
+      - ITARA_OTLP_SERVICE=payment
+    networks:
+      - itara-net
+ 
+  order:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./order/order-api/target/order-api-1.0-SNAPSHOT.jar:/app/order-api.jar:ro
+      - ./order/order-component/target/order-component-1.0-SNAPSHOT.jar:/app/order-component.jar:ro
+      - ./inventory/inventory-api/target/inventory-api-1.0-SNAPSHOT.jar:/app/inventory-api.jar:ro
+      - ./fulfilment/fulfilment-api/target/fulfilment-api-1.0-SNAPSHOT.jar:/app/fulfilment-api.jar:ro
+      - ./notification/notification-api/target/notification-api-1.0-SNAPSHOT.jar:/app/notification-api.jar:ro
+      - ./payment/java/payment-api/target/payment-api-1.0-SNAPSHOT.jar:/app/payment-api.jar:ro
+      - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+    ports:
+      - "8081:8081"
+    environment:
+      - OTEL_SERVICE_NAME=order
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=orderNode"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/order-api.jar:/app/order-component.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/notification-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    depends_on:
+      - inventory
+      - fulfilment
+      - notification
+      - payment
+    networks:
+      - itara-net
+ 
+networks:
+  itara-net:
+    external: true
+    name: itara-demo-otel_itara-net

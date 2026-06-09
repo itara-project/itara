@@ -1,0 +1,96 @@
+name: itara-demo-otel
+
+# Demonstrates HTTP topology across two containers.
+# Gateway and calculator run in separate containers, separate JVMs.
+# Communication happens over HTTP — zero code changes from the direct topology.
+#
+# Observability pipeline:
+#   Itara services → OTel Collector (OTLP/HTTP) → APM Server (OTLP/gRPC) → Elasticsearch
+#
+# Kibana APM UI: http://localhost:5601 → Observability → APM → Services
+#
+# Uses Elastic Stack 7.17 — standalone APM, no Fleet integration required.
+#
+# OTel jars required in itara-demo/otel-libs/
+# Run collect-otel-libs.ps1 to populate from local Maven repo.
+# Remove opentelemetry-exporter-sender-okhttp jar if present — not needed.
+
+services:
+
+  # ── Elastic Stack 7.17 ────────────────────────────────────────────────────
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - itara-net
+
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:7.17.0
+    command: >
+      apm-server -e
+        -E apm-server.host=0.0.0.0:8200
+        -E output.elasticsearch.hosts=["elasticsearch:9200"]
+        -E apm-server.kibana.enabled=true
+        -E apm-server.kibana.host=http://kibana:5601
+    ports:
+      - "8200:8200"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── OTel Collector ────────────────────────────────────────────────────────
+  # Receives OTLP/HTTP from Itara services.
+  # Forwards to APM server via OTLP/gRPC on port 8200.
+  # This is the recommended architecture for 7.17 — APM server speaks gRPC natively.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    command: ["--config=/etc/otel-collector-config.yml"]
+    ports:
+      - "4318:4318"
+    depends_on:
+      apm-server:
+        condition: service_healthy
+    networks:
+      - itara-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  itara-net:
+    driver: bridge

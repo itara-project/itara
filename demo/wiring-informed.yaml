@@ -14,19 +14,19 @@ connections:
   - from:
     to: "orderNode"
     type: http
-    host: "localhost"
+    host: "order_and_inventory"
     port: 8081
     serializer: "json"
   - from:
     to: "inventoryNode"
     type: http
-    host: "localhost"
+    host: "order_and_inventory"
     port: 8082
     serializer: "json"
   - from: "orderNode"
     to: "paymentNode"
     type: http
-    host: "localhost"
+    host: "payment"
     port: 8083
     serializer: "json"
   - from: "orderNode"
@@ -35,12 +35,12 @@ connections:
   - from: "orderNode"
     to: "fulfilmentNode"
     type: http
-    host: "localhost"
+    host: "fulfilment"
     port: 8085
     serializer: "json"
   - from: "orderNode"
     to: "notificationNode"
     type: http
-    host: "localhost"
+    host: "notification"
     port: 8086
     serializer: "json"
