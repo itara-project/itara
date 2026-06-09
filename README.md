@@ -177,10 +177,18 @@ An order processing system — four Java components and a Rust payment service �
 | Informed | Order and inventory colocated, rest distributed | Inventory overhead gone, cross-language trace unchanged |
 
 The Rust payment service appears in the same distributed trace as the Java components — a single Kibana trace spanning two languages, two runtimes, one topology.
- 
-![Monolith topology — Java and Rust in a single distributed trace, near-zero overhead on direct calls](docs/images/trace-monolith.png)
- 
-![Microservices topology — transport overhead visible on every call](docs/images/trace-microservices.png)
+
+**Monolith** — four Java components colocated, Rust payment separate:
+
+![Monolith topology trace](docs/images/trace-monolith.png)
+
+**Microservices** — every component in its own container:
+
+![Microservices topology trace](docs/images/trace-microservices.png)
+
+**Informed** — order and inventory colocated, rest distributed:
+
+![Informed topology trace](docs/images/trace-informed.png)
 
 See [demo/README.md](demo/README.md) for full setup and run instructions.
 
