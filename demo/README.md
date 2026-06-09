@@ -202,11 +202,15 @@ happens without any instrumentation in the component code.
   the Rust process
 - Two services visible in the trace legend: the Java monolith and payment
 
+![Monolith topology trace](../docs/images/trace-monolith.png)
+
 ### In the microservices trace
 
 - Every call shows a visible gap between outer and inner span
 - Component execution times are unchanged — only the transport costs differ
 - Five services visible in the trace legend
+
+![Microservices topology trace](../docs/images/trace-microservices.png)
 
 ### In the informed trace
 
@@ -214,23 +218,82 @@ happens without any instrumentation in the component code.
 - Everything else looks like microservices — transport overhead visible
 - The contrast between the two patterns is visible in the same trace
 
+![Informed topology trace](../docs/images/trace-informed.png)
+
 ---
 
 ## What the CLI shows
-
+ 
 Before running anything, `itara inspect` derives the deployment groups
 directly from the wiring config — no containers, no network, just the config:
-
-```bash
-./rust/target/release/itara inspect demo/wiring-monolith.yaml
-./rust/target/release/itara inspect demo/wiring-microservices.yaml
-./rust/target/release/itara inspect demo/wiring-informed.yaml
+ 
 ```
-
+$ ./rust/target/release/itara inspect demo/wiring-monolith.yaml
+Itara topology — demo/wiring-monolith.yaml
+ 
+Nodes:
+  fulfilmentNode   component: fulfilment
+  inventoryNode    component: inventory           (external entry point)
+  notificationNode component: notification
+  paymentNode      component: payment
+  orderNode        component: order               (external entry point)
+ 
+Connections:
+  orderNode →        inventoryNode        [direct]
+  orderNode →        fulfilmentNode       [direct]
+  orderNode →        notificationNode     [direct]
+  orderNode →        paymentNode          [http]
+ 
+Deployment groups (derived):
+  Group A: fulfilmentNode, orderNode, inventoryNode, notificationNode
+    fulfilmentNode (fulfilment)
+    orderNode (order)
+      Receives: external http on :8081
+      Calls:    inventoryNode via direct
+      Calls:    fulfilmentNode via direct
+      Calls:    notificationNode via direct
+      Calls:    paymentNode via http
+    inventoryNode (inventory)
+      Receives: external http on :8082
+    notificationNode (notification)
+ 
+  Group B: paymentNode
+    paymentNode (payment)
+      Receives: orderNode via http on :8083
+ 
+Graph:
+  [external] --http:8081--> [orderNode]
+  [external] --http:8082--> [inventoryNode]
+  [orderNode] --direct--> [inventoryNode]
+  [orderNode] --direct--> [fulfilmentNode]
+  [orderNode] --direct--> [notificationNode]
+  [orderNode] --http:8083--> [paymentNode]
+```
+ 
+All three topology configs can be inspected the same way. The deployment
+groups change with the config — in the microservices topology every component
+is its own group; in the informed topology order and inventory share a group.
+ 
 `itara verify` checks the config for errors before anything starts:
+ 
+```
+$ ./rust/target/release/itara verify demo/wiring-monolith.yaml
+✓ itara verify — demo/wiring-monolith.yaml
 
-```bash
-./rust/target/release/itara verify demo/wiring-informed.yaml
+  5 nodes, 6 connections
+
+  No issues found.
+```
+ 
+```
+$ ./rust/target/release/itara verify demo/wiring-informed-with-error.yaml   # with a missing connection fabricated
+✗ itara verify — demo/wiring-informed-with-error.yaml
+
+  5 nodes, 5 connections
+
+  ERROR  node 'notificationNode' is declared but not referenced in any connection
+
+  1 error
 ```
 
 The topology is visible and validated before a single container starts.
