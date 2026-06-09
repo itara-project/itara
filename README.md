@@ -238,11 +238,21 @@ services, Kubernetes manifests, and startup ordering.
  
 ```
 Deployment groups (derived):
-  Group A: orderNode, inventoryNode
-    orderNode (order)         — calls inventoryNode via direct
-    inventoryNode (inventory) — receives orderNode via direct
+  Group A: fulfilmentNode, orderNode, inventoryNode, notificationNode
+    fulfilmentNode (fulfilment)
+    orderNode (order)
+      Receives: external http on :8081
+      Calls:    inventoryNode via direct
+      Calls:    fulfilmentNode via direct
+      Calls:    notificationNode via direct
+      Calls:    paymentNode via http
+    inventoryNode (inventory)
+      Receives: external http on :8082
+    notificationNode (notification)
+
   Group B: paymentNode
-    paymentNode (payment)     — receives orderNode via http on :8083
+    paymentNode (payment)
+      Receives: orderNode via http on :8083
 ```
  
 Without Itara, this picture has to be reconstructed by reading code.
@@ -256,6 +266,11 @@ startup with a cryptic error.
  
 ```bash
 ./rust/target/release/itara verify demo/wiring-monolith.yaml
+✓ itara verify — wiring-monolith.yaml
+
+  5 nodes, 6 connections
+
+  No issues found.
 ```
  
 Checks performed: orphaned nodes, undeclared node references in connections,
