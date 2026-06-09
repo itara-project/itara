@@ -1,0 +1,2 @@
+component-id=notification
+activator=demo.notification.component.NotificationActivator

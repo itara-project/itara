@@ -1,0 +1,40 @@
+nodes:
+  - id: "fulfilmentNode"
+    component: "fulfilment"
+  - id: "inventoryNode"
+    component: "inventory"
+  - id: "notificationNode"
+    component: "notification"
+  - id: "paymentNode"
+    component: "payment"
+  - id: "orderNode"
+    component: "order"
+
+connections:
+  - from:
+    to: "orderNode"
+    type: http
+    host: "localhost"
+    port: 8081
+    serializer: "json"
+  - from:
+    to: "inventoryNode"
+    type: http
+    host: "localhost"
+    port: 8082
+    serializer: "json"
+  - from: "orderNode"
+    to: "inventoryNode"
+    type: direct
+  - from: "orderNode"
+    to: "fulfilmentNode"
+    type: direct
+  - from: "orderNode"
+    to: "notificationNode"
+    type: direct
+  - from: "orderNode"
+    to: "paymentNode"
+    type: http
+    host: payment
+    port: 8083
+    serializer: "json"

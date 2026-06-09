@@ -1,0 +1,17 @@
+[package]
+name = "payment-component"
+version = "0.1.0"
+edition = "2021"
+ 
+[dependencies]
+itara-core           = { path = "../../../rust/itara-core" }
+itara-agent          = { path = "../../../rust/itara-agent" }
+itara-transport-http = { path = "../../../rust/itara-transport-http" }
+payment-api          = { path = "../payment-api" }
+ 
+[lib]
+crate-type = ["cdylib", "rlib"]
+ 
+[[bin]]
+name = "payment-server"
+path = "src/main.rs"

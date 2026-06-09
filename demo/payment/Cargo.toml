@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "payment-api",
+    "payment-component",
+]
+resolver = "2"
