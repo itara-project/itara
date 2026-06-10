@@ -114,7 +114,7 @@ HTTP topology — separate processes, transport cost visible in the traces:
  
 This works across languages. A Java gateway calling a Rust calculator produces a single distributed trace in Kibana — the same trace ID, correct parent-child relationships, across two runtimes. The code in either component does not change.
  
-The order processing demo below shows the full picture: five Java components, one Rust service, three topologies, and the traces that make each topology decision measurable.
+The order processing demo below shows the full picture: four Java components, one Rust service, three topologies, and the traces that make each topology decision measurable.
 
 ---
 
