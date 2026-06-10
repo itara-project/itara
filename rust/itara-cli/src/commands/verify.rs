@@ -8,15 +8,69 @@ use crate::output::{Issue, TICK, CROSS, blank};
 /// Extend this list as new transport libs are added to the runtime.
 const KNOWN_TRANSPORTS: &[&str] = &["http", "direct"];
 
+const VALID_CHECKS: &[&str] = &[
+    "orphaned-nodes",
+    "orphaned-connections",
+    "duplicate-ids",
+    "self-connections",
+    "unknown-transport",
+];
+
+enum CheckFilter {
+    All,
+    Skip(HashSet<String>),
+    Only(HashSet<String>),
+}
+
+impl CheckFilter {
+    fn should_run(&self, name: &str) -> bool {
+        match self {
+            CheckFilter::All     => true,
+            CheckFilter::Skip(s) => !s.contains(name),
+            CheckFilter::Only(o) => o.contains(name),
+        }
+    }
+}
+
 #[derive(clap::Args)]
 pub struct Args {
     /// Path to the master wiring config file.
     pub config: String,
+    /// Skip a specific check by name. Can be repeated. Mutually exclusive with --only.
+    /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
+    ///               self-connections, unknown-transport
+    #[arg(long, value_name = "check", conflicts_with = "only")]
+    pub skip: Vec<String>,
+    /// Run only the specified check. Can be repeated. Mutually exclusive with --skip.
+    /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
+    ///               self-connections, unknown-transport
+    #[arg(long, value_name = "check", conflicts_with = "skip")]
+    pub only: Vec<String>,
 }
 
 /// Exit codes: 0 if no errors, 1 if any errors were found or the config
 /// could not be parsed. Warnings do not affect the exit code.
 pub fn run(args: Args) -> i32 {
+    // Warn on unknown check names before attempting file I/O.
+    for name in args.skip.iter().chain(args.only.iter()) {
+        if !VALID_CHECKS.contains(&name.as_str()) {
+            eprintln!(
+                "error: unknown check name '{}' (valid: {})",
+                name,
+                VALID_CHECKS.join(", "),
+            );
+            return 1;
+        }
+    }
+
+    let filter = if !args.only.is_empty() {
+        CheckFilter::Only(args.only.into_iter().collect())
+    } else if !args.skip.is_empty() {
+        CheckFilter::Skip(args.skip.into_iter().collect())
+    } else {
+        CheckFilter::All
+    };
+
     // ── Parse ─────────────────────────────────────────────────────────────────
     // The config parser already validates individual field requirements.
     // Any parse error is surfaced here as a top-level ERROR so the output
@@ -34,7 +88,7 @@ pub fn run(args: Args) -> i32 {
         }
     };
  
-    let issues = collect_issues(&config);
+    let issues = collect_issues(&config, &filter);
     print_results(&args.config, &config, &issues);
  
     if issues.iter().any(|i| i.is_error()) { 1 } else { 0 }
@@ -44,15 +98,15 @@ pub fn run(args: Args) -> i32 {
 ///
 /// Separated from `run` so it can be called directly in unit tests without
 /// going through file I/O or argument parsing.
-pub(crate) fn collect_issues(config: &WiringConfig) -> Vec<Issue> {
+fn collect_issues(config: &WiringConfig, filter: &CheckFilter) -> Vec<Issue> {
     let mut issues: Vec<Issue> = Vec::new();
- 
-    check_duplicate_ids(config, &mut issues);
-    check_self_connections(config, &mut issues);
-    check_orphaned_nodes(config, &mut issues);
-    check_orphaned_connections(config, &mut issues);
-    check_unknown_transports(config, &mut issues);
- 
+
+    if filter.should_run("duplicate-ids")        { check_duplicate_ids(config, &mut issues); }
+    if filter.should_run("self-connections")      { check_self_connections(config, &mut issues); }
+    if filter.should_run("orphaned-nodes")        { check_orphaned_nodes(config, &mut issues); }
+    if filter.should_run("orphaned-connections")  { check_orphaned_connections(config, &mut issues); }
+    if filter.should_run("unknown-transport")     { check_unknown_transports(config, &mut issues); }
+
     issues
 }
  
@@ -261,7 +315,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb")],
             vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
         );
-        assert!(collect_issues(&cfg).is_empty());
+        assert!(collect_issues(&cfg, &CheckFilter::All).is_empty());
     }
  
     #[test]
@@ -270,7 +324,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb")],
             vec![http(None, "a", 8080), direct("a", "b")],
         );
-        assert!(collect_issues(&cfg).is_empty());
+        assert!(collect_issues(&cfg, &CheckFilter::All).is_empty());
     }
  
     // ── Duplicate ids ─────────────────────────────────────────────────────────
@@ -281,7 +335,7 @@ mod tests {
             vec![node("a", "ca"), node("a", "ca-dup"), node("b", "cb")],
             vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("'a'"));
         assert!(issues[0].message.contains("declared 2 times"));
@@ -299,7 +353,7 @@ mod tests {
                 http(Some("a"), "b", 8081),
             ],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 2);
     }
  
@@ -311,7 +365,7 @@ mod tests {
             vec![node("a", "ca")],
             vec![http(None, "a", 8080), http(Some("a"), "a", 8081)],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("self-connection"));
     }
@@ -322,7 +376,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb")],
             vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
         );
-        let self_conn_issues: Vec<_> = collect_issues(&cfg).into_iter()
+        let self_conn_issues: Vec<_> = collect_issues(&cfg, &CheckFilter::All).into_iter()
             .filter(|i| i.message.contains("self-connection"))
             .collect();
         assert!(self_conn_issues.is_empty());
@@ -336,7 +390,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb"), node("orphan", "co")],
             vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("'orphan'"));
         assert!(issues[0].message.contains("not referenced"));
@@ -349,7 +403,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb")],
             vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
         );
-        assert!(collect_issues(&cfg).is_empty());
+        assert!(collect_issues(&cfg, &CheckFilter::All).is_empty());
     }
  
     #[test]
@@ -359,7 +413,7 @@ mod tests {
             vec![node("a", "ca"), node("b", "cb")],
             vec![http(None, "a", 8080), direct("a", "b")],
         );
-        assert!(collect_issues(&cfg).is_empty());
+        assert!(collect_issues(&cfg, &CheckFilter::All).is_empty());
     }
  
     // ── Orphaned connections ──────────────────────────────────────────────────
@@ -370,7 +424,7 @@ mod tests {
             vec![node("a", "ca")],
             vec![http(None, "a", 8080), http(Some("a"), "ghost", 8081)],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("'ghost'"));
         assert!(issues[0].message.contains("undeclared"));
@@ -382,7 +436,7 @@ mod tests {
             vec![node("b", "cb")],
             vec![http(None, "b", 8080), http(Some("ghost"), "b", 8081)],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("'ghost'"));
     }
@@ -395,7 +449,7 @@ mod tests {
             vec![node("a", "ca")],
             vec![http(None, "a", 8080)],
         );
-        assert!(collect_issues(&cfg).is_empty());
+        assert!(collect_issues(&cfg, &CheckFilter::All).is_empty());
     }
  
     // ── Unknown transports ────────────────────────────────────────────────────
@@ -409,7 +463,7 @@ mod tests {
                 conn_with_transport(Some("a"), "b", "grpc", 8081),
             ],
         );
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 1);
         assert!(issues[0].message.contains("grpc"));
         assert!(issues[0].message.contains("unknown transport"));
@@ -427,7 +481,7 @@ mod tests {
                 vec![node("a", "ca"), node("b", "cb")],
                 vec![http(None, "a", 8080), conn],
             );
-            let issues = collect_issues(&cfg);
+            let issues = collect_issues(&cfg, &CheckFilter::All);
             let transport_issues: Vec<_> = issues.iter()
                 .filter(|i| i.message.contains("unknown transport"))
                 .collect();
@@ -448,7 +502,7 @@ mod tests {
                 conn_with_transport(Some("a"), "b", "HTTP", 8081),
             ],
         );
-        let transport_issues: Vec<_> = collect_issues(&cfg).into_iter()
+        let transport_issues: Vec<_> = collect_issues(&cfg, &CheckFilter::All).into_iter()
             .filter(|i| i.message.contains("unknown transport"))
             .collect();
         assert!(transport_issues.is_empty());
@@ -468,7 +522,7 @@ mod tests {
             ],
         );
         // Expect: 1 orphaned node + 1 undeclared connection + 1 self-connection = 3
-        let issues = collect_issues(&cfg);
+        let issues = collect_issues(&cfg, &CheckFilter::All);
         assert_eq!(errors(&issues).len(), 3);
     }
  

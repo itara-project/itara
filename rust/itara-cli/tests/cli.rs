@@ -199,6 +199,109 @@ mod inspect {
             .assert().failure()
             .stderr(predicate::str::contains("error:"));
     }
+
+    #[test]
+    fn no_graph_suppresses_graph_section() {
+        itara().args(["inspect", "--no-graph", &fixture("simple.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("Nodes:"))
+            .stdout(predicate::str::contains("Graph:").not());
+    }
+
+    #[test]
+    fn no_groups_suppresses_deployment_groups_section() {
+        itara().args(["inspect", "--no-groups", &fixture("simple.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("Nodes:"))
+            .stdout(predicate::str::contains("Deployment groups").not());
+    }
+
+    #[test]
+    fn node_filter_limits_nodes_section_to_neighborhood() {
+        // branching.yaml: gatewayNode → serviceANode, gatewayNode → serviceBNode.
+        // Filtering on serviceANode includes serviceANode and its neighbor gatewayNode,
+        // but excludes serviceBNode which is outside this neighborhood.
+        let out = itara()
+            .args(["inspect", "--node", "serviceANode", &fixture("branching.yaml")])
+            .assert().success()
+            .get_output().stdout.clone();
+        let text = String::from_utf8(out).unwrap();
+        let nodes_block: String = text.lines()
+            .skip_while(|l| !l.starts_with("Nodes:"))
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(nodes_block.contains("serviceANode"), "target node must appear");
+        assert!(nodes_block.contains("gatewayNode"),  "connected neighbor must appear");
+        assert!(
+            !nodes_block.contains("serviceBNode"),
+            "unrelated node must not appear in Nodes section"
+        );
+    }
+
+    #[test]
+    fn node_filter_shows_connections_involving_node() {
+        itara().args(["inspect", "--node", "gatewayNode", &fixture("simple.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("gatewayNode →"));
+    }
+
+    #[test]
+    fn node_filter_omits_unrelated_connections() {
+        // branching.yaml: gatewayNode fans out to serviceANode and serviceBNode.
+        // Filtering on serviceANode should include its edge but not the serviceBNode edge.
+        let out = itara()
+            .args(["inspect", "--node", "serviceANode", &fixture("branching.yaml")])
+            .assert().success()
+            .get_output().stdout.clone();
+        let text = String::from_utf8(out).unwrap();
+        let conn_block: String = text.lines()
+            .skip_while(|l| !l.starts_with("Connections:"))
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !conn_block.contains("serviceBNode"),
+            "unrelated connection must not appear; Connections block: {}",
+            conn_block
+        );
+    }
+
+    #[test]
+    fn no_graph_and_no_groups_both_respected() {
+        itara().args(["inspect", "--no-graph", "--no-groups", &fixture("simple.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("Graph:").not())
+            .stdout(predicate::str::contains("Deployment groups").not())
+            .stdout(predicate::str::contains("Nodes:"));
+    }
+
+    #[test]
+    fn node_filter_accepts_multiple_nodes() {
+        let out = itara()
+            .args(["inspect", "--node", "gatewayNode", "--node", "calculatorNode", &fixture("simple.yaml")])
+            .assert().success()
+            .get_output().stdout.clone();
+        let text = String::from_utf8(out).unwrap();
+        let nodes_block: String = text.lines()
+            .skip_while(|l| !l.starts_with("Nodes:"))
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(nodes_block.contains("gatewayNode"),    "gatewayNode must appear in Nodes section");
+        assert!(nodes_block.contains("calculatorNode"), "calculatorNode must appear in Nodes section");
+    }
+
+    #[test]
+    fn node_filter_warns_on_unknown_id() {
+        itara().args(["inspect", "--node", "doesNotExist", &fixture("simple.yaml")])
+            .assert().success()
+            .stderr(predicate::str::contains("warning"))
+            .stderr(predicate::str::contains("doesNotExist"));
+    }
 }
 
 // ── itara verify ──────────────────────────────────────────────────────────────
@@ -346,5 +449,83 @@ mod verify {
         itara().args(["verify", &fixture("verify_self_connection.yaml")])
             .assert()
             .stdout(predicate::str::contains("1 node,"));
+    }
+
+    // ── --skip / --only ───────────────────────────────────────────────────────
+
+    #[test]
+    fn skip_suppresses_targeted_check() {
+        // verify_orphan_node.yaml's only problem is the orphaned node.
+        itara().args(["verify", "--skip", "orphaned-nodes", &fixture("verify_orphan_node.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("No issues found."));
+    }
+
+    #[test]
+    fn only_runs_exactly_the_named_check() {
+        // verify_orphan_node.yaml has no duplicate ids — clean under this check alone.
+        itara().args(["verify", "--only", "duplicate-ids", &fixture("verify_orphan_node.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("No issues found."));
+    }
+
+    #[test]
+    fn skip_is_repeatable() {
+        // verify_multiple_errors.yaml: orphaned node + undeclared connection + self-connection.
+        // Skipping two of the three leaves exactly one error.
+        itara().args([
+            "verify",
+            "--skip", "orphaned-nodes",
+            "--skip", "orphaned-connections",
+            &fixture("verify_multiple_errors.yaml"),
+        ])
+        .assert().failure()
+        .stdout(predicate::str::contains("1 error"));
+    }
+
+    #[test]
+    fn only_is_repeatable() {
+        // Running only orphaned-nodes + self-connections finds 2 of the 3 errors.
+        itara().args([
+            "verify",
+            "--only", "orphaned-nodes",
+            "--only", "self-connections",
+            &fixture("verify_multiple_errors.yaml"),
+        ])
+        .assert().failure()
+        .stdout(predicate::str::contains("2 errors"));
+    }
+
+    #[test]
+    fn unknown_skip_name_is_a_hard_error() {
+        itara().args(["verify", "--skip", "not-a-real-check", &fixture("verify_clean.yaml")])
+            .assert().failure()
+            .stderr(predicate::str::contains("error"));
+    }
+
+    #[test]
+    fn unknown_only_name_is_a_hard_error() {
+        itara().args(["verify", "--only", "not-a-real-check", &fixture("verify_clean.yaml")])
+            .assert().failure()
+            .stderr(predicate::str::contains("error"));
+    }
+
+    #[test]
+    fn skip_and_only_together_are_rejected() {
+        itara().args([
+            "verify",
+            "--skip", "duplicate-ids",
+            "--only", "orphaned-nodes",
+            &fixture("verify_clean.yaml"),
+        ])
+        .assert().failure();
+    }
+
+    #[test]
+    fn no_options_still_runs_all_checks() {
+        // Confirms the no-options baseline is unchanged.
+        itara().args(["verify", &fixture("verify_multiple_errors.yaml")])
+            .assert().failure()
+            .stdout(predicate::str::contains("3 errors"));
     }
 }
