@@ -1,5 +1,5 @@
 use clap;
-use itara_config::{parse_file, WiringConfig, ConnectionEntry};
+use itara_config::{parse_file, relevant_part_of, WiringConfig, ConnectionEntry};
 
 use crate::output::{kv, section, blank};
 
@@ -7,6 +7,15 @@ use crate::output::{kv, section, blank};
 pub struct Args {
     /// Path to the master wiring config file.
     pub config: String,
+    /// Suppress the ASCII graph output.
+    #[arg(long)]
+    pub no_graph: bool,
+    /// Suppress deployment group derivation.
+    #[arg(long)]
+    pub no_groups: bool,
+    /// Show only the specified node(s) and their direct connections. Can be repeated.
+    #[arg(long, value_name = "id")]
+    pub node: Vec<String>,
 }
 
 /// Exit codes: 0 on success, 1 if the config cannot be loaded.
@@ -19,11 +28,30 @@ pub fn run(args: Args) -> i32 {
         }
     };
 
+    for id in &args.node {
+        if !config.nodes.iter().any(|n| n.id == *id) {
+            eprintln!("warning: node '{}' not found in config", id);
+        }
+    }
+
+    let config = if args.node.is_empty() {
+        config
+    } else {
+        match relevant_part_of(config, args.node.clone()) {
+            Ok(c) => c,
+            Err(e) => { eprintln!("error: {}", e); return 1; }
+        }
+    };
+
     print_header(&args.config);
     print_nodes(&config);
     print_connections(&config);
-    print_deployment_groups(&config);
-    print_graph(&config);
+    if !args.no_groups {
+        print_deployment_groups(&config);
+    }
+    if !args.no_graph {
+        print_graph(&config);
+    }
 
     0
 }
@@ -36,7 +64,6 @@ fn print_header(path: &str) {
 }
 
 fn print_nodes(config: &WiringConfig) {
-    // Column width: longest node id, at least 16 chars.
     let id_width = config.nodes.iter()
         .map(|n| n.id.len())
         .max()
@@ -198,8 +225,6 @@ fn print_graph(config: &WiringConfig) {
 
     section("Graph");
 
-    // Build chains: start from external connections and follow edges.
-    // Falls back to listing individual arrows when the graph branches.
     let chains = build_chains(config);
     for chain in chains {
         println!("  {}", chain);
