@@ -4,8 +4,13 @@ import io.itara.agent.config.NodeEntry;
 import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.WiringConfig;
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.*;
+import io.itara.agent.metadata.ItaraMetadataIndex;
+import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ObservabilityFacade;
+import io.itara.runtime.OtelBridge;
+import io.itara.runtime.SerializerRegistry;
+import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
 
@@ -19,22 +24,27 @@ import java.util.logging.Logger;
  *
  * Startup sequence:
  *   1. Load wiring config
- *   2. Scan classpath for @ComponentInterface contracts
- *   3. Scan META-INF/itara/activator for local activator classes
- *   4. Load META-INF/itara/serializer — discover available serializer impls
- *   5. Load META-INF/itara/transport — discover available transport impls
- *   5. Load META-INF/itara/observer — discover available observer impls
- *   6. Register ComponentFactory — activates and wraps instances in
+ *   2. Build metadata index from .itara files (itara.metadata.dir)
+ *   3. Scan classpath for @ComponentInterface contracts
+ *   4. Scan META-INF/itara/activator for local activator classes,
+ *      resolving component identity (id, version, api-version) via the
+ *      metadata index built in step 2
+ *   5. Load META-INF/itara/serializer — discover available serializer impls
+ *   6. Load META-INF/itara/transport — discover available transport impls
+ *   7. Load META-INF/itara/otel-bridge — discover the OTel bridge impl
+ *   8. Load META-INF/itara/observer — discover available observer impls
+ *   9. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
- *   7. Register activators for local components
- *   8. Process connections:
+ *  10. Register activators for local components
+ *  11. Process connections:
  *        - direct:   nothing to do, factory handles decoration on first get()
  *        - other:    use TransportRegistry to create proxy or start listener
- *   9. Hand control to the application (main runs normally)
+ *  12. Hand control to the application (main runs normally)
  *
  * JVM arguments:
  *   -javaagent:/path/to/itara-agent.jar
  *   "-Ditara.config=/path/to/wiring-slice.yaml"
+ *   "-Ditara.metadata.dir=/path/to/.itara"
  */
 public class ItaraAgent {
 
@@ -68,7 +78,11 @@ public class ItaraAgent {
         log.info("[Itara] Loading wiring config from: " + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
         WiringConfig config = ConfigLoader.load();
 
-        // ── Step 2: Scan for contracts (@ComponentInterface) ───────────────
+        // ── Step 2: Build metadata index from .itara files ──────────────────
+        log.info("[Itara] Building metadata index from: " + System.getProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY));
+        ItaraMetadataIndex.instance().build();
+
+        // ── Step 3: Scan for contracts (@ComponentInterface) ───────────────
         log.info("[Itara] Scanning classpath for component contracts...");
         Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
         if (contracts.isEmpty()) {
@@ -76,44 +90,43 @@ public class ItaraAgent {
                     + "Check that API jars are on the classpath.");
         }
 
-        // ── Step 3: Scan for activators (META-INF/itara/activator) ─────────
+        // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
         log.info("[Itara] Scanning for activator descriptors...");
-        Map<String, Class<? extends ItaraActivator<?>>> activators =
-                ActivatorScanner.scan(itaraClassLoader, config);
+        Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config);
 
-        // ── Step 4: Load serializers (META-INF/itara/serializer) ─────────────
+        // ── Step 5: Load serializers (META-INF/itara/serializer) ─────────────
         log.info("[Itara] Loading serializer implementations...");
         SerializerLoader.load(itaraClassLoader);
 
-        // ── Step 5: Load transports (META-INF/itara/transport) ─────────────
+        // ── Step 6: Load transports (META-INF/itara/transport) ─────────────
         log.info("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
-        // ── Step 6: Load OTEL bridge (META-INF/itara/otel-bridge) ─────────────
+        // ── Step 7: Load OTEL bridge (META-INF/itara/otel-bridge) ─────────────
         log.info("[Itara] Loading OTel bridge implementations...");
         final OtelBridge otelBridge = OtelBridgeLoader.load(itaraClassLoader);
 
-        // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
+        // ── Step 8: Load observers (META-INF/itara/observer) ───────────────
         log.info("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
 
         ObservabilityFacade.initialize(otelBridge);
 
-        // ── Step 8: Register activators for local components ───────────────
+        // ── Step 9: Register activators for local components ───────────────
         if (config.getNodes() != null) {
             for (NodeEntry entry : config.getNodes()) {
-                Class<? extends ItaraActivator<?>> activatorClass = activators.get(entry.getComponent());
+                ActivatedComponent activated = activators.get(entry.getComponent());
 
-                if (activatorClass != null) {
+                if (activated != null) {
                     registry.registerActivator(
                             entry.getComponent(),
-                            activatorClass,
+                            activated.getActivatorClass(),
                             contracts.get(entry.getComponent()));
                 }
             }
         }
 
-        // ── Step 9: Process connections ────────────────────────────────────
+        // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();

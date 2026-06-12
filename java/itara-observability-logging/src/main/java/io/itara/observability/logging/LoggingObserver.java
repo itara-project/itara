@@ -9,7 +9,7 @@ import java.util.logging.Logger;
 /**
  * Observer that logs every Itara event.
  *
- * Lives in itara-observability-logging — a separate jar loaded via
+ * Lives in itara-observability-logging.itara — a separate jar loaded via
  * itara.lib.dir. Not loaded by default. Add this jar to the lib dir
  * to enable logging output.
  *

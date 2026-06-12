@@ -1,2 +1,1 @@
-component-id=gateway
-activator=demo.gateway.component.GatewayActivator
+demo.gateway.component.GatewayActivator

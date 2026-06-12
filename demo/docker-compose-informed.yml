@@ -22,6 +22,7 @@ services:
       - ./fulfilment/fulfilment-component/target/fulfilment-component-1.0-SNAPSHOT.jar:/app/fulfilment-component.jar:ro
       - ./wiring-informed.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./metafiles:/app/metafiles:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
       - "8085:8085"
@@ -39,6 +40,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.metadata.dir=/app/metafiles"
       - "-Ditara.nodes=fulfilmentNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
@@ -59,6 +61,7 @@ services:
       - ./notification/notification-component/target/notification-component-1.0-SNAPSHOT.jar:/app/notification-component.jar:ro
       - ./wiring-informed.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./metafiles:/app/metafiles:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
       - "8086:8086"
@@ -76,6 +79,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.metadata.dir=/app/metafiles"
       - "-Ditara.nodes=notificationNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
@@ -122,6 +126,7 @@ services:
       - ./payment/java/payment-api/target/payment-api-1.0-SNAPSHOT.jar:/app/payment-api.jar:ro
       - ./wiring-informed.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./metafiles:/app/metafiles:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
       - "8081:8081"
@@ -140,6 +145,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.metadata.dir=/app/metafiles"
       - "-Ditara.nodes=orderNode,inventoryNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"

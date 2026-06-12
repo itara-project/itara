@@ -1,0 +1,16 @@
+[artifact]
+kind = "api"
+id = "order"
+version = "0.1.0"
+api-version = "0.x"
+
+[runtime]
+language = "rust"
+compiler = "1.78+"
+
+[itara]
+spec-version = "0.1"
+core-version = "0.1+"
+
+[serializers]
+supported = ["json"]
