@@ -19,9 +19,14 @@ services:
       - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
       - ./wiring-direct.yaml:/app/config/wiring-direct.yaml:ro
       - ./libs:/app/libs:ro
+      - ./calculator-api/calculator-api.itara:/app/metafiles/calculator-api.itara:ro
+      - ./calculator-component/calculator-component.itara:/app/metafiles/calculator-component.itara:ro
+      - ./gateway-api/gateway-api.itara:/app/metafiles/gateway-api.itara:ro
+      - ./gateway-component/gateway-component.itara:/app/metafiles/gateway-component.itara:ro
     command:
       - "-Ditara.config=/app/config/wiring-direct.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.metadata.dir=/app/metafiles"
       - "-Ditara.nodes=calculatorNode,gatewayNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"

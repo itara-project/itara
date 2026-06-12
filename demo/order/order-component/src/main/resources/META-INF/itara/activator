@@ -1,2 +1,1 @@
-component-id=order
-activator=demo.order.component.OrderActivator
+demo.order.component.OrderActivator

@@ -1,2 +1,1 @@
-component-id=inventory
-activator=demo.inventory.component.InventoryActivator
+demo.inventory.component.InventoryActivator

@@ -35,6 +35,18 @@ cp itara-observability-logging/target/itara-observability-logging-*.jar "$LIBS_D
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 
+META_DIR=itara-metafiles
+mkdir -p "$META_DIR"
+cp itara-transport-http/itara-transport-http.itara "$META_DIR/"
+cp itara-observability-logging/itara-observability-logging.itara "$META_DIR/"
+cp itara-serializer-json/itara-serializer-json.itara "$META_DIR/"
+cp itara-demo/calculator-api/calculator-api.itara "$META_DIR/"
+cp itara-demo/calculator-component/calculator-component.itara "$META_DIR/"
+cp itara-demo/gateway-api/gateway-api.itara "$META_DIR/"
+cp itara-demo/gateway-component/gateway-component.itara "$META_DIR/"
+echo "[CI] Meta dir prepared: $META_DIR"
+ls -l "$META_DIR"
+
 # Always kill the calculator JVM on exit, success or failure
 cleanup() {
   if [ -n "$CALC_PID" ] && kill -0 "$CALC_PID" 2>/dev/null; then
@@ -52,6 +64,7 @@ java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CALC_CONFIG \
   -Ditara.nodes="calculatorNode" \
+  -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL" \
   io.itara.runtime.ItaraMain \
@@ -96,6 +109,7 @@ java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$GW_CONFIG \
   -Ditara.nodes="gatewayNode" \
+  -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain

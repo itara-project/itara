@@ -25,12 +25,25 @@ cp itara-serializer-json/target/itara-serializer-json-*.jar "$LIBS_DIR/"
 echo "[CI] Libs dir prepared: $LIBS_DIR"
 ls -l "$LIBS_DIR"
 
+META_DIR=itara-metafiles
+mkdir -p "$META_DIR"
+cp itara-transport-http/itara-transport-http.itara "$META_DIR/"
+cp itara-observability-logging/itara-observability-logging.itara "$META_DIR/"
+cp itara-serializer-json/itara-serializer-json.itara "$META_DIR/"
+cp itara-demo/calculator-api/calculator-api.itara "$META_DIR/"
+cp itara-demo/calculator-component/calculator-component.itara "$META_DIR/"
+cp itara-demo/gateway-api/gateway-api.itara "$META_DIR/"
+cp itara-demo/gateway-component/gateway-component.itara "$META_DIR/"
+echo "[CI] Meta dir prepared: $META_DIR"
+ls -l "$META_DIR"
+
 echo "[CI] Starting direct topology demo..."
 
 java \
   -Ditara.lib.dir=$LIBS_DIR \
   -Ditara.config=$CONFIG \
   -Ditara.nodes="calculatorNode,gatewayNode" \
+  -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
   -cp "$COMMON:$CALC_API:$CALC_IMPL:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain

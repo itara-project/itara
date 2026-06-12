@@ -32,6 +32,14 @@
             <groupId>com.fasterxml.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
         </dependency>
+        <!-- Jackson TOML for `.itara` metadata file parsing.
+             Shaded into the fat jar for the same reason as the YAML
+             dataformat above. Provides ObjectMapper-style deserialization
+             directly into MetadataFile / ArtifactMeta / etc. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-toml</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>

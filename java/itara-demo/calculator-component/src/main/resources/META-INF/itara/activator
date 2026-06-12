@@ -1,2 +1,1 @@
-component-id=calculator
-activator=demo.calculator.component.CalculatorActivator
+demo.calculator.component.CalculatorActivator

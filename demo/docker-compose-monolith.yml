@@ -31,6 +31,7 @@ services:
       - ./payment/java/payment-api/target/payment-api-1.0-SNAPSHOT.jar:/app/payment-api.jar:ro
       - ./wiring-monolith.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
+      - ./metafiles:/app/metafiles:ro
       - ./otel-libs:/app/otel-libs:ro
     ports:
       - "8081:8081"
@@ -49,6 +50,7 @@ services:
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.metadata.dir=/app/metafiles"
       - "-Ditara.nodes=inventoryNode,fulfilmentNode,notificationNode,orderNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
