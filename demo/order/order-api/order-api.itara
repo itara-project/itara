@@ -1,6 +1,6 @@
 [artifact]
 kind = "api"
-id = "payment"
+id = "order"
 version = "0.1.0"
 api-version = "0.x"
 
