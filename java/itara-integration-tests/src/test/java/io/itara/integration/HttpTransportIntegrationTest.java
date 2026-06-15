@@ -8,7 +8,6 @@ import io.itara.agent.ItaraProxyHandler;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.runtime.NoOpOtelBridge;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.spi.ItaraSerializer;
 import io.itara.transport.http.HttpTransport;
@@ -58,7 +57,7 @@ class HttpTransportIntegrationTest {
         ItaraSerializer serializer = new JsonItaraSerializer();
         HttpTransport transport = new HttpTransport();
 
-        ObservabilityFacade.initialize(new NoOpOtelBridge());
+        ObservabilityFacade.initialize();
 
         // Registry — pre-register the raw implementation for the dispatcher
         ItaraRegistry registry = ItaraRegistry.instance();

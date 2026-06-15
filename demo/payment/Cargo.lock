@@ -344,7 +344,6 @@ dependencies = [
 name = "itara-core"
 version = "0.1.0"
 dependencies = [
- "base64",
  "libloading",
  "serde_json",
  "uuid",

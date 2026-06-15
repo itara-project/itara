@@ -1,9 +1,10 @@
 use std::any::{Any, TypeId};
 use std::sync::Arc;
+use std::collections::HashMap;
 use itara_core::{
     ItaraContext, ItaraComponent, ItaraTransport, Dispatcher,
     ItaraContextHandler, ObservabilityFacade, SpanGuard,
-    context_to_headers, context_from_headers,
+    context_from_headers,
 };
 use itara_serializer_json as json;
 
@@ -88,13 +89,11 @@ impl CalculatorServiceProxy {
         // Fire CALL_SENT with the context the handler just created.
         self.facade.fire_call_sent(Some(&ctx), &self.component_id, method, "http");
 
-        // Encode the context into W3C headers for the transport.
-        let (traceparent, tracestate) = context_to_headers(&ctx);
+        // Build the full outbound header map — Itara-native headers merged
+        // with each observer's serialize_context() output (e.g. OTel W3C headers).
+        let headers = self.facade.build_outbound_headers(&ctx);
 
-        let response = self.transport.invoke(
-            &self.component_id, method, &payload,
-            &traceparent, &tracestate,
-        );
+        let response = self.transport.invoke(&self.component_id, method, &payload, &headers,);
 
         // RETURN_RECEIVED — span closes on the caller side.
         // _guard hasn't dropped yet so the context is still on the stack.
@@ -311,14 +310,13 @@ pub fn calculator_dispatcher(
     handler:       *const dyn ItaraContextHandler,
 ) -> Dispatcher {
     let handler = HandlerPtr(handler);
-    Box::new(move |method: &str, args: &[u8], traceparent: &str, tracestate: &str| -> Vec<u8> {
-        // Restore the incoming context from W3C headers.
-        let incoming = context_from_headers(
-            Some(traceparent).filter(|s| !s.is_empty()),
-            Some(tracestate).filter(|s| !s.is_empty()),
-        );
+    Box::new(move |method: &str, args: &[u8], headers: &HashMap<String, String>| -> Vec<u8> {
+        // Restore the incoming Itara context from Itara-native headers.
+        let incoming = context_from_headers(headers);
 
-        let callee_ctx = incoming.unwrap_or_else(|| ItaraContext::new_root("calculator")).new_callee_span("calculator");
+        let callee_ctx = incoming
+            .unwrap_or_else(|| ItaraContext::new_root("calculator"))
+            .new_callee_span("calculator");
 
         // Push the restored context onto the handler's stack.
         // If the component makes further outbound calls, their proxies will
@@ -331,6 +329,11 @@ pub fn calculator_dispatcher(
         let (data, vtable) = handler.words();
         let _guard = unsafe { SpanGuard::from_words(data, vtable) };
 
+        // Notify observers so they can restore their own propagation state
+        // (e.g. OTel reads traceparent from headers to link the SERVER span
+        // to the remote caller's CLIENT span).
+        facade.notify_restore_context(headers);
+
         // CALL_RECEIVED — callee span opens.
         facade.fire_call_received(Some(ctx.clone()), "calculator", method, "http");
 
@@ -338,6 +341,10 @@ pub fn calculator_dispatcher(
 
         // RETURN_SENT — callee span closes.
         facade.fire_return_sent(&ctx, "calculator", method, false);
+
+        // Notify observers that the inbound scope is released — after
+        // serialization, before the response bytes leave this closure.
+        facade.notify_inbound_context_released();
 
         // _guard drops here, popping the stack.
         result

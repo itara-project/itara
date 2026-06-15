@@ -4,6 +4,14 @@ use std::time::Duration;
 
 use itara_core::{ItaraContext, ItaraObserver};
 
+// W3C parent context extracted from inbound headers by restore_context().
+// Stored per-thread to bridge restore_context → on_call_received without
+// thread-local storage (which is unsafe in cdylibs under dynamic loading).
+struct W3CParent {
+    trace_id: String,
+    span_id:  String,
+}
+
 // ── Span model ────────────────────────────────────────────────────────────────
 
 struct CompletedSpan {
@@ -47,9 +55,21 @@ impl PendingSpan {
 // ── OtlpObserver ─────────────────────────────────────────────────────────────
 
 pub struct OtlpObserver {
+    // Keyed by itara_span_id — the Itara span ID is also used as the OTel span ID.
     caller_spans: Mutex<HashMap<String, PendingSpan>>,
     callee_spans: Mutex<HashMap<String, PendingSpan>>,
-    tx:           mpsc::SyncSender<Message>,
+
+    // Maps ThreadId → (otel_trace_id, otel_span_id) for the most recently opened
+    // CLIENT span on each thread. Populated by on_call_sent, read by
+    // serialize_context(), cleared by on_return_received.
+    current_caller_per_thread: Mutex<HashMap<std::thread::ThreadId, (String, String)>>,
+
+    // Maps ThreadId → W3C parent extracted from inbound headers by restore_context().
+    // Consumed by on_call_received to link the SERVER span to the remote caller's
+    // OTel span (cross-language trace continuity).
+    pending_inbound_parent: Mutex<HashMap<std::thread::ThreadId, W3CParent>>,
+
+    tx: mpsc::SyncSender<Message>,
 }
 
 enum Message {
@@ -63,8 +83,10 @@ impl OtlpObserver {
         let (tx, rx) = mpsc::sync_channel::<Message>(1024);
         spawn_exporter(rx, endpoint.to_string(), service.to_string(), batch_size, timeout_ms);
         OtlpObserver {
-            caller_spans: Mutex::new(HashMap::new()),
-            callee_spans: Mutex::new(HashMap::new()),
+            caller_spans:               Mutex::new(HashMap::new()),
+            callee_spans:               Mutex::new(HashMap::new()),
+            current_caller_per_thread:  Mutex::new(HashMap::new()),
+            pending_inbound_parent:     Mutex::new(HashMap::new()),
             tx,
         }
     }
@@ -81,10 +103,30 @@ impl ItaraObserver for OtlpObserver {
         &self, ctx: &ItaraContext, component: &str,
         method: &str, transport: &str, timestamp: u64,
     ) {
-        self.caller_spans.lock().unwrap().insert(ctx.span_id.clone(), PendingSpan {
-            trace_id:       ctx.trace_id.clone(),
-            span_id:        ctx.span_id.clone(),
-            parent_span_id: ctx.parent_span_id.clone(),
+        // If this outbound call is nested within an inbound request, inherit the
+        // server span's OTel trace_id so all spans for this request share one trace.
+        // Otherwise use the Itara trace_id directly.
+        let (trace_id, parent_span_id) =
+            if let Some(parent_itara_span_id) = &ctx.itara_parent_span_id {
+                let callee_spans = self.callee_spans.lock().unwrap();
+                if let Some(server_span) = callee_spans.get(parent_itara_span_id) {
+                    (server_span.trace_id.clone(), Some(parent_itara_span_id.clone()))
+                } else {
+                    (ctx.itara_trace_id.clone(), ctx.itara_parent_span_id.clone())
+                }
+            } else {
+                (ctx.itara_trace_id.clone(), None)
+            };
+
+        // Remember this CLIENT span's OTel context so serialize_context() can
+        // produce the correct W3C traceparent for the outbound transport headers.
+        self.current_caller_per_thread.lock().unwrap()
+            .insert(std::thread::current().id(), (trace_id.clone(), ctx.itara_span_id.clone()));
+
+        self.caller_spans.lock().unwrap().insert(ctx.itara_span_id.clone(), PendingSpan {
+            trace_id,
+            span_id:        ctx.itara_span_id.clone(),
+            parent_span_id,
             name:           format!("{}.{}", component, method),
             kind:           3, // CLIENT
             start_nanos:    timestamp,
@@ -96,10 +138,23 @@ impl ItaraObserver for OtlpObserver {
         &self, ctx: &ItaraContext, component: &str,
         method: &str, transport: &str, timestamp: u64,
     ) {
-        self.callee_spans.lock().unwrap().insert(ctx.span_id.clone(), PendingSpan {
-            trace_id:       ctx.trace_id.clone(),
-            span_id:        ctx.span_id.clone(),
-            parent_span_id: ctx.parent_span_id.clone(),
+        // Check for a W3C parent set by restore_context() for this thread.
+        // If present, use it to link the SERVER span to the remote caller's OTel
+        // span — this is what makes cross-language traces appear unified in Kibana.
+        let tid = std::thread::current().id();
+        let (trace_id, parent_span_id) = {
+            let mut inbound = self.pending_inbound_parent.lock().unwrap();
+            if let Some(w3c) = inbound.remove(&tid) {
+                (w3c.trace_id, Some(w3c.span_id))
+            } else {
+                (ctx.itara_trace_id.clone(), ctx.itara_parent_span_id.clone())
+            }
+        };
+
+        self.callee_spans.lock().unwrap().insert(ctx.itara_span_id.clone(), PendingSpan {
+            trace_id,
+            span_id:        ctx.itara_span_id.clone(),
+            parent_span_id,
             name:           format!("{}.{}", component, method),
             kind:           2, // SERVER
             start_nanos:    timestamp,
@@ -110,7 +165,7 @@ impl ItaraObserver for OtlpObserver {
     fn on_return_sent(
         &self, ctx: &ItaraContext, _c: &str, _m: &str, timestamp: u64, error: bool,
     ) {
-        if let Some(p) = self.callee_spans.lock().unwrap().remove(&ctx.span_id) {
+        if let Some(p) = self.callee_spans.lock().unwrap().remove(&ctx.itara_span_id) {
             self.send(p.complete(timestamp, error));
         }
     }
@@ -118,9 +173,49 @@ impl ItaraObserver for OtlpObserver {
     fn on_return_received(
         &self, ctx: &ItaraContext, _c: &str, _m: &str, timestamp: u64, error: bool,
     ) {
-        if let Some(p) = self.caller_spans.lock().unwrap().remove(&ctx.span_id) {
+        if let Some(p) = self.caller_spans.lock().unwrap().remove(&ctx.itara_span_id) {
             self.send(p.complete(timestamp, error));
         }
+        // Clean up the thread's caller context — this span is now closed.
+        self.current_caller_per_thread.lock().unwrap()
+            .remove(&std::thread::current().id());
+    }
+
+    fn serialize_context(&self) -> HashMap<String, String> {
+        // Produce a W3C traceparent from the CLIENT span most recently opened
+        // on this thread. Empty if no outbound call is in progress.
+        let tid = std::thread::current().id();
+        let current = self.current_caller_per_thread.lock().unwrap();
+        if let Some((trace_id, span_id)) = current.get(&tid) {
+            let mut headers = HashMap::new();
+            headers.insert(
+                "traceparent".to_string(),
+                format!("00-{}-{}-01", trace_id, span_id),
+            );
+            headers
+        } else {
+            HashMap::new()
+        }
+    }
+
+    fn restore_context(&self, headers: &HashMap<String, String>) {
+        // Extract the W3C traceparent from inbound headers and store it for
+        // on_call_received to use as the OTel parent for the SERVER span.
+        // This is what links a Rust SERVER span to a remote Java CLIENT span.
+        if let Some(traceparent) = headers.get("traceparent") {
+            if let Some(w3c) = parse_w3c_traceparent(traceparent) {
+                self.pending_inbound_parent.lock().unwrap()
+                    .insert(std::thread::current().id(), w3c);
+            }
+        }
+    }
+
+    fn on_inbound_context_released(&self) {
+        // Safety cleanup — remove any leftover inbound parent for this thread.
+        // Normally consumed by on_call_received, but cleans up if something
+        // went wrong before on_call_received fired.
+        self.pending_inbound_parent.lock().unwrap()
+            .remove(&std::thread::current().id());
     }
 
     fn flush(&self) {
@@ -138,6 +233,11 @@ fn build_attrs(ctx: &ItaraContext, component: &str, method: &str, transport: &st
         ("itara.method".into(),    method.into()),
         ("itara.transport".into(), transport.into()),
         ("itara.request.id".into(), ctx.request_id.clone()),
+        // Itara-native IDs as custom attributes — allow cross-observer correlation
+        // (e.g. finding the logging observer entry that matches this OTel span)
+        // without timestamp matching or heuristics.
+        ("itara.trace.id".into(),   ctx.itara_trace_id.clone()),
+        ("itara.span.id".into(),    ctx.itara_span_id.clone()),
     ];
     if !ctx.edge_path.is_empty() {
         a.push(("itara.edge.path".into(), ctx.edge_path.join(" -> ")));
@@ -145,6 +245,15 @@ fn build_attrs(ctx: &ItaraContext, component: &str, method: &str, transport: &st
     if let Some(c) = &ctx.correlation_id { a.push(("itara.correlation".into(), c.clone())); }
     if let Some(n) = &ctx.source_node    { a.push(("itara.source.node".into(), n.clone())); }
     a
+}
+
+fn parse_w3c_traceparent(traceparent: &str) -> Option<W3CParent> {
+    let parts: Vec<&str> = traceparent.split('-').collect();
+    if parts.len() < 4 { return None; }
+    Some(W3CParent {
+        trace_id: parts[1].to_string(),
+        span_id:  parts[2].to_string(),
+    })
 }
 
 // ── Background export thread ──────────────────────────────────────────────────

@@ -2,13 +2,14 @@ package io.itara.agent;
 
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.DispatchHandler;
-import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.spi.ItaraSerializer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,16 +19,18 @@ import java.util.logging.Logger;
  * The transport calls dispatch() with raw bytes and receives raw bytes back.
  * This class owns everything in between:
  *
- *   1. deserialize args
- *   2. registry lookup
- *   3. CALL_RECEIVED        ← Itara/component boundary
+ *   1. restoreInboundContext (inbound scope opened — fires onInboundContextReleased on close)
+ *   2. deserialize args      ← within inbound context, measurable in future
+ *   3. CALL_RECEIVED         ← Itara/component boundary (callee scope opened)
  *   4. component.invoke()
- *   5. RETURN_SENT          ← Itara/component boundary
- *   6. serialize result
+ *   5. callee scope.close()  → RETURN_SENT
+ *   6. serialize result      ← within inbound context, measurable in future
+ *   7. inbound scope.close() → onInboundContextReleased, context popped
  *
- * Observability events wrap the component invocation only (steps 3–5).
- * Deserialization and serialization are outside the span — their cost is
- * visible as transport overhead in the trace.
+ * The callee scope wraps component invocation only. Deserialization and
+ * serialization are within the inbound scope but outside the callee scope —
+ * their cost is visible as transport overhead and available for future
+ * measurement as dedicated spans.
  *
  * Constructed once per inbound connection at startup. All dependencies are
  * wired in — nothing is looked up at call time.
@@ -54,11 +57,9 @@ public class ItaraDispatcher implements DispatchHandler {
     }
 
     @Override
-    public byte[] dispatch(String componentId, String methodName, byte[] requestBytes) throws Exception {
+    public byte[] dispatch(String componentId, String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
 
-        // Registry lookup — infrastructure concern, outside the span
-        // getRawImplementation() — dispatcher owns observability, must not receive
-        // a decorated instance or double-firing will occur.
+        // Registry lookup — outside all scopes, fails fast before any context is opened
         Object instance;
         try {
             instance = registry.getRawImplementation(componentId, Object.class);
@@ -71,7 +72,7 @@ public class ItaraDispatcher implements DispatchHandler {
                     "Registry failure for component '" + componentId + "': " + e.getMessage(), e));
         }
 
-        // Method resolution — outside the span
+        // Method resolution — outside all scopes
         Method method = findMethod(instance.getClass(), methodName);
         if (method == null) {
             throw serialized(new ItaraRemoteException(
@@ -80,57 +81,54 @@ public class ItaraDispatcher implements DispatchHandler {
                     "Method '" + methodName + "' not found on component '" + componentId + "'"));
         }
 
-        // 1. Deserialize args — outside the span
-        Object[] args;
-        try {
-            args = serializer.deserializeArgs(requestBytes, method.getParameterTypes());
-        } catch (Exception e) {
-            throw serialized(new ItaraRemoteException(
-                    ItaraRemoteException.ErrorKind.TRANSPORT,
-                    e.getClass().getName(),
-                    "Failed to deserialize arguments for '" + methodName
-                            + "' on '" + componentId + "': " + e.getMessage(), e));
-        }
+        // 1. Restore inbound context — wraps deserialization, invocation, and serialization
+        try (ItaraScope inboundScope = facade.restoreInboundContext(headers)) {
 
-        // 2. CALL_RECEIVED — Itara/component boundary, opens span
-        //    incomingCtx is set on ThreadLocal by the transport before calling dispatch()
-        ItaraContext incomingCtx = ItaraContext.current();
-        ItaraContext callCtx = facade.fireCallReceived(incomingCtx, componentId, methodName, transportType);
+            // 2. Deserialize args — within inbound context
+            Object[] args;
+            try {
+                args = serializer.deserializeArgs(requestBytes, method.getParameterTypes());
+            } catch (Exception e) {
+                throw serialized(new ItaraRemoteException(
+                        ItaraRemoteException.ErrorKind.TRANSPORT,
+                        e.getClass().getName(),
+                        "Failed to deserialize arguments for '" + methodName
+                                + "' on '" + componentId + "': " + e.getMessage(), e));
+            }
 
-        boolean error = false;
-        Object result;
-        try {
-            // 3. Component invocation — inside the span
-            result = method.invoke(instance, args);
+            // 3. CALL_RECEIVED — callee scope wraps component invocation only
+            Object result = null;
+            try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportType)) {
+                try {
+                    // 4. Component invocation
+                    result = method.invoke(instance, args);
+                } catch (InvocationTargetException e) {
+                    calleeScope.setError(true);
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    // Rethrow as ItaraRemoteException — the transport will map this to an error response
+                    throw serialized(new ItaraRemoteException(
+                            cause instanceof RuntimeException || cause instanceof Error
+                                    ? ItaraRemoteException.ErrorKind.RUNTIME
+                                    : ItaraRemoteException.ErrorKind.CHECKED,
+                            cause.getClass().getName(),
+                            cause.getMessage(),
+                            cause));
+                } catch (Exception e) {
+                    calleeScope.setError(true);
+                    throw e;
+                }
+            } // 5. calleeScope.close() → RETURN_SENT
 
-        } catch (InvocationTargetException e) {
-            error = true;
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            // Rethrow as ItaraRemoteException — the transport will map this to an error response
-            throw serialized(new ItaraRemoteException(
-                    cause instanceof RuntimeException || cause instanceof Error
-                            ? ItaraRemoteException.ErrorKind.RUNTIME
-                            : ItaraRemoteException.ErrorKind.CHECKED,
-                    cause.getClass().getName(),
-                    cause.getMessage(),
-                    cause));
-        } catch (Exception e) {
-            error = true;
-            throw e;
-        } finally {
-            // 4. RETURN_SENT — Itara/component boundary, closes span
-            facade.fireReturnSent(callCtx, componentId, methodName, error);
-        }
-
-        // 5. Serialize result — outside the span
-        try {
-            return serializer.serializeResult(result);
-        } catch (Exception e) {
-            throw serialized(new ItaraRemoteException(
-                    ItaraRemoteException.ErrorKind.TRANSPORT,
-                    e.getClass().getName(),
-                    "Failed to serialize result for '" + methodName
-                            + "' on '" + componentId + "': " + e.getMessage(), e));
+            // 6. Serialize result — within inbound context, after RETURN_SENT
+            try {
+                return serializer.serializeResult(result);
+            } catch (Exception e) {
+                throw serialized(new ItaraRemoteException(
+                        ItaraRemoteException.ErrorKind.TRANSPORT,
+                        e.getClass().getName(),
+                        "Failed to serialize result for '" + methodName
+                                + "' on '" + componentId + "': " + e.getMessage(), e));
+            }
         }
     }
 

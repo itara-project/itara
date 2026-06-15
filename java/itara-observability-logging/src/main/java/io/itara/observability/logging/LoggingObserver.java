@@ -36,7 +36,7 @@ public class LoggingObserver implements ItaraObserver {
     @Override
     public void onCallSent(ItaraContext ctx, String componentId,
                            String methodName, String transport, long timestamp) {
-        if (ctx != null) callSentTimes.put(ctx.getSpanId(), timestamp);
+        if (ctx != null) callSentTimes.put(ctx.getItaraSpanId(), timestamp);
         log.info("[Itara/obs] CALL_SENT     "
                 + componentId + "." + methodName
                 + " transport=" + transport
@@ -46,7 +46,7 @@ public class LoggingObserver implements ItaraObserver {
     @Override
     public void onCallReceived(ItaraContext ctx, String componentId,
                                String methodName, String transport, long timestamp) {
-        if (ctx != null) callReceivedTimes.put(ctx.getSpanId(), timestamp);
+        if (ctx != null) callReceivedTimes.put(ctx.getItaraSpanId(), timestamp);
         log.info("[Itara/obs] CALL_RECEIVED "
                 + componentId + "." + methodName
                 + " transport=" + transport
@@ -58,7 +58,7 @@ public class LoggingObserver implements ItaraObserver {
                              String methodName, long timestamp, boolean error) {
         String execution = "";
         if (ctx != null) {
-            Long start = callReceivedTimes.remove(ctx.getSpanId());
+            Long start = callReceivedTimes.remove(ctx.getItaraSpanId());
             if (start != null) {
                 execution = " execution=" + (timestamp - start) + "ns";
             }
@@ -75,7 +75,7 @@ public class LoggingObserver implements ItaraObserver {
                                  String methodName, long timestamp, boolean error) {
         String latency = "";
         if (ctx != null) {
-            Long start = callSentTimes.remove(ctx.getSpanId());
+            Long start = callSentTimes.remove(ctx.getItaraSpanId());
             if (start != null) {
                 latency = " latency=" + (timestamp - start) + "ns";
             }
@@ -90,10 +90,10 @@ public class LoggingObserver implements ItaraObserver {
     private String trace(ItaraContext ctx) {
         if (ctx == null) return "";
         StringBuilder sb = new StringBuilder()
-                .append(" traceId=").append(ctx.getTraceId())
-                .append(" spanId=").append(ctx.getSpanId());
-        if (ctx.getParentSpanId() != null) {
-            sb.append(" parentSpanId=").append(ctx.getParentSpanId());
+                .append(" traceId=").append(ctx.getItaraTraceId())
+                .append(" spanId=").append(ctx.getItaraSpanId());
+        if (ctx.getItaraParentSpanId() != null) {
+            sb.append(" parentSpanId=").append(ctx.getItaraParentSpanId());
         }
         sb.append(" edgePath=").append(ctx.getEdgePath());
         return sb.toString();

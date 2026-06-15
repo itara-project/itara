@@ -1,4 +1,5 @@
 use crate::component::Dispatcher;
+use std::collections::HashMap;
 
 /// The transport SPI — implemented by itara-transport-http, itara-transport-kafka, etc.
 /// Loaded as a .dll/.so by the agent at startup.
@@ -10,16 +11,17 @@ pub trait ItaraTransport: Send + Sync {
     /// Client side — invoke a remote method.
     /// Called by the generated proxy on every outbound call.
     ///
-    /// traceparent and tracestate are W3C trace context header values produced
-    /// by the proxy from the current ItaraContext. The transport sends them
-    /// alongside the payload. Pass empty strings if observability is not active.
+    /// headers is the merged outbound header map produced by
+    /// ObservabilityFacade::build_outbound_headers() — contains Itara-native
+    /// headers (x-itara-trace-id etc.) plus any observer-contributed headers
+    /// (e.g. OTel's traceparent/tracestate). The transport sets all entries
+    /// on the outgoing request. All keys are lowercase.
     fn invoke(
         &self,
         component_id: &str,
         method:       &str,
         args:         &[u8],
-        traceparent:  &str,
-        tracestate:   &str,
+        headers:      &HashMap<String, String>,
     ) -> Vec<u8>;
 
     /// Server side — register an inbound handler for a component.

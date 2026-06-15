@@ -10,10 +10,11 @@ import java.lang.reflect.Proxy;
  * Uses java.lang.reflect.Proxy — works because component contracts
  * are interfaces annotated with @ComponentInterface.
  *
- * Context management is fully delegated to ObservabilityFacade.
- * The decorator captures the previous context before firing CALL_SENT
- * so it can be restored after the call completes. It never creates
- * contexts directly.
+ * Context management is fully delegated to ObservabilityFacade via scopes.
+ * The caller scope (fireCallSent) wraps the callee scope (fireCallReceived),
+ * mirroring the event ordering: CALL_SENT → CALL_RECEIVED → invoke →
+ * RETURN_SENT → RETURN_RECEIVED. Both scopes fire their close events and
+ * pop the ItaraContext stack on exit — no manual context handling here.
  *
  * Transport type reported as "direct" for all calls through this decorator.
  */
@@ -44,8 +45,7 @@ public class ObservabilityDecorator {
         }
 
         @Override
-        public Object invoke(Object proxy, Method method, Object[] args)
-                throws Throwable {
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(delegate, args);
@@ -53,36 +53,24 @@ public class ObservabilityDecorator {
 
             ObservabilityFacade facade = ObservabilityFacade.instance();
 
-            ItaraContext previousCtx = ItaraContext.current();
+            // CALL_SENT — caller scope; close fires RETURN_RECEIVED
+            try (ItaraScope callerScope = facade.fireCallSent(componentId, method.getName(), TRANSPORT)) {
 
-            // CALL_SENT — caller side, resolves/creates context
-            ItaraContext callerCtx = facade.fireCallSent(
-                    componentId, method.getName(), TRANSPORT);
+                // CALL_RECEIVED — callee scope; close fires RETURN_SENT
+                try (ItaraScope calleeScope = facade.fireCallReceived(componentId, method.getName(), TRANSPORT)) {
 
-            // CALL_RECEIVED — callee side, creates child context
-            // For direct calls both sides are in the same JVM so we fire
-            // all four events. The child context gives the callee a distinct spanId.
-            ItaraContext calleeCtx = facade.fireCallReceived(
-                    callerCtx, componentId, method.getName(), TRANSPORT);
-
-            boolean error = false;
-            try {
-                return method.invoke(delegate, args);
-
-            } catch (Throwable t) {
-                error = true;
-                if (t instanceof java.lang.reflect.InvocationTargetException ite && ite.getCause() != null) {
-                    throw ite.getCause();
-                }
-                throw t;
-
-            } finally {
-                // RETURN_SENT — callee side
-                facade.fireReturnSent(calleeCtx, componentId, method.getName(), error);
-
-                // RETURN_RECEIVED — caller side, restores previous context
-                facade.fireReturnReceived(callerCtx, previousCtx, componentId, method.getName(), error);
-            }
+                    try {
+                        return method.invoke(delegate, args);
+                    } catch (Throwable t) {
+                        calleeScope.setError(true);
+                        callerScope.setError(true);
+                        if (t instanceof java.lang.reflect.InvocationTargetException ite && ite.getCause() != null) {
+                            throw ite.getCause();
+                        }
+                        throw t;
+                    }
+                } // RETURN_SENT
+            } // RETURN_RECEIVED
         }
     }
 }
