@@ -44,7 +44,7 @@ impl ItaraObserver for LoggingObserver {
     ) {
         self.call_sent_times
             .lock().unwrap()
-            .insert(ctx.span_id.clone(), timestamp);
+            .insert(ctx.itara_span_id.clone(), timestamp);
 
         println!(
             "[Itara/obs] CALL_SENT     {}.{} transport={}{}",
@@ -62,7 +62,7 @@ impl ItaraObserver for LoggingObserver {
     ) {
         self.call_received_times
             .lock().unwrap()
-            .insert(ctx.span_id.clone(), timestamp);
+            .insert(ctx.itara_span_id.clone(), timestamp);
 
         println!(
             "[Itara/obs] CALL_RECEIVED {}.{} transport={}{}",
@@ -80,7 +80,7 @@ impl ItaraObserver for LoggingObserver {
     ) {
         let execution = self.call_received_times
             .lock().unwrap()
-            .remove(&ctx.span_id)
+            .remove(&ctx.itara_span_id)
             .map(|start| format!(" execution={}ns", timestamp - start))
             .unwrap_or_default();
 
@@ -103,7 +103,7 @@ impl ItaraObserver for LoggingObserver {
     ) {
         let latency = self.call_sent_times
             .lock().unwrap()
-            .remove(&ctx.span_id)
+            .remove(&ctx.itara_span_id)
             .map(|start| format!(" latency={}ns", timestamp - start))
             .unwrap_or_default();
 
@@ -120,9 +120,9 @@ impl ItaraObserver for LoggingObserver {
 fn format_trace(ctx: &ItaraContext) -> String {
     let mut s = format!(
         " traceId={} spanId={}",
-        ctx.trace_id, ctx.span_id
+        ctx.itara_trace_id, ctx.itara_span_id
     );
-    if let Some(parent) = &ctx.parent_span_id {
+    if let Some(parent) = &ctx.itara_parent_span_id {
         s.push_str(&format!(" parentSpanId={}", parent));
     }
     s.push_str(&format!(" edgePath={:?}", ctx.edge_path));
@@ -154,11 +154,11 @@ mod tests {
         let t0  = monotonic_nanos();
 
         obs.on_call_sent(&ctx, "calculator", "add", "http", t0);
-        assert!(obs.call_sent_times.lock().unwrap().contains_key(&ctx.span_id));
+        assert!(obs.call_sent_times.lock().unwrap().contains_key(&ctx.itara_span_id));
 
         obs.on_return_received(&ctx, "calculator", "add", t0 + 1_000_000, false);
         // Entry removed after on_return_received
-        assert!(!obs.call_sent_times.lock().unwrap().contains_key(&ctx.span_id));
+        assert!(!obs.call_sent_times.lock().unwrap().contains_key(&ctx.itara_span_id));
     }
 
     #[test]
@@ -168,10 +168,10 @@ mod tests {
         let t0  = monotonic_nanos();
 
         obs.on_call_received(&ctx, "calculator", "add", "http", t0);
-        assert!(obs.call_received_times.lock().unwrap().contains_key(&ctx.span_id));
+        assert!(obs.call_received_times.lock().unwrap().contains_key(&ctx.itara_span_id));
 
         obs.on_return_sent(&ctx, "calculator", "add", t0 + 500_000, false);
-        assert!(!obs.call_received_times.lock().unwrap().contains_key(&ctx.span_id));
+        assert!(!obs.call_received_times.lock().unwrap().contains_key(&ctx.itara_span_id));
     }
 
     #[test]

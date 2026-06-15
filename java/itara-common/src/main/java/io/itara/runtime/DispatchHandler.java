@@ -1,5 +1,7 @@
 package io.itara.runtime;
 
+import java.util.Map;
+
 /**
  * Callback interface passed to transport listeners.
  *
@@ -25,5 +27,5 @@ public interface DispatchHandler {
      * @return              Raw serialized response bytes for the transport to send back
      * @throws Exception    On any dispatch failure — transport maps this to an error response
      */
-    byte[] dispatch(String componentId, String methodName, byte[] requestBytes) throws Exception;
+    byte[] dispatch(String componentId, String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception;
 }

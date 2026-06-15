@@ -3,6 +3,7 @@ package io.itara.agent;
 import io.itara.exceptions.ItaraErrorPayload;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ItaraContext;
+import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
@@ -15,11 +16,12 @@ import java.util.Map;
  * Generic InvocationHandler for all remote component calls, regardless of transport.
  *
  * Owns the complete outbound call pipeline:
- *   1. CALL_SENT
- *   2. serialize args
- *   3. transport.send() — pure byte carrier, knows nothing else
- *   4. deserialize result
- *   5. RETURN_RECEIVED
+ *   1. CALL_SENT  (scope opened — fires RETURN_RECEIVED on close)
+ *   2. build outbound headers
+ *   3. serialize args
+ *   4. transport.send() — pure byte carrier, knows nothing else
+ *   5. deserialize result
+ *   6. scope.close() → RETURN_RECEIVED
  *
  * The transport is a slot filled at startup from the wiring config.
  * Switching transports requires no change here.
@@ -58,17 +60,19 @@ public class ItaraProxyHandler implements InvocationHandler {
 
         ItaraContext previousCtx = ItaraContext.current();
 
-        // 1. CALL_SENT — facade resolves context (root or child), opens span
-        ItaraContext callCtx = facade.fireCallSent(componentId, method.getName(), transportType);
+        // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
+        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportType)) {
 
-        boolean error = false;
-        try {
-            // 2. Serialize args
+            // 2. Build outbound headers — Itara-native + per-observer (e.g. OTel W3C)
+            Map<String, String> headers = facade.buildOutboundHeaders();
+
+            // 3. Serialize args
             Object[] safeArgs = (args == null) ? new Object[0] : args;
             byte[] payload;
             try {
                 payload = serializer.serializeArgs(safeArgs);
             } catch (Exception e) {
+                scope.setError(true);
                 throw new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         e.getClass().getName(),
@@ -76,15 +80,12 @@ public class ItaraProxyHandler implements InvocationHandler {
                                 + "' on '" + componentId + "': " + e.getMessage(), e);
             }
 
-            // 3. Transport — bytes in, bytes out. Context passed for header injection only.
+            // 4. Transport — bytes in, bytes out
             byte[] responseBytes;
             try {
-                responseBytes = transport.send(componentId, method.getName(), payload, callCtx, properties);
+                responseBytes = transport.send(componentId, method.getName(), payload, headers, properties);
             } catch (ItaraRemoteException e) {
-                error = true;
-                // Deserialize the error payload the dispatcher attached before throwing.
-                // Wrapped in its own try-catch — a failure here is still a TRANSPORT error,
-                // never an UndeclaredThrowableException.
+                scope.setError(true);
                 try {
                     ItaraErrorPayload errorPayload = (ItaraErrorPayload) serializer.deserializeResult(
                             e.getSerializedPayload(), ItaraErrorPayload.class);
@@ -99,7 +100,7 @@ public class ItaraProxyHandler implements InvocationHandler {
                                     + "': " + deserEx.getMessage(), deserEx);
                 }
             } catch (Exception e) {
-                error = true;
+                scope.setError(true);
                 throw new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         e.getClass().getName(),
@@ -107,11 +108,11 @@ public class ItaraProxyHandler implements InvocationHandler {
                                 + "." + method.getName() + "': " + e.getMessage(), e);
             }
 
-            // 4. Deserialize result
+            // 5. Deserialize result
             try {
                 return serializer.deserializeResult(responseBytes, method.getReturnType());
             } catch (Exception e) {
-                error = true;
+                scope.setError(true);
                 throw new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         e.getClass().getName(),
@@ -119,9 +120,6 @@ public class ItaraProxyHandler implements InvocationHandler {
                                 + "." + method.getName() + "': " + e.getMessage(), e);
             }
 
-        } finally {
-            // 5. RETURN_RECEIVED — closes span, restores previous context
-            facade.fireReturnReceived(callCtx, previousCtx, componentId, method.getName(), error);
-        }
+        } // 6. scope.close() → RETURN_RECEIVED, context popped
     }
 }

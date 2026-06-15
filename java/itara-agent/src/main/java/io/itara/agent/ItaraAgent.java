@@ -8,7 +8,6 @@ import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.runtime.OtelBridge;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
@@ -31,8 +30,8 @@ import java.util.logging.Logger;
  *      metadata index built in step 2
  *   5. Load META-INF/itara/serializer — discover available serializer impls
  *   6. Load META-INF/itara/transport — discover available transport impls
- *   7. Load META-INF/itara/otel-bridge — discover the OTel bridge impl
- *   8. Load META-INF/itara/observer — discover available observer impls
+ *   7. Load META-INF/itara/observer — discover available observer impls
+ *   8. Initialize ObservabilityFacade
  *   9. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
  *  10. Register activators for local components
@@ -102,15 +101,12 @@ public class ItaraAgent {
         log.info("[Itara] Loading transport implementations...");
         TransportLoader.load(itaraClassLoader);
 
-        // ── Step 7: Load OTEL bridge (META-INF/itara/otel-bridge) ─────────────
-        log.info("[Itara] Loading OTel bridge implementations...");
-        final OtelBridge otelBridge = OtelBridgeLoader.load(itaraClassLoader);
-
-        // ── Step 8: Load observers (META-INF/itara/observer) ───────────────
+        // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
         log.info("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
 
-        ObservabilityFacade.initialize(otelBridge);
+        // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
+        ObservabilityFacade.initialize();
 
         // ── Step 9: Register activators for local components ───────────────
         if (config.getNodes() != null) {

@@ -1,61 +1,80 @@
 package io.itara.runtime;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
  * Single point of contact for all observability in the Itara runtime.
  *
  * Singleton — initialized once by the agent at startup via initialize().
- * After initialization, all components, transports, and decorators
- * access it via instance().
+ * After initialization, all proxies, dispatchers, and decorators access
+ * it via instance().
  *
  * Lives in itara-common so transports and decorators can access it
  * without depending on the agent module.
  *
  * Responsibility split:
- *   ObservabilityFacade — owns ThreadLocal lifecycle, fans out to bridge
- *                         and passive observers, captures timestamps
- *   OtelBridge          — owns context creation and OTel span lifecycle,
- *                         returns resolved ItaraContext from opener events
- *   ItaraObserver SPI   — passive, receives events after the bridge,
- *                         multiple supported simultaneously
+ *   ItaraContext        — owns the per-thread context stack (push/pop/current)
+ *   ContextPropagation  — owns Itara-native header serialization/deserialization
+ *   ObservabilityFacade — orchestrates: drives the ItaraContext stack, fans out
+ *                         to all observers, captures timestamps, returns scopes
+ *   ItaraObserver SPI   — receives events and manages its own internal state
  *
- * The decorator and transport implementations call this facade with no
- * context arguments — the facade and bridge manage context entirely.
- * Callers only need to know: component, method, transport, error flag.
+ * Every method that opens a context returns an ItaraScope. Call sites use
+ * try-with-resources — the scope fires the matching close event and pops the
+ * ItaraContext stack on exit. This makes leaked contexts structurally
+ * impossible as long as scopes are used correctly.
  *
- * Event ordering: bridge always fires before passive observers.
- * Timestamp captured once per event, shared across bridge and all observers.
+ * Typical call site shapes:
+ *
+ *   Proxy (direct):
+ *     try (var s = facade.fireCallSent(c, m, "direct")) {
+ *         try (var s2 = facade.fireCallReceived(c, m, "direct")) {
+ *             try { invoke(); } catch (Throwable t) { s2.setError(true); s.setError(true); throw t; }
+ *         }
+ *     }
+ *
+ *   Proxy (remote caller):
+ *     try (var s = facade.fireCallSent(c, m, transport)) {
+ *         Map<String,String> headers = facade.buildOutboundHeaders();
+ *         try { send(headers); } catch (Throwable t) { s.setError(true); throw t; }
+ *     }
+ *
+ *   Dispatcher (remote callee):
+ *     try (var s = facade.restoreInboundContext(headers)) {
+ *         // deserialization happens here — context is already current
+ *         try (var s2 = facade.fireCallReceived(c, m, transport)) {
+ *             try { invoke(); } catch (Throwable t) { s2.setError(true); throw t; }
+ *         }
+ *     }
  */
 public final class ObservabilityFacade {
 
-    private static final Logger log =
-            Logger.getLogger(ObservabilityFacade.class.getName());
+    private static final Logger log = Logger.getLogger(ObservabilityFacade.class.getName());
 
     private static volatile ObservabilityFacade INSTANCE;
 
-    private final OtelBridge       bridge;
     private final ObserverRegistry registry;
 
-    private ObservabilityFacade(OtelBridge bridge) {
-        this.bridge   = bridge;
+    private ObservabilityFacade() {
         this.registry = ObserverRegistry.instance();
     }
 
     /**
-     * Initializes the singleton with the discovered OtelBridge.
+     * Initializes the singleton.
      * Called once by the agent during premain, before any component
      * activators run. Must be called before instance() is used.
      */
-    public static void initialize(OtelBridge bridge) {
+    public static void initialize() {
         if (INSTANCE != null) {
             log.warning("[Itara] ObservabilityFacade already initialized — "
                     + "ignoring duplicate initialization.");
             return;
         }
-        INSTANCE = new ObservabilityFacade(bridge);
-        log.info("[Itara] ObservabilityFacade initialized with bridge: "
-                + bridge.getClass().getSimpleName());
+        INSTANCE = new ObservabilityFacade();
+        log.info("[Itara] ObservabilityFacade initialized.");
     }
 
     /**
@@ -77,137 +96,202 @@ public final class ObservabilityFacade {
         INSTANCE = null;
     }
 
-    // ── Context restoration — for transport listeners ──────────────────────
+    // ── Inbound context (callee/dispatcher side) ───────────────────────────
 
     /**
-     * Restores context from incoming W3C headers.
-     * Called by transport listeners before fireCallReceived.
-     * Returns null if no valid incoming context — bridge will create a root.
+     * Restores the ItaraContext from inbound transport headers and pushes
+     * it onto the thread's context stack. Notifies each observer via
+     * restoreContext() so they can rebuild their own propagation state
+     * (e.g. OTel W3C parent linkage) before fireCallReceived fires.
+     *
+     * The returned scope pops the context when closed. Use in a
+     * try-with-resources block that wraps both deserialization and
+     * fireCallReceived — this makes the context available for future
+     * deserialization measurement as well as the callee span.
+     *
+     * @param headers the full inbound header map from the transport
+     * @return a scope that pops the restored context on close
      */
-    public ItaraContext restoreContext(String traceparent, String tracestate) {
-        // ContextPropagation.fromHeaders handles parsing and child span creation
-        return ContextPropagation.fromHeaders(traceparent, tracestate);
+    public ItaraScope restoreInboundContext(Map<String, String> headers) {
+        ItaraContext ctx = ContextPropagation.fromHeaders(headers);
+        ItaraContext.push(ctx);
+
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.restoreContext(headers);
+            } catch (Exception e) {
+                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                        + " threw on restoreContext: " + e.getMessage());
+            }
+        }
+        return new InboundScope();
+    }
+
+    // ── Outbound headers (proxy/caller side, non-direct only) ─────────────
+
+    /**
+     * Assembles the outbound header map to pass to the transport.
+     * Called after fireCallSent, only for non-direct transports.
+     *
+     * Merges Itara-native headers (itaraTraceId, itaraSpanId, requestId,
+     * correlationId, sourceNode, edgePath) with per-observer headers
+     * (e.g. OTel traceparent/tracestate). Observer headers are merged in
+     * registration order — later registrations win on key collision.
+     *
+     * @return merged header map, never null
+     */
+    public Map<String, String> buildOutboundHeaders() {
+        Map<String, String> headers = new HashMap<>(ContextPropagation.toHeaders(ItaraContext.current()));
+
+        for (var observer : registry.getObservers()) {
+            try {
+                headers.putAll(observer.serializeContext());
+            } catch (Exception e) {
+                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                        + " threw on serializeContext: " + e.getMessage());
+            }
+        }
+        return headers;
     }
 
     // ── Caller side ────────────────────────────────────────────────────────
 
     /**
-     * Fires CALL_SENT. The bridge resolves the context (root or child)
-     * and opens a CLIENT OTel span. The resolved context is stored in
-     * ThreadLocal and returned for use in the finally block.
+     * Fires CALL_SENT. Creates a child ItaraContext (or root if none is
+     * active) and pushes it onto the thread's stack.
      *
-     * @return the resolved context — must be passed to fireReturnReceived
+     * The returned scope fires RETURN_RECEIVED and pops the context when
+     * closed. Always use in a try-with-resources block.
      */
-    public ItaraContext fireCallSent(String componentId,
-                                     String methodName,
-                                     String transport) {
-        long timestamp = System.currentTimeMillis() * 1_000_000L;
-        ItaraContext current = ItaraContext.current();
+    public ItaraScope fireCallSent(String componentId,
+                                   String methodName,
+                                   String transport) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newCallerSpan()
+                : ItaraContext.newRoot(componentId);
+        ItaraContext.push(ctx);
 
-        // Bridge resolves context: null = root, non-null = child
-        ItaraContext resolved = bridge.onCallSent(
-                current, componentId, methodName, transport, timestamp);
-        ItaraContext.set(resolved);
-
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
         for (var observer : registry.getObservers()) {
             try {
-                observer.onCallSent(resolved, componentId, methodName,
+                observer.onCallSent(ctx, componentId, methodName,
                         transport, timestamp);
             } catch (Exception e) {
                 log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                         + " threw on onCallSent: " + e.getMessage());
             }
         }
-        return resolved;
-    }
-
-    /**
-     * Fires RETURN_RECEIVED and restores the previous context.
-     *
-     * @param callCtx     the context returned by fireCallSent
-     * @param previousCtx the context that was active before fireCallSent,
-     *                    null if fireCallSent created a root context
-     */
-    public void fireReturnReceived(ItaraContext callCtx,
-                                   ItaraContext previousCtx,
-                                   String componentId,
-                                   String methodName,
-                                   boolean error) {
-        long timestamp = System.currentTimeMillis() * 1_000_000L;
-        bridge.onReturnReceived(callCtx, componentId, methodName, timestamp, error);
-
-        for (var observer : registry.getObservers()) {
-            try {
-                observer.onReturnReceived(callCtx, componentId, methodName,
-                        timestamp, error);
-            } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on onReturnReceived: " + e.getMessage());
-            }
-        }
-
-        // Restore previous context — clear if we created a root
-        if (previousCtx == null) {
-            ItaraContext.clear();
-        } else {
-            ItaraContext.set(previousCtx);
-        }
+        return new CallerScope(componentId, methodName);
     }
 
     // ── Callee side ────────────────────────────────────────────────────────
 
     /**
-     * Fires CALL_RECEIVED. The bridge resolves the context and opens a
-     * SERVER OTel span. The resolved context is stored in ThreadLocal
-     * and returned for use in the finally block.
+     * Fires CALL_RECEIVED. Creates a child ItaraContext from whatever is
+     * current (the restored inbound context for remote calls, the caller's
+     * context for direct calls) and pushes it.
      *
-     * @param incomingCtx context restored from W3C headers, or null if none
-     * @return            the resolved context — must be passed to fireReturnSent
+     * The returned scope fires RETURN_SENT and pops the context when
+     * closed. Always use in a try-with-resources block.
      */
-    public ItaraContext fireCallReceived(ItaraContext incomingCtx,
-                                         String componentId,
-                                         String methodName,
-                                         String transport) {
-        long timestamp = System.currentTimeMillis() * 1_000_000L;
-        ItaraContext resolved = bridge.onCallReceived(
-                incomingCtx, componentId, methodName, transport, timestamp);
-        ItaraContext.set(resolved);
+    public ItaraScope fireCallReceived(String componentId,
+                                       String methodName,
+                                       String transport) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newChildSpan(componentId)
+                : ItaraContext.newRoot(componentId);
+        ItaraContext.push(ctx);
 
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
         for (var observer : registry.getObservers()) {
             try {
-                observer.onCallReceived(resolved, componentId, methodName,
+                observer.onCallReceived(ctx, componentId, methodName,
                         transport, timestamp);
             } catch (Exception e) {
                 log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                         + " threw on onCallReceived: " + e.getMessage());
             }
         }
-        return resolved;
+        return new CalleeScope(componentId, methodName);
     }
 
-    /**
-     * Fires RETURN_SENT and clears the context.
-     * Always called in a finally block by the transport listener.
-     *
-     * @param callCtx the context returned by fireCallReceived
-     */
-    public void fireReturnSent(ItaraContext callCtx,
-                               String componentId,
-                               String methodName,
-                               boolean error) {
-        long timestamp = System.currentTimeMillis() * 1_000_000L;
-        bridge.onReturnSent(callCtx, componentId, methodName, timestamp, error);
+    // ── Scope implementations ──────────────────────────────────────────────
 
-        for (var observer : registry.getObservers()) {
-            try {
-                observer.onReturnSent(callCtx, componentId, methodName,
-                        timestamp, error);
-            } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on onReturnSent: " + e.getMessage());
+    /** Scope returned by restoreInboundContext — pops on close, no event. */
+    private final class InboundScope implements ItaraScope {
+        @Override public void setError(boolean error) { /* no-op */ }
+
+        @Override
+        public void close() {
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onInboundContextReleased();
+                } catch (Exception e) {
+                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                            + " threw on onInboundContextReleased: " + e.getMessage());
+                }
             }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by fireCallSent — fires RETURN_RECEIVED and pops. */
+    private final class CallerScope implements ItaraScope {
+        private final String componentId;
+        private final String methodName;
+        private boolean error = false;
+
+        CallerScope(String componentId, String methodName) {
+            this.componentId = componentId;
+            this.methodName  = methodName;
         }
 
-        ItaraContext.clear();
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onReturnReceived(ctx, componentId, methodName, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                            + " threw on onReturnReceived: " + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by fireCallReceived — fires RETURN_SENT and pops. */
+    private final class CalleeScope implements ItaraScope {
+        private final String componentId;
+        private final String methodName;
+        private boolean error = false;
+
+        CalleeScope(String componentId, String methodName) {
+            this.componentId = componentId;
+            this.methodName  = methodName;
+        }
+
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onReturnSent(ctx, componentId, methodName, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                            + " threw on onReturnSent: " + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
     }
 }

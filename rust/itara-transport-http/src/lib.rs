@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use itara_core::{Dispatcher, ItaraTransport, HEADER_TRACEPARENT, HEADER_TRACESTATE};
+use itara_core::{Dispatcher, ItaraTransport};
 
 pub struct HttpTransport {
     base_url:    String,
@@ -24,23 +24,16 @@ impl ItaraTransport for HttpTransport {
         component_id: &str,
         method:       &str,
         args:         &[u8],
-        traceparent:  &str,
-        tracestate:   &str,
+        headers:      &HashMap<String, String>,
     ) -> Vec<u8> {
         let url = format!("{}/itara/{}/{}", self.base_url, component_id, method);
         println!("[Itara/HTTP] -> {} to {}", method, url);
 
         let mut request = ureq::post(&url)
             .set("Content-Type", "application/octet-stream");
- 
-        // Forward W3C trace context headers if present.
-        // Empty strings mean no active trace — omit the headers entirely
-        // rather than sending empty values.
-        if !traceparent.is_empty() {
-            request = request.set(HEADER_TRACEPARENT, traceparent);
-        }
-        if !tracestate.is_empty() {
-            request = request.set(HEADER_TRACESTATE, tracestate);
+
+        for (key, value) in headers {
+            request = request.set(key, value);
         }
  
         let response = request
@@ -97,10 +90,18 @@ impl ItaraTransport for HttpTransport {
 
                 let component_id = parts[2].to_string();
                 let method_name  = parts[3].to_string();
- 
-                // Extract W3C trace context headers — empty string if absent.
-                let traceparent = header_value(request.headers(), HEADER_TRACEPARENT);
-                let tracestate  = header_value(request.headers(), HEADER_TRACESTATE);
+
+                // Collect all inbound headers into a lowercase-key map.
+                // HTTP headers are case-insensitive — lowercase normalisation
+                // ensures ContextPropagation and observers find their keys
+                // regardless of what the sender's HTTP stack produced.
+                let mut headers: HashMap<String, String> = HashMap::new();
+                for h in request.headers() {
+                    headers.insert(
+                        h.field.as_str().as_str().to_lowercase(),
+                        h.value.as_str().to_string(),
+                    );
+                }
 
                 let mut body_bytes = Vec::new();
                 request.as_reader().read_to_end(&mut body_bytes).unwrap_or(0);
@@ -116,8 +117,7 @@ impl ItaraTransport for HttpTransport {
                         Some(dispatcher) => dispatcher(
                             &method_name,
                             body_bytes.as_slice(),
-                            &traceparent,
-                            &tracestate,
+                            &headers,
                         ),
                         None => {
                             drop(dispatchers);
@@ -137,14 +137,6 @@ impl ItaraTransport for HttpTransport {
             }
         });
     }
-}
- 
-/// Extract a header value by name (case-insensitive). Returns empty string if absent.
-fn header_value(headers: &[tiny_http::Header], name: &str) -> String {
-    headers.iter()
-        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
-        .map(|h| h.value.as_str().to_string())
-        .unwrap_or_default()
 }
 
 fn err_response(msg: &str, status: u16) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {

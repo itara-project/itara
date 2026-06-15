@@ -1,9 +1,10 @@
 use std::any::{Any, TypeId};
 use std::sync::Arc;
+use std::collections::HashMap;
 use itara_core::{
     ItaraContext, ItaraComponent, ItaraTransport, Dispatcher,
     ItaraContextHandler, ObservabilityFacade, SpanGuard,
-    context_to_headers, context_from_headers,
+    context_from_headers,
 };
 use itara_serializer_json as json;
  
@@ -70,11 +71,11 @@ impl PaymentServiceProxy {
  
         self.facade.fire_call_sent(Some(&ctx), &self.component_id, method, "http");
  
-        let (traceparent, tracestate) = context_to_headers(&ctx);
- 
+        let headers = self.facade.build_outbound_headers(&ctx);
+
         let response = self.transport.invoke(
             &self.component_id, method, &payload,
-            &traceparent, &tracestate,
+            &headers,
         );
  
         self.facade.fire_return_received(&ctx, &self.component_id, method, false);
@@ -246,11 +247,8 @@ pub fn payment_dispatcher(
     handler:       *const dyn ItaraContextHandler,
 ) -> Dispatcher {
     let handler = HandlerPtr(handler);
-    Box::new(move |method: &str, args: &[u8], traceparent: &str, tracestate: &str| -> Vec<u8> {
-        let incoming = context_from_headers(
-            Some(traceparent).filter(|s| !s.is_empty()),
-            Some(tracestate).filter(|s| !s.is_empty()),
-        );
+    Box::new(move |method: &str, args: &[u8], headers: &HashMap<String, String>| -> Vec<u8> {
+        let incoming = context_from_headers(headers);
  
         let callee_ctx = incoming
             .unwrap_or_else(|| ItaraContext::new_root("payment"))
@@ -262,12 +260,16 @@ pub fn payment_dispatcher(
  
         let (data, vtable) = handler.words();
         let _guard = unsafe { SpanGuard::from_words(data, vtable) };
- 
+
+        facade.notify_restore_context(headers);
+
         facade.fire_call_received(Some(ctx.clone()), "payment", method, "http");
- 
+
         let result = dispatch(component, method, args, &serializer_id);
- 
+
         facade.fire_return_sent(&ctx, "payment", method, false);
+
+        facade.notify_inbound_context_released();
  
         result
     })

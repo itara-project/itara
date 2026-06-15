@@ -45,7 +45,7 @@ public interface ItaraTransport {
      * @param componentId  The id of the remote component
      * @param methodName   The method being called
      * @param payload      Pre-serialized argument bytes
-     * @param context      The current call context — for header propagation only
+     * @param headers      The headers collected for propagation
      * @param properties   Connection properties from the wiring config
      * @return             Raw response bytes
      * @throws Exception   On any transport-level failure
@@ -53,7 +53,7 @@ public interface ItaraTransport {
     byte[] send(String componentId,
                 String methodName,
                 byte[] payload,
-                ItaraContext context,
+                Map<String, String> headers,
                 Map<String, String> properties) throws Exception;
 
     /**

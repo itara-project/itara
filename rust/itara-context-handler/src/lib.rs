@@ -106,7 +106,7 @@ mod tests {
     fn push_creates_root_on_empty_stack() {
         let h = handler();
         let ctx = h.push("gateway", "calculate", "direct");
-        assert!(ctx.parent_span_id.is_none());
+        assert!(ctx.itara_parent_span_id.is_none());
         assert_eq!(ctx.source_node.as_deref(), Some("gateway"));
         assert!(h.current().is_some());
     }
@@ -116,9 +116,9 @@ mod tests {
         let h = handler();
         let root  = h.push("gateway",    "calculate", "direct");
         let child = h.push("calculator", "add",       "direct");
-        assert_eq!(child.trace_id,   root.trace_id);
+        assert_eq!(child.itara_trace_id,   root.itara_trace_id);
         assert_eq!(child.request_id, root.request_id);
-        assert_eq!(child.parent_span_id.as_deref(), Some(root.span_id.as_str()));
+        assert_eq!(child.itara_parent_span_id.as_deref(), Some(root.itara_span_id.as_str()));
         // push() does NOT extend edge_path — that happens at CALL_RECEIVED
         assert!(child.edge_path.is_empty());
     }
@@ -130,7 +130,7 @@ mod tests {
         let _    = h.push("calculator", "add",       "direct");
         h.pop();
         let current = h.current().unwrap();
-        assert_eq!(current.span_id, root.span_id);
+        assert_eq!(current.itara_span_id, root.itara_span_id);
     }
 
     #[test]
@@ -143,9 +143,9 @@ mod tests {
     fn push_incoming_restores_remote_context() {
         let h        = handler();
         let remote   = ItaraContext::new_root("remote-gateway");
-        let trace_id = remote.trace_id.clone();
+        let trace_id = remote.itara_trace_id.clone();
         let ctx      = h.push_incoming(Some(remote), "calculator", "add", "http");
-        assert_eq!(ctx.trace_id, trace_id);
+        assert_eq!(ctx.itara_trace_id, trace_id);
         assert!(h.current().is_some());
     }
 
@@ -153,7 +153,7 @@ mod tests {
     fn push_incoming_creates_root_when_none() {
         let h   = handler();
         let ctx = h.push_incoming(None, "calculator", "add", "http");
-        assert!(ctx.parent_span_id.is_none());
+        assert!(ctx.itara_parent_span_id.is_none());
     }
 
     #[test]
@@ -163,18 +163,18 @@ mod tests {
         let b = h.push("b", "m", "direct");
         let c = h.push("c", "m", "direct");
 
-        assert_eq!(c.parent_span_id.as_deref(), Some(b.span_id.as_str()));
-        assert_eq!(b.parent_span_id.as_deref(), Some(a.span_id.as_str()));
-        assert!(a.parent_span_id.is_none());
+        assert_eq!(c.itara_parent_span_id.as_deref(), Some(b.itara_span_id.as_str()));
+        assert_eq!(b.itara_parent_span_id.as_deref(), Some(a.itara_span_id.as_str()));
+        assert!(a.itara_parent_span_id.is_none());
         // edge_path not extended by push — stays empty
         assert!(a.edge_path.is_empty());
         assert!(b.edge_path.is_empty());
         assert!(c.edge_path.is_empty());
 
         h.pop(); // c done
-        assert_eq!(h.current().unwrap().span_id, b.span_id);
+        assert_eq!(h.current().unwrap().itara_span_id, b.itara_span_id);
         h.pop(); // b done
-        assert_eq!(h.current().unwrap().span_id, a.span_id);
+        assert_eq!(h.current().unwrap().itara_span_id, a.itara_span_id);
         h.pop(); // a done
         assert!(h.current().is_none());
     }

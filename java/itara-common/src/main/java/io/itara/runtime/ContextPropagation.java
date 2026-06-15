@@ -3,127 +3,97 @@ package io.itara.runtime;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Utilities for propagating ItaraContext across process boundaries
- * using W3C Trace Context headers.
+ * Serializes and deserializes ItaraContext to and from transport headers.
+ *
+ * Itara uses its own dedicated headers, independent of W3C Trace Context.
+ * Observers that maintain their own propagation model (e.g. OTel W3C headers)
+ * handle their own headers via ItaraObserver.serializeContext() /
+ * restoreContext() — ContextPropagation is only responsible for the
+ * Itara-native fields.
  *
  * Header protocol:
- *   traceparent: 00-{traceId}-{spanId}-01
- *   tracestate:  itara={base64-encoded CSV of Itara-specific fields}
+ *   X-Itara-Trace-Id      — itaraTraceId (32 hex chars), always present
+ *   X-Itara-Span-Id       — itaraSpanId  (16 hex chars), always present
+ *   X-Itara-Request-Id    — requestId,   always present
+ *   X-Itara-Correlation   — correlationId, omitted when null
+ *   X-Itara-Source-Node   — sourceNode,    omitted when null
+ *   X-Itara-Edge-Path     — comma-separated edge path, omitted when empty
  *
- * The traceparent header follows the W3C Trace Context specification
- * and is understood natively by OTel, Jaeger, Zipkin, and other backends.
- *
- * The tracestate header carries Itara-specific fields that are not part
- * of the W3C spec. Other systems will ignore the itara= entry as required
- * by the W3C spec.
- *
- * tracestate itara value (base64 of pipe-delimited fields):
- *   requestId|correlationId|sourceNode|edge1,edge2,edge3
- *   Empty/absent fields are represented as empty strings between pipes.
+ * fromHeaders() returns a root context when Itara headers are absent,
+ * so the dispatcher can always call restoreInboundContext() regardless
+ * of whether the call originated from another Itara node.
  */
 public final class ContextPropagation {
 
     private static final Logger log = Logger.getLogger(ContextPropagation.class.getName());
 
-    public static final String HEADER_TRACEPARENT = "X-B3-TraceId";
-    public static final String HEADER_TRACESTATE  = "X-Itara-State";
+    public static final String HEADER_TRACE_ID     = "x-itara-trace-id";
+    public static final String HEADER_SPAN_ID      = "x-itara-span-id";
+    public static final String HEADER_REQUEST_ID   = "x-itara-request-id";
+    public static final String HEADER_CORRELATION  = "x-itara-correlation";
+    public static final String HEADER_SOURCE_NODE  = "x-itara-source-node";
+    public static final String HEADER_EDGE_PATH    = "x-itara-edge-path";
 
-    // Use standard W3C header names
-    public static final String W3C_TRACEPARENT = "traceparent";
-    public static final String W3C_TRACESTATE  = "tracestate";
-
-    private static final String ITARA_VENDOR   = "itara=";
-    private static final String FIELD_SEP      = "|";
-    private static final String EDGE_SEP       = ",";
+    private static final String EDGE_SEP = ",";
 
     private ContextPropagation() {}
 
     /**
-     * Formats the context as W3C traceparent and tracestate header values.
-     * Returns a two-element array: [traceparent, tracestate].
+     * Serializes the context into Itara-native transport headers.
+     * The returned map is merged into the outbound header map by
+     * ObservabilityFacade.buildOutboundHeaders().
      */
-    public static String[] toHeaders(ItaraContext ctx) {
-        String traceparent = ctx.toTraceparent();
-
-        // Encode Itara-specific fields into tracestate
-        String requestId     = nvl(ctx.getRequestId());
-        String correlationId = nvl(ctx.getCorrelationId());
-        String sourceNode    = nvl(ctx.getSourceNode());
-        String edgePath      = ctx.getEdgePath().isEmpty()
-                ? ""
-                : String.join(EDGE_SEP, ctx.getEdgePath());
-
-        String raw = requestId + FIELD_SEP + correlationId
-                + FIELD_SEP + sourceNode + FIELD_SEP + edgePath;
-        String encoded = Base64.getEncoder().encodeToString(raw.getBytes());
-        String tracestate = ITARA_VENDOR + encoded;
-
-        return new String[]{ traceparent, tracestate };
+    public static Map<String, String> toHeaders(ItaraContext ctx) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put(HEADER_TRACE_ID,   ctx.getItaraTraceId());
+        headers.put(HEADER_SPAN_ID,    ctx.getItaraSpanId());
+        headers.put(HEADER_REQUEST_ID, ctx.getRequestId());
+        if (ctx.getCorrelationId() != null)
+            headers.put(HEADER_CORRELATION, ctx.getCorrelationId());
+        if (ctx.getSourceNode() != null)
+            headers.put(HEADER_SOURCE_NODE, ctx.getSourceNode());
+        if (!ctx.getEdgePath().isEmpty())
+            headers.put(HEADER_EDGE_PATH, String.join(EDGE_SEP, ctx.getEdgePath()));
+        return headers;
     }
 
     /**
-     * Restores an ItaraContext from W3C traceparent and tracestate header values.
-     * Creates a new child span — the incoming spanId becomes the parentSpanId,
-     * and a new spanId is generated for this side of the call.
+     * Deserializes an ItaraContext from inbound transport headers.
      *
-     * Returns null if the traceparent is missing or malformed — callers should
-     * create a new root context in that case.
+     * The returned context represents the caller's context — it is used
+     * as the parent by fireCallReceived() when creating the callee-side
+     * child context. itaraParentSpanId is not propagated since it belongs
+     * to the caller's trace and is not needed on the callee side.
+     *
+     * Returns a fresh root context when Itara headers are absent, so the
+     * dispatcher can always call restoreInboundContext() regardless of
+     * whether the inbound call originated from another Itara node.
      */
-    public static ItaraContext fromHeaders(String traceparent, String tracestate) {
-        if (traceparent == null || traceparent.isBlank()) return null;
+    public static ItaraContext fromHeaders(Map<String, String> headers) {
+        String itaraTraceId = headers.get(HEADER_TRACE_ID);
+        String itaraSpanId  = headers.get(HEADER_SPAN_ID);
 
-        String[] tp = ItaraContext.parseTraceparent(traceparent);
-        if (tp == null) return null;
-
-        String traceId = tp[1];
-        String spanId  = tp[2]; // caller's spanId becomes our parentSpanId
-
-        // Defaults
-        String requestId     = ItaraContext.generateRequestId();
-        String correlationId = null;
-        String sourceNode    = null;
-        List<String> edgePath = Collections.emptyList();
-
-        // Parse Itara tracestate if present
-        if (tracestate != null && !tracestate.isBlank()) {
-            String itaraValue = extractItaraValue(tracestate);
-            if (itaraValue != null) {
-                try {
-                    String decoded = new String(Base64.getDecoder().decode(itaraValue));
-                    String[] fields = decoded.split("\\" + FIELD_SEP, -1);
-                    if (fields.length >= 1 && !fields[0].isBlank()) requestId     = fields[0];
-                    if (fields.length >= 2 && !fields[1].isBlank()) correlationId = fields[1];
-                    if (fields.length >= 3 && !fields[2].isBlank()) sourceNode    = fields[2];
-                    if (fields.length >= 4 && !fields[3].isBlank()) {
-                        edgePath = Arrays.asList(fields[3].split(EDGE_SEP));
-                    }
-                } catch (Exception e) {
-                    log.warning("[Itara] Failed to parse tracestate: " + e.getMessage());
-                }
-            }
+        if (itaraTraceId == null || itaraSpanId == null) {
+            // No Itara context — external call entering the system
+            return ItaraContext.newRoot("external");
         }
 
-        return ItaraContext.restore(traceId, spanId, null,
+        String requestId     = headers.getOrDefault(HEADER_REQUEST_ID,
+                ItaraContext.generateRequestId());
+        String correlationId = headers.get(HEADER_CORRELATION);
+        String sourceNode    = headers.get(HEADER_SOURCE_NODE);
+        String edgePathRaw   = headers.get(HEADER_EDGE_PATH);
+        List<String> edgePath = (edgePathRaw == null || edgePathRaw.isBlank())
+                ? Collections.emptyList()
+                : List.of(edgePathRaw.split(EDGE_SEP, -1));
+
+        return ItaraContext.restore(itaraTraceId, itaraSpanId, null,
                 requestId, correlationId, sourceNode, edgePath);
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────
-
-    private static String extractItaraValue(String tracestate) {
-        for (String entry : tracestate.split(",")) {
-            entry = entry.strip();
-            if (entry.startsWith(ITARA_VENDOR)) {
-                return entry.substring(ITARA_VENDOR.length());
-            }
-        }
-        return null;
-    }
-
-    private static String nvl(String s) {
-        return s == null ? "" : s;
     }
 }

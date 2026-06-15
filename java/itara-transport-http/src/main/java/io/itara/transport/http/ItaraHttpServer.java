@@ -10,18 +10,20 @@ import io.itara.runtime.ItaraContext;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * HTTP server for inbound Itara calls.
  *
- * Parses the request path, reads request bytes, sets the ItaraContext on
- * ThreadLocal from W3C headers, calls the dispatcher, writes response bytes.
+ * Parses the request path, extracts all inbound headers, reads request bytes,
+ * calls the dispatcher with the raw header map, writes response bytes.
  * That is all.
  *
- * No serialization. No observability. No registry access.
- * The DispatchHandler owns all of that.
+ * No serialization. No observability. No context management. No registry access.
+ * The DispatchHandler (via ObservabilityFacade) owns all of that.
  *
  * Error handling:
  *   400 — malformed path or unreadable request bytes (transport-level, before dispatch)
@@ -78,46 +80,39 @@ public class ItaraHttpServer {
 
         log.info("[Itara/HTTP] <- " + methodName + " on " + componentId);
 
-        // Restore context from W3C headers and set on ThreadLocal.
-        // The dispatcher reads ItaraContext.current() — transport sets it, dispatcher reads it.
-        // Always cleared in finally.
-        String traceparent = exchange.getRequestHeaders().getFirst(ContextPropagation.W3C_TRACEPARENT);
-        String tracestate = exchange.getRequestHeaders().getFirst(ContextPropagation.W3C_TRACESTATE);
-        ItaraContext incomingCtx = ContextPropagation.fromHeaders(traceparent, tracestate);
-        if (incomingCtx != null) {
-            ItaraContext.set(incomingCtx);
-        }
+        // Normalise to lowercase — Itara's header contract is lowercase keys,
+        // matching HTTP/2 convention and OTel's own W3C headers.
+        Map<String, String> headers = new HashMap<>();
+        exchange.getRequestHeaders().forEach((key, values) -> {
+            if (values != null && !values.isEmpty()) {
+                headers.put(key.toLowerCase(), values.get(0));
+            }
+        });
 
+        byte[] requestBytes;
         try {
-            byte[] requestBytes;
-            try {
-                requestBytes = exchange.getRequestBody().readAllBytes();
-            } catch (IOException e) {
-                log.warning("[Itara/HTTP] Failed to read request body for '"
-                        + methodName + "' on '" + componentId + "'");
-                sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
-                return;
-            }
-
-            byte[] responseBytes;
-            try {
-                responseBytes = dispatcher.dispatch(componentId, methodName, requestBytes);
-            } catch (ItaraRemoteException e) {
-                // Response body is pre-serialized by the dispatcher
-                sendBytes(exchange, ItaraHttpStatus.forErrorKind(e.getErrorKind()), e.getSerializedPayload());
-                return;
-            } catch (Exception e) {
-                log.log(Level.SEVERE, "[Itara/HTTP] Unexpected dispatcher failure for '"
-                        + methodName + "' on '" + componentId + "'", e);
-                sendEmpty(exchange, ItaraHttpStatus.TRANSPORT_ERROR);
-                return;
-            }
-
-            sendBytes(exchange, ItaraHttpStatus.OK, responseBytes);
-
-        } finally {
-            ItaraContext.clear();
+            requestBytes = exchange.getRequestBody().readAllBytes();
+        } catch (IOException e) {
+            log.warning("[Itara/HTTP] Failed to read request body for '"
+                    + methodName + "' on '" + componentId + "'");
+            sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
+            return;
         }
+
+        byte[] responseBytes;
+        try {
+            responseBytes = dispatcher.dispatch(componentId, methodName, requestBytes, headers);
+        } catch (ItaraRemoteException e) {
+            sendBytes(exchange, ItaraHttpStatus.forErrorKind(e.getErrorKind()), e.getSerializedPayload());
+            return;
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "[Itara/HTTP] Unexpected dispatcher failure for '"
+                    + methodName + "' on '" + componentId + "'", e);
+            sendEmpty(exchange, ItaraHttpStatus.TRANSPORT_ERROR);
+            return;
+        }
+
+        sendBytes(exchange, ItaraHttpStatus.OK, responseBytes);
     }
 
     private void sendBytes(HttpExchange exchange, int status, byte[] body) throws IOException {

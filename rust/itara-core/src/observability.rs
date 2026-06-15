@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 // ── ItaraContext ──────────────────────────────────────────────────────────────
 //
 // Immutable context object that travels with every request through the Itara
@@ -11,12 +13,12 @@
 /// proxy and dispatcher, propagated across process boundaries via W3C headers.
 #[derive(Debug, Clone)]
 pub struct ItaraContext {
-    /// 32 hex chars — shared across the entire distributed trace
-    pub trace_id: String,
-    /// 16 hex chars — identifies this specific span
-    pub span_id: String,
-    /// 16 hex chars — the caller's span_id, None for root spans
-    pub parent_span_id: Option<String>,
+    /// 32 hex chars — stable across the entire request chain
+    pub itara_trace_id: String,
+    /// 16 hex chars — unique per component invocation
+    pub itara_span_id: String,
+    /// 16 hex chars — the caller's itara_span_id, None for root spans
+    pub itara_parent_span_id: Option<String>,
     /// Unique per originating request
     pub request_id: String,
     /// Business-level identifier, optionally set by the entry point caller
@@ -31,13 +33,13 @@ impl ItaraContext {
     /// Creates a new root context. Generates fresh trace_id, span_id, request_id.
     pub fn new_root(source_node: &str) -> Self {
         ItaraContext {
-            trace_id:       generate_trace_id(),
-            span_id:        generate_span_id(),
-            parent_span_id: None,
-            request_id:     generate_request_id(),
-            correlation_id: None,
-            source_node:    Some(source_node.to_string()),
-            edge_path:      Vec::new(),
+            itara_trace_id:      generate_trace_id(),
+            itara_span_id:       generate_span_id(),
+            itara_parent_span_id: None,
+            request_id:          generate_request_id(),
+            correlation_id:      None,
+            source_node:         Some(source_node.to_string()),
+            edge_path:           Vec::new(),
         }
     }
 
@@ -59,13 +61,13 @@ impl ItaraContext {
         let mut new_path = self.edge_path.clone();
         new_path.push(component_id.to_string());
         ItaraContext {
-            trace_id:       self.trace_id.clone(),
-            span_id:        generate_span_id(),
-            parent_span_id: Some(self.span_id.clone()),
-            request_id:     self.request_id.clone(),
-            correlation_id: self.correlation_id.clone(),
-            source_node:    self.source_node.clone(),
-            edge_path:      new_path,
+            itara_trace_id:      self.itara_trace_id.clone(),
+            itara_span_id:       generate_span_id(),
+            itara_parent_span_id: Some(self.itara_span_id.clone()),
+            request_id:          self.request_id.clone(),
+            correlation_id:      self.correlation_id.clone(),
+            source_node:         self.source_node.clone(),
+            edge_path:           new_path,
         }
     }
 
@@ -74,13 +76,13 @@ impl ItaraContext {
     /// when the component boundary is actually entered, consistent with Java.
     pub fn new_outbound_span(&self) -> Self {
         ItaraContext {
-            trace_id:       self.trace_id.clone(),
-            span_id:        generate_span_id(),
-            parent_span_id: Some(self.span_id.clone()),
-            request_id:     self.request_id.clone(),
-            correlation_id: self.correlation_id.clone(),
-            source_node:    self.source_node.clone(),
-            edge_path:      self.edge_path.clone(),
+            itara_trace_id:      self.itara_trace_id.clone(),
+            itara_span_id:       generate_span_id(),
+            itara_parent_span_id: Some(self.itara_span_id.clone()),
+            request_id:          self.request_id.clone(),
+            correlation_id:      self.correlation_id.clone(),
+            source_node:         self.source_node.clone(),
+            edge_path:           self.edge_path.clone(),
         }
     }
 
@@ -88,49 +90,39 @@ impl ItaraContext {
         let mut new_path = self.edge_path.clone();
         new_path.push(next_component_id.to_string());
         ItaraContext {
-            trace_id:       self.trace_id.clone(),
-            span_id:        generate_span_id(),
-            parent_span_id: Some(self.span_id.clone()),
-            request_id:     self.request_id.clone(),
-            correlation_id: self.correlation_id.clone(),
-            source_node:    self.source_node.clone(),
-            edge_path:      new_path,
+            itara_trace_id:      self.itara_trace_id.clone(),
+            itara_span_id:       generate_span_id(),
+            itara_parent_span_id: Some(self.itara_span_id.clone()),
+            request_id:          self.request_id.clone(),
+            correlation_id:      self.correlation_id.clone(),
+            source_node:         self.source_node.clone(),
+            edge_path:           new_path,
         }
     }
 
     /// Restores a context received from a remote caller.
     pub fn restore(
-        trace_id:       String,
-        span_id:        String,
-        parent_span_id: Option<String>,
-        request_id:     String,
-        correlation_id: Option<String>,
-        source_node:    Option<String>,
-        edge_path:      Vec<String>,
+        itara_trace_id:      String,
+        itara_span_id:       String,
+        itara_parent_span_id: Option<String>,
+        request_id:          String,
+        correlation_id:      Option<String>,
+        source_node:         Option<String>,
+        edge_path:           Vec<String>,
     ) -> Self {
-        ItaraContext { trace_id, span_id, parent_span_id, request_id,
-                       correlation_id, source_node, edge_path }
-    }
-
-    /// Formats this context as a W3C traceparent header value.
-    pub fn to_traceparent(&self) -> String {
-        format!("00-{}-{}-01", self.trace_id, self.span_id)
-    }
-
-    /// Parses a W3C traceparent header value.
-    /// Returns (trace_id, span_id) or None if malformed.
-    pub fn parse_traceparent(traceparent: &str) -> Option<(String, String)> {
-        let parts: Vec<&str> = traceparent.split('-').collect();
-        if parts.len() < 4 { return None; }
-        Some((parts[1].to_string(), parts[2].to_string()))
+        ItaraContext {
+            itara_trace_id, itara_span_id, itara_parent_span_id,
+            request_id, correlation_id, source_node, edge_path,
+        }
     }
 }
 
 impl std::fmt::Display for ItaraContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ItaraContext{{trace_id={}, span_id={}, parent_span_id={:?}, \
-                   request_id={}, source_node={:?}, edge_path={:?}}}",
-               self.trace_id, self.span_id, self.parent_span_id,
+        write!(f, "ItaraContext{{itara_trace_id={}, itara_span_id={}, \
+                   itara_parent_span_id={:?}, request_id={}, \
+                   source_node={:?}, edge_path={:?}}}",
+               self.itara_trace_id, self.itara_span_id, self.itara_parent_span_id,
                self.request_id, self.source_node, self.edge_path)
     }
 }
@@ -151,123 +143,130 @@ pub fn generate_request_id() -> String {
 
 // ── ContextPropagation ────────────────────────────────────────────────────────
 //
-// Header protocol:
-//   traceparent: 00-{trace_id}-{span_id}-01
-//   tracestate:  itara={base64-encoded pipe-delimited Itara fields}
+// Header protocol — Itara-native headers, independent of W3C Trace Context.
+// Observers that maintain their own propagation model (e.g. OTel W3C headers)
+// handle their own headers via ItaraObserver::serialize_context() /
+// restore_context() — ContextPropagation is only responsible for Itara fields.
 //
-// tracestate itara value (base64 of pipe-delimited fields):
-//   requestId|correlationId|sourceNode|edge1,edge2,edge3
+//   x-itara-trace-id   — itara_trace_id, always present
+//   x-itara-span-id    — itara_span_id,  always present
+//   x-itara-request-id — request_id,     always present
+//   x-itara-correlation — correlation_id, omitted when None
+//   x-itara-source-node — source_node,   omitted when None
+//   x-itara-edge-path  — comma-separated edge_path, omitted when empty
 
-pub const HEADER_TRACEPARENT: &str = "traceparent";
-pub const HEADER_TRACESTATE:  &str = "tracestate";
+pub const HEADER_ITARA_TRACE_ID:    &str = "x-itara-trace-id";
+pub const HEADER_ITARA_SPAN_ID:     &str = "x-itara-span-id";
+pub const HEADER_ITARA_REQUEST_ID:  &str = "x-itara-request-id";
+pub const HEADER_ITARA_CORRELATION: &str = "x-itara-correlation";
+pub const HEADER_ITARA_SOURCE_NODE: &str = "x-itara-source-node";
+pub const HEADER_ITARA_EDGE_PATH:   &str = "x-itara-edge-path";
 
-const ITARA_VENDOR: &str = "itara=";
-const FIELD_SEP:    char = '|';
-const EDGE_SEP:     char = ',';
-
-/// Formats the context as W3C traceparent and tracestate header values.
-/// Returns (traceparent, tracestate).
-pub fn context_to_headers(ctx: &ItaraContext) -> (String, String) {
-    use base64::Engine as _;
-    let raw = format!("{}{}{}{}{}{}{}",
-        ctx.request_id,                              FIELD_SEP,
-        ctx.correlation_id.as_deref().unwrap_or(""), FIELD_SEP,
-        ctx.source_node.as_deref().unwrap_or(""),    FIELD_SEP,
-        ctx.edge_path.join(&EDGE_SEP.to_string())
-    );
-    let encoded   = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
-    let tracestate = format!("{}{}", ITARA_VENDOR, encoded);
-    (ctx.to_traceparent(), tracestate)
+/// Serializes the context into Itara-native transport headers.
+/// Merged into the outbound header map by ObservabilityFacade::build_outbound_headers.
+pub fn context_to_headers(ctx: &ItaraContext) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    headers.insert(HEADER_ITARA_TRACE_ID.to_string(),   ctx.itara_trace_id.clone());
+    headers.insert(HEADER_ITARA_SPAN_ID.to_string(),    ctx.itara_span_id.clone());
+    headers.insert(HEADER_ITARA_REQUEST_ID.to_string(), ctx.request_id.clone());
+    if let Some(c) = &ctx.correlation_id {
+        headers.insert(HEADER_ITARA_CORRELATION.to_string(), c.clone());
+    }
+    if let Some(n) = &ctx.source_node {
+        headers.insert(HEADER_ITARA_SOURCE_NODE.to_string(), n.clone());
+    }
+    if !ctx.edge_path.is_empty() {
+        headers.insert(HEADER_ITARA_EDGE_PATH.to_string(), ctx.edge_path.join(","));
+    }
+    headers
 }
 
-/// Restores an ItaraContext from W3C traceparent and tracestate header values.
-/// The incoming span_id becomes the parent_span_id — a new span_id is generated.
-/// Returns None if the traceparent is missing or malformed.
-pub fn context_from_headers(
-    traceparent: Option<&str>,
-    tracestate:  Option<&str>,
-) -> Option<ItaraContext> {
-    use base64::Engine as _;
-    let tp = traceparent.filter(|s| !s.is_empty())?;
-    let (trace_id, incoming_span_id) = ItaraContext::parse_traceparent(tp)?;
+/// Deserializes an ItaraContext from inbound transport headers.
+///
+/// The returned context represents the caller's context and is used as the
+/// parent by the dispatcher when calling new_callee_span(). itara_parent_span_id
+/// is not propagated — it belongs to the caller's trace.
+///
+/// Returns None when Itara headers are absent (external call with no Itara context).
+/// The dispatcher creates a root context in that case.
+pub fn context_from_headers(headers: &HashMap<String, String>) -> Option<ItaraContext> {
+    let itara_trace_id = headers.get(HEADER_ITARA_TRACE_ID)?.clone();
+    let itara_span_id  = headers.get(HEADER_ITARA_SPAN_ID)?.clone();
 
-    let mut request_id     = generate_request_id();
-    let mut correlation_id = None;
-    let mut source_node    = None;
-    let mut edge_path      = Vec::new();
-
-    if let Some(ts) = tracestate {
-        if let Some(val) = extract_itara_value(ts) {
-            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(val.as_bytes()) {
-                if let Ok(decoded) = String::from_utf8(bytes) {
-                    let f: Vec<&str> = decoded.splitn(4, FIELD_SEP).collect();
-                    if f.len() >= 1 && !f[0].is_empty() { request_id     = f[0].to_string(); }
-                    if f.len() >= 2 && !f[1].is_empty() { correlation_id = Some(f[1].to_string()); }
-                    if f.len() >= 3 && !f[2].is_empty() { source_node    = Some(f[2].to_string()); }
-                    if f.len() >= 4 && !f[3].is_empty() {
-                        edge_path = f[3].split(EDGE_SEP).map(String::from).collect();
-                    }
-                }
-            }
-        }
-    }
+    let request_id     = headers.get(HEADER_ITARA_REQUEST_ID)
+        .cloned()
+        .unwrap_or_else(generate_request_id);
+    let correlation_id = headers.get(HEADER_ITARA_CORRELATION).cloned();
+    let source_node    = headers.get(HEADER_ITARA_SOURCE_NODE).cloned();
+    let edge_path      = headers.get(HEADER_ITARA_EDGE_PATH)
+        .map(|s| s.split(',').map(String::from).collect())
+        .unwrap_or_default();
 
     Some(ItaraContext::restore(
-        trace_id, incoming_span_id, None,
+        itara_trace_id, itara_span_id, None,
         request_id, correlation_id, source_node, edge_path,
     ))
-}
-
-fn extract_itara_value(tracestate: &str) -> Option<String> {
-    tracestate.split(',')
-        .map(str::trim)
-        .find(|e| e.starts_with(ITARA_VENDOR))
-        .map(|e| e[ITARA_VENDOR.len()..].to_string())
 }
 
 // ── ItaraObserver ─────────────────────────────────────────────────────────────
 
 /// Observer SPI for Itara runtime events.
 ///
-/// Four events fire for every component interaction regardless of transport type,
-/// including direct (colocated) calls. All methods have default no-op
-/// implementations — implementors override only the events they care about.
+/// Four lifecycle events fire for every component interaction regardless of
+/// transport type, including direct (colocated) calls. Two additional
+/// header-exchange methods fire only when a call crosses a transport boundary.
+/// All methods have default no-op implementations.
 ///
-/// Lifecycle:
-///   - Implementations are loaded as cdylibs from the lib dir
-///   - Multiple observers may be active simultaneously
-///   - A failure in one observer must not affect delivery to others
-///   - Observers MUST NOT block the call path with slow or blocking operations
-///   - Observers that forward to external systems MUST do so asynchronously
+/// Header exchange:
+///   serialize_context and restore_context let an observer maintain its own
+///   propagation model across process boundaries — independently of
+///   ItaraContext, which propagates itara_trace_id/itara_span_id on its own.
+///   Observers with no cross-process propagation needs do not override these.
+///
+///   These methods are skipped entirely for direct (colocated) calls.
 ///
 /// OTel integration:
-///   OpenTelemetry is built into Itara via OtelBridge, not via this SPI.
-///   This SPI is for passive observers — logging, metrics, audit trails.
+///   OpenTelemetry is a regular ItaraObserver (itara-observability-otel),
+///   using serialize_context and restore_context to maintain its own W3C
+///   trace context across process boundaries.
 pub trait ItaraObserver: Send + Sync {
-    /// Fired on the caller side immediately before the call is dispatched.
-    /// transport — actual transport used: "direct", "http", "kafka", etc.
     #[allow(unused_variables)]
     fn on_call_sent(
         &self, ctx: &ItaraContext, component: &str,
         method: &str, transport: &str, timestamp: u64,
     ) {}
 
-    /// Fired on the callee side immediately upon receiving the call.
-    /// For direct calls, fires immediately after on_call_sent.
+    /// Called after on_call_sent, only for non-direct transports.
+    /// Returns header entries this observer wants sent with the outbound request.
+    /// Default returns an empty map.
+    fn serialize_context(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    /// Called before on_call_received, only for non-direct transports.
+    /// Receives all inbound headers so the observer can rebuild its own
+    /// propagation state (e.g. OTel W3C parent span linkage).
+    #[allow(unused_variables)]
+    fn restore_context(&self, headers: &HashMap<String, String>) {}
+
+    /// Called when the inbound transport scope is fully released —
+    /// after response serialization, not just after business logic.
+    /// Counterpart to restore_context: clean up any state opened there.
+    /// Only fires for non-direct (remote) calls.
+    fn on_inbound_context_released(&self) {}
+
     #[allow(unused_variables)]
     fn on_call_received(
         &self, ctx: &ItaraContext, component: &str,
         method: &str, transport: &str, timestamp: u64,
     ) {}
 
-    /// Fired on the callee side immediately before the response is returned.
     #[allow(unused_variables)]
     fn on_return_sent(
         &self, ctx: &ItaraContext, component: &str,
         method: &str, timestamp: u64, error: bool,
     ) {}
 
-    /// Fired on the caller side immediately upon receiving the response.
     #[allow(unused_variables)]
     fn on_return_received(
         &self, ctx: &ItaraContext, component: &str,
@@ -427,6 +426,42 @@ impl ObservabilityFacade {
         self.fan_out(|obs| obs.on_return_sent(call_ctx, component, method, timestamp, error));
     }
 
+    // ── Outbound headers ──────────────────────────────────────────────────
+
+    /// Assembles the full outbound header map for a non-direct call.
+    /// Merges Itara-native headers with each observer's serialize_context().
+    /// Call after fire_call_sent, before invoking the transport.
+    pub fn build_outbound_headers(&self, ctx: &ItaraContext) -> HashMap<String, String> {
+        let mut headers = context_to_headers(ctx);
+        for obs in &self.observers {
+            let result = std::panic::catch_unwind(
+                std::panic::AssertUnwindSafe(|| obs.serialize_context())
+            );
+            match result {
+                Ok(obs_headers) => headers.extend(obs_headers),
+                Err(e) => {
+                    let msg = e.downcast_ref::<&str>().copied().unwrap_or("unknown panic");
+                    eprintln!("[Itara] Observer panicked on serialize_context: {}", msg);
+                }
+            }
+        }
+        headers
+    }
+
+    /// Notifies all observers of an inbound context restoration.
+    /// Call after context_from_headers and before fire_call_received,
+    /// for non-direct (remote) calls only.
+    pub fn notify_restore_context(&self, headers: &HashMap<String, String>) {
+        self.fan_out(|obs| obs.restore_context(headers));
+    }
+
+    /// Notifies all observers that the inbound scope is fully released.
+    /// Call at the end of the dispatcher closure, after response serialization.
+    /// For non-direct (remote) calls only.
+    pub fn notify_inbound_context_released(&self) {
+        self.fan_out(|obs| obs.on_inbound_context_released());
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────
 
     /// Fan out an event to all observers.
@@ -466,9 +501,9 @@ mod tests {
     #[test]
     fn new_root_generates_valid_ids() {
         let ctx = ItaraContext::new_root("gateway");
-        assert_eq!(ctx.trace_id.len(), 32);
-        assert_eq!(ctx.span_id.len(), 16);
-        assert!(ctx.parent_span_id.is_none());
+        assert_eq!(ctx.itara_trace_id.len(), 32);
+        assert_eq!(ctx.itara_span_id.len(), 16);
+        assert!(ctx.itara_parent_span_id.is_none());
         assert_eq!(ctx.source_node.as_deref(), Some("gateway"));
         assert!(ctx.edge_path.is_empty());
     }
@@ -477,54 +512,38 @@ mod tests {
     fn child_span_inherits_trace_id() {
         let root  = ItaraContext::new_root("gateway");
         let child = root.new_child_span("calculator");
-        assert_eq!(child.trace_id,   root.trace_id);
-        assert_eq!(child.request_id, root.request_id);
-        assert_ne!(child.span_id,    root.span_id);
-        assert_eq!(child.parent_span_id.as_deref(), Some(root.span_id.as_str()));
+        assert_eq!(child.itara_trace_id,   root.itara_trace_id);
+        assert_eq!(child.request_id,       root.request_id);
+        assert_ne!(child.itara_span_id,    root.itara_span_id);
+        assert_eq!(child.itara_parent_span_id.as_deref(), Some(root.itara_span_id.as_str()));
         assert_eq!(child.edge_path, vec!["calculator"]);
-    }
-
-    #[test]
-    fn traceparent_round_trip() {
-        let ctx = ItaraContext::new_root("gateway");
-        let tp  = ctx.to_traceparent();
-        assert!(tp.starts_with("00-"));
-        assert!(tp.ends_with("-01"));
-        let (trace_id, span_id) = ItaraContext::parse_traceparent(&tp).unwrap();
-        assert_eq!(trace_id, ctx.trace_id);
-        assert_eq!(span_id,  ctx.span_id);
     }
 
     #[test]
     fn header_round_trip_full() {
         let ctx   = ItaraContext::new_root_with_correlation("gateway", "order-123");
         let child = ctx.new_child_span("calculator");
-        let (tp, ts) = context_to_headers(&child);
-        let restored = context_from_headers(Some(&tp), Some(&ts)).unwrap();
-        assert_eq!(restored.trace_id,   child.trace_id);
-        assert_eq!(restored.request_id, child.request_id);
+        let headers  = context_to_headers(&child);
+        let restored = context_from_headers(&headers).unwrap();
+        assert_eq!(restored.itara_trace_id, child.itara_trace_id);
+        assert_eq!(restored.itara_span_id,  child.itara_span_id);
+        assert_eq!(restored.request_id,     child.request_id);
         assert_eq!(restored.correlation_id.as_deref(), Some("order-123"));
         assert_eq!(restored.source_node.as_deref(),    Some("gateway"));
-        assert_eq!(restored.span_id, child.span_id);
     }
 
     #[test]
     fn header_round_trip_minimal() {
-        let ctx = ItaraContext::new_root("gateway");
-        let (tp, ts) = context_to_headers(&ctx);
-        let restored = context_from_headers(Some(&tp), Some(&ts)).unwrap();
-        assert_eq!(restored.trace_id, ctx.trace_id);
+        let ctx      = ItaraContext::new_root("gateway");
+        let headers  = context_to_headers(&ctx);
+        let restored = context_from_headers(&headers).unwrap();
+        assert_eq!(restored.itara_trace_id, ctx.itara_trace_id);
     }
 
     #[test]
-    fn missing_traceparent_returns_none() {
-        assert!(context_from_headers(None, None).is_none());
-        assert!(context_from_headers(Some(""), None).is_none());
-    }
-
-    #[test]
-    fn malformed_traceparent_returns_none() {
-        assert!(context_from_headers(Some("not-a-traceparent"), None).is_none());
+    fn missing_itara_headers_returns_none() {
+        // Empty map — no Itara headers present (external call with no context)
+        assert!(context_from_headers(&HashMap::new()).is_none());
     }
 
     #[test]
@@ -544,8 +563,8 @@ mod tests {
         let root   = ItaraContext::new_root("gateway");
         let child1 = root.new_child_span("service-a");
         let child2 = child1.new_child_span("service-b");
-        let (tp, ts) = context_to_headers(&child2);
-        let restored = context_from_headers(Some(&tp), Some(&ts)).unwrap();
+        let headers  = context_to_headers(&child2);
+        let restored = context_from_headers(&headers).unwrap();
         assert_eq!(restored.edge_path, vec!["service-a", "service-b"]);
     }
 
@@ -584,18 +603,17 @@ mod tests {
  
     #[test]
     fn context_child_span_carries_trace_and_request_ids() {
-        // Verify context creation directly — independent of facade.
         let parent = ItaraContext::new_root("gateway");
         let child  = parent.new_outbound_span();
-        assert_eq!(child.trace_id,   parent.trace_id);
-        assert_eq!(child.request_id, parent.request_id);
-        assert_eq!(child.parent_span_id.as_deref(), Some(parent.span_id.as_str()));
+        assert_eq!(child.itara_trace_id,   parent.itara_trace_id);
+        assert_eq!(child.request_id,       parent.request_id);
+        assert_eq!(child.itara_parent_span_id.as_deref(), Some(parent.itara_span_id.as_str()));
     }
- 
+
     #[test]
     fn new_root_has_no_parent() {
         let ctx = ItaraContext::new_root("gateway");
-        assert!(ctx.parent_span_id.is_none());
+        assert!(ctx.itara_parent_span_id.is_none());
     }
 }
 

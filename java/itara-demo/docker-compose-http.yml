@@ -174,8 +174,8 @@ services:
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
       - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "demo.gateway.component.DemoMain"
-      #- "io.itara.runtime.ItaraMain"
+      #- "demo.gateway.component.DemoMain"
+      - "io.itara.runtime.ItaraMain"
     depends_on:
       calculator:
         condition: service_started

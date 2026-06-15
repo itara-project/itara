@@ -49,7 +49,7 @@ public class HttpTransport implements ItaraTransport {
     public byte[] send(String componentId,
                        String methodName,
                        byte[] payload,
-                       ItaraContext context,
+                       Map<String, String> headers,
                        Map<String, String> properties) throws Exception {
 
         String host = required(properties, "host", componentId);
@@ -71,10 +71,8 @@ public class HttpTransport implements ItaraTransport {
         connection.setDoInput(true);
         connection.setRequestProperty("Content-Type", "application/octet-stream");
 
-        // Inject W3C trace headers — read context, do not own it
-        String[] headers = ContextPropagation.toHeaders(context);
-        connection.setRequestProperty(ContextPropagation.W3C_TRACEPARENT, headers[0]);
-        connection.setRequestProperty(ContextPropagation.W3C_TRACESTATE, headers[1]);
+        // Inject the headers
+        headers.forEach(connection::setRequestProperty);
 
         try (OutputStream out = connection.getOutputStream()) {
             out.write(payload);
