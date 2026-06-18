@@ -3,9 +3,8 @@ nodes:
     component: "order-producer"
   - id: "orderConsumerNode"
     component: "order-consumer"
-
-virtualNodes:
   - id: "orderPlacedChannel"
+    kind: virtual
     contract: "order-events/order-placed"
     address: "demo.events.order-placed"
 

@@ -1,9 +1,11 @@
 package io.itara.agent;
 
-import io.itara.agent.config.NodeEntry;
+import io.itara.agent.config.ComponentNode;
 import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
-import io.itara.agent.config.VirtualNodeEntry;
+import io.itara.agent.config.Node;
+import io.itara.agent.config.NodeKind;
+import io.itara.agent.config.VirtualNode;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.runtime.DispatchHandler;
@@ -120,14 +122,14 @@ public class ItaraAgent {
 
         // ── Step 9: Register activators for local components ───────────────
         if (config.getNodes() != null) {
-            for (NodeEntry entry : config.getNodes()) {
-                ActivatedComponent activated = activators.get(entry.getComponent());
+            for (ComponentNode node : config.componentNodes()) {
+                ActivatedComponent activated = activators.get(node.getComponent());
 
                 if (activated != null) {
                     registry.registerActivator(
-                            entry.getComponent(),
+                            node.getComponent(),
                             activated.getActivatorClass(),
-                            contracts.get(entry.getComponent()));
+                            contracts.get(node.getComponent()));
 
                     // Register aliases for all event contracts this component
                     // implements, as declared in [implemented-event-contracts]
@@ -136,14 +138,14 @@ public class ItaraAgent {
                     // in step 10 — so the registry is ready the moment the
                     // first message arrives.
                     ItaraMetadataIndex.instance()
-                            .lookupByComponentId(entry.getComponent())
+                            .lookupByComponentId(node.getComponent())
                             .ifPresent(metadata -> {
                                 for (var contract : metadata.getImplementedEventContracts().getContracts()) {
                                     registry.registerAlias(
-                                            contract.getId(), entry.getComponent());
+                                            contract.getId(), node.getComponent());
                                     log.info("[Itara] Registered event contract alias: "
                                             + contract.getId()
-                                            + " -> " + entry.getComponent());
+                                            + " -> " + node.getComponent());
                                 }
                             });
                 }
@@ -155,7 +157,7 @@ public class ItaraAgent {
             for (ConnectionEntry conn : config.getConnections()) {
                 String type = conn.getType();
 
-                if ("direct".equalsIgnoreCase(type)) {
+                if (conn.isDirect()) {
                     // Colocated — factory handles decoration on first get()
                     log.info("[Itara] Connection: "
                             + conn.getFrom() + " -> " + conn.getTo()
@@ -164,129 +166,76 @@ public class ItaraAgent {
                 }
 
                 // All non-direct connections go through the transport registry
-                ItaraTransport transport = transportRegistry.get(type);
+                ItaraTransport transport = transportRegistry.get(conn.getType());
                 ItaraSerializer serializer = serializerRegistry.get(conn.getSerializer());
 
                 // Build properties map from the connection entry
                 Map<String, String> props = buildProperties(conn, config);
 
-                boolean toIsVirtual   = config.isVirtualNode(conn.getTo());
-                boolean fromIsVirtual = config.isVirtualNode(conn.getFrom());
+                Node toNode   = config.findNode(conn.getTo()).orElseThrow();
+                Node fromNode = conn.getFrom() != null
+                        ? config.findNode(conn.getFrom()).orElse(null)
+                        : null;
 
-                if (toIsVirtual) {
-                    // Producer side: local component node -> virtual node
-                    // Wire a proxy for the event contract so the producer can call it
-                    // like any other component method.
-                    if (!config.getLocalNodeIds().contains(conn.getFrom())) {
-                        // Not our producer — skip
-                        continue;
-                    }
-                    VirtualNodeEntry virtualNode = config.findVirtualNode(conn.getTo()).orElseThrow();
+                ExchangePattern pattern = (toNode.getKind() == NodeKind.VIRTUAL
+                        || (fromNode != null && fromNode.getKind() == NodeKind.VIRTUAL))
+                        ? ExchangePattern.FIRE_AND_FORGET
+                        : ExchangePattern.REQUEST_REPLY;
 
-                    // using virtualNode.getContract() as the lookup key.
-                    // For now, look it up in the existing contracts map as a fallback.
-                    String contractId = virtualNode.getContract();
-                    Class<?> eventContractClass = contracts.get(contractId);
-                    if (eventContractClass == null) {
-                        throw new IllegalStateException(
-                                "[Itara] Cannot create producer proxy for virtual node '"
-                                        + conn.getTo() + "': no event contract class found for '"
-                                        + contractId + "'. "
-                                        + "Is the events artifact jar on the classpath?");
-                    }
+                boolean toIsLocal = config.getLocalNodeIds().contains(conn.getTo());
+                boolean fromIsLocal = conn.getFrom() != null
+                        && config.getLocalNodeIds().contains(conn.getFrom());
 
-                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
-                            itaraClassLoader,
-                            new Class<?>[]{ eventContractClass },
-                            new ItaraProxyHandler(contractId, serializer, transport, props, ExchangePattern.FIRE_AND_FORGET)
-                    );
-                    registry.preRegister(contractId, proxy);
-
-                    log.info("[Itara] Connection: " + conn.getFrom()
-                            + " -> " + conn.getTo()
-                            + " [" + type + " producer]");
-
-                } else if (fromIsVirtual) {
-                    // Consumer side: virtual node -> local component node
-                    // Wire a dispatcher and start a listener — same shape as inbound HTTP.
-                    if (!config.getLocalNodeIds().contains(conn.getTo())) {
-                        // Not our consumer — skip
-                        continue;
-                    }
-                    String localComponentId = config.getComponentOfNodeId(conn.getTo());
+                if (toIsLocal) {
+                    // Inbound — wire a dispatcher regardless of node type
+                    // ExchangePattern handles the virtual/component distinction
+                    String componentId = switch (toNode.getKind()) {
+                        case COMPONENT -> ((ComponentNode) toNode).getComponent();
+                        case VIRTUAL   -> throw new IllegalStateException(
+                                "[Itara] Virtual node '" + toNode.getId()
+                                        + "' cannot be an inbound target.");
+                    };
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            localComponentId, type, serializer, registry, ExchangePattern.FIRE_AND_FORGET
-                    );
-                    transport.startListener(localComponentId, props, dispatcher);
+                            componentId, conn.getType(), serializer, registry, pattern);
+                    transport.startListener(componentId, props, dispatcher);
 
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        log.info("[Itara] Stopping " + type + " listener for "
-                                + localComponentId + "...");
-                        transport.stopListener();
-                    }));
-
-                    log.info("[Itara] Connection: " + conn.getFrom()
-                            + " -> " + conn.getTo()
-                            + " [" + type + " consumer]");
-
-                } else if (isOutbound(conn, config)) {
-                    // Outbound — agent owns the proxy, transport is just a byte carrier
-                    String remoteComponentId = config.getComponentOfNodeId(conn.getTo());
-                    Class<?> contractClass = contracts.get(remoteComponentId);
-                    if (contractClass == null) {
-                        throw new IllegalStateException(
-                                "[Itara] Cannot create proxy for '" + conn.getTo()
-                                + "': no @ComponentInterface with that id found. "
-                                + "Is the API jar on the classpath?");
-                    }
-
-                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
-                            itaraClassLoader,
-                            new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(remoteComponentId, serializer, transport, props, ExchangePattern.REQUEST_REPLY)
-                    );
-                    registry.preRegister(remoteComponentId, proxy);
-
-                    log.info("[Itara] Connection: " + conn.getFrom() + " -> " + conn.getTo()
-                            + " [" + type + " outbound]");
-
-                } else {
-                    // Inbound — agent owns the dispatcher, transport delivers bytes to it
-                    String localComponentId = config.getComponentOfNodeId(conn.getTo());
-
-                    DispatchHandler dispatcher = new ItaraDispatcher(
-                            localComponentId, type, serializer, registry, ExchangePattern.REQUEST_REPLY
-                    );
-                    transport.startListener(localComponentId, props, dispatcher);
-
-                    // Register shutdown hook to stop listener cleanly
-                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        log.info("[Itara] Stopping " + type + " listener...");
+                        log.info("[Itara] Stopping " + conn.getType()
+                                + " listener for " + componentId + "...");
                         transport.stopListener();
                     }));
 
                     log.info("[Itara] Connection: "
                             + (conn.isExternal() ? "[external]" : conn.getFrom())
                             + " -> " + conn.getTo()
-                            + " [" + type + " inbound]");
+                            + " [" + conn.getType() + " inbound, " + pattern + "]");
+
+                } else if (fromIsLocal) {
+                    // Outbound — wire a proxy regardless of node type
+                    String contractId = toNode.contractIdentifier();
+                    Class<?> contractClass = contracts.get(contractId);
+                    if (contractClass == null) {
+                        throw new IllegalStateException(
+                                "[Itara] Cannot create proxy for '" + conn.getTo()
+                                        + "': no contract class found for '" + contractId + "'. "
+                                        + "Is the API or events jar on the classpath?");
+                    }
+
+                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
+                            itaraClassLoader,
+                            new Class<?>[]{ contractClass },
+                            new ItaraProxyHandler(contractId, serializer, transport,
+                                    props, pattern)
+                    );
+                    registry.preRegister(contractId, proxy);
+
+                    log.info("[Itara] Connection: " + conn.getFrom()
+                            + " -> " + conn.getTo()
+                            + " [" + conn.getType() + " outbound, " + pattern + "]");
                 }
             }
         }
-    }
-
-    /**
-     * Determines if a connection is outbound from this JVM's perspective.
-     *
-     * Outbound = this JVM is the caller, needs a proxy.
-     * Inbound  = this JVM is the callee, needs a listener.
-     *
-     * A connection is outbound if a local node is marked as from in the connection
-     *
-     * A connection is inbound if it's not outbound.
-     */
-    private static boolean isOutbound(ConnectionEntry conn, WiringConfig config) {
-        return config.getLocalNodeIds().contains(conn.getFrom());
     }
 
     /**

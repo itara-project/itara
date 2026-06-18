@@ -79,7 +79,7 @@ class ConfigLoaderTest {
             WiringConfig config = ConfigLoader.parseString(yaml);
             assertEquals(1, config.getNodes().size());
             assertEquals("calculatorNode", config.getNodes().get(0).getId());
-            assertEquals("calculator", config.getNodes().get(0).getComponent());
+            assertEquals("calculator", config.componentNodes().get(0).getComponent());
         }
 
         @Test
@@ -97,11 +97,11 @@ class ConfigLoaderTest {
             WiringConfig config = ConfigLoader.parseString(yaml);
             assertEquals(3, config.getNodes().size());
             assertEquals("gatewayNode",    config.getNodes().get(0).getId());
-            assertEquals("gateway", config.getNodes().get(0).getComponent());
+            assertEquals("gateway", config.componentNodes().get(0).getComponent());
             assertEquals("calculatorNode", config.getNodes().get(1).getId());
-            assertEquals("calculator", config.getNodes().get(1).getComponent());
+            assertEquals("calculator", config.componentNodes().get(1).getComponent());
             assertEquals("notifierNode",   config.getNodes().get(2).getId());
-            assertEquals("notifier", config.getNodes().get(2).getComponent());
+            assertEquals("notifier", config.componentNodes().get(2).getComponent());
         }
 
         @Test
@@ -142,7 +142,7 @@ class ConfigLoaderTest {
                         component: calculator
                     """;
             assertEquals("calculatorNode", ConfigLoader.parseString(yaml).getNodes().get(0).getId());
-            assertEquals("calculator", ConfigLoader.parseString(yaml).getNodes().get(0).getComponent());
+            assertEquals("calculator", ConfigLoader.parseString(yaml).componentNodes().get(0).getComponent());
         }
 
         @Test
@@ -166,14 +166,15 @@ class ConfigLoaderTest {
         @DisplayName("parses a single virtual node")
         void parsesSingleVirtualNode() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                 """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals(1, config.getVirtualNodes().size());
-            VirtualNodeEntry vn = config.getVirtualNodes().get(0);
+            assertEquals(1, config.virtualNodes().size());
+            VirtualNode vn = config.virtualNodes().get(0);
             assertEquals("orderCreatedChannel",      vn.getId());
             assertEquals("order-events/order-created", vn.getContract());
             assertEquals("org.orders.created",         vn.getAddress());
@@ -183,31 +184,34 @@ class ConfigLoaderTest {
         @DisplayName("parses multiple virtual nodes")
         void parsesMultipleVirtualNodes() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                   - id: "orderCancelledChannel"
+                    kind: virtual
                     contract: "order-events/order-cancelled"
                     address: "org.orders.cancelled"
                 """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals(2, config.getVirtualNodes().size());
+            assertEquals(2, config.virtualNodes().size());
         }
 
         @Test
         @DisplayName("returns empty list when virtualNodes section absent")
         void emptyWhenAbsent() {
             WiringConfig config = ConfigLoader.parseString("nodes: []");
-            assertTrue(config.getVirtualNodes().isEmpty());
+            assertTrue(config.virtualNodes().isEmpty());
         }
 
         @Test
         @DisplayName("throws when virtual node id is missing")
         void throwsWhenIdMissing() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - contract: "order-events/order-created"
+                    kind: virtual
                     address: "org.orders.created"
                 """;
             assertThrows(ConfigurationException.class,
@@ -218,8 +222,9 @@ class ConfigLoaderTest {
         @DisplayName("throws when virtual node contract is missing")
         void throwsWhenContractMissing() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     address: "org.orders.created"
                 """;
             assertThrows(ConfigurationException.class,
@@ -230,8 +235,9 @@ class ConfigLoaderTest {
         @DisplayName("throws when virtual node address is missing")
         void throwsWhenAddressMissing() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                 """;
             assertThrows(ConfigurationException.class,
@@ -242,8 +248,9 @@ class ConfigLoaderTest {
         @DisplayName("isVirtualNode returns true for virtual node id")
         void isVirtualNodeReturnsTrueForVirtualNode() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                 """;
@@ -258,8 +265,8 @@ class ConfigLoaderTest {
                 nodes:
                   - id: "orderServiceNode"
                     component: "order-service"
-                virtualNodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                 """;
@@ -271,8 +278,9 @@ class ConfigLoaderTest {
         @DisplayName("findVirtualNode returns entry for known virtual node")
         void findVirtualNodeReturnsEntry() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                 """;
@@ -300,6 +308,7 @@ class ConfigLoaderTest {
             String yaml = """
                 virtualNodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                     unknownFutureField: somevalue
@@ -485,7 +494,7 @@ class ConfigLoaderTest {
                         component: "${COMPONENT:-calculator}"
                     """;
             assertEquals("calculatorNode", ConfigLoader.parseString(yaml).getNodes().get(0).getId());
-            assertEquals("calculator", ConfigLoader.parseString(yaml).getNodes().get(0).getComponent());
+            assertEquals("calculator", ConfigLoader.parseString(yaml).componentNodes().get(0).getComponent());
         }
     }
 
@@ -759,8 +768,8 @@ class ConfigLoaderTest {
             component: "inventory-service"
           - id: "notificationServiceNode"
             component: "notification-service"
-        virtualNodes:
           - id: "orderCreatedChannel"
+            kind: virtual
             contract: "order-events/order-created"
             address: "org.orders.created"
         connections:
@@ -790,8 +799,8 @@ class ConfigLoaderTest {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG_WITH_VIRTUAL_NODE);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("orderServiceNode"));
 
-            assertEquals(1, result.getVirtualNodes().size());
-            assertEquals("orderCreatedChannel", result.getVirtualNodes().get(0).getId());
+            assertEquals(1, result.virtualNodes().size());
+            assertEquals("orderCreatedChannel", result.virtualNodes().get(0).getId());
             assertEquals(1, result.getConnections().size());
             assertEquals("orderCreatedChannel", result.getConnections().get(0).getTo());
         }
@@ -802,8 +811,8 @@ class ConfigLoaderTest {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG_WITH_VIRTUAL_NODE);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("inventoryServiceNode"));
 
-            assertEquals(1, result.getVirtualNodes().size());
-            assertEquals("orderCreatedChannel", result.getVirtualNodes().get(0).getId());
+            assertEquals(1, result.virtualNodes().size());
+            assertEquals("orderCreatedChannel", result.virtualNodes().get(0).getId());
             assertEquals(1, result.getConnections().size());
             assertEquals("inventoryServiceNode", result.getConnections().get(0).getTo());
         }
@@ -836,7 +845,7 @@ class ConfigLoaderTest {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG_WITH_VIRTUAL_NODE);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("orderServiceNode"));
 
-            assertTrue(result.getNodes().stream()
+            assertTrue(result.componentNodes().stream()
                     .noneMatch(n -> "orderCreatedChannel".equals(n.getId())));
         }
 
@@ -867,7 +876,7 @@ class ConfigLoaderTest {
             WiringConfig full = ConfigLoader.parseString(yaml);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
 
-            assertTrue(result.getVirtualNodes().isEmpty(),
+            assertTrue(result.virtualNodes().isEmpty(),
                     "Virtual node should not appear for a node with no kafka connection");
         }
 
@@ -907,6 +916,85 @@ class ConfigLoaderTest {
 
             assertTrue(result.isVirtualNode("orderCreatedChannel"));
             assertFalse(result.isVirtualNode("orderServiceNode"));
+        }
+
+        @Test
+        @DisplayName("node with no kind field parsed as ComponentNode")
+        void nodeWithNoKindParsedAsComponentNode() {
+            String yaml = """
+            nodes:
+              - id: "orderServiceNode"
+                component: "order-service"
+            """;
+            WiringConfig config = ConfigLoader.parseString(yaml);
+            assertEquals(1, config.componentNodes().size());
+            assertTrue(config.virtualNodes().isEmpty());
+            assertInstanceOf(ComponentNode.class, config.getNodes().get(0));
+        }
+
+        @Test
+        @DisplayName("node with kind: component parsed as ComponentNode")
+        void nodeWithExplicitKindComponentParsedCorrectly() {
+            String yaml = """
+            nodes:
+              - id: "orderServiceNode"
+                kind: component
+                component: "order-service"
+            """;
+            WiringConfig config = ConfigLoader.parseString(yaml);
+            assertInstanceOf(ComponentNode.class, config.getNodes().get(0));
+        }
+
+        @Test
+        @DisplayName("node with kind: virtual parsed as VirtualNode")
+        void nodeWithKindVirtualParsedAsVirtualNode() {
+            String yaml = """
+            nodes:
+              - id: "orderPlacedChannel"
+                kind: virtual
+                contract: "order-events/order-placed"
+                address: "demo.events.order-placed"
+            """;
+            WiringConfig config = ConfigLoader.parseString(yaml);
+            assertEquals(1, config.virtualNodes().size());
+            assertTrue(config.componentNodes().isEmpty());
+            VirtualNode vn = config.virtualNodes().get(0);
+            assertEquals("orderPlacedChannel", vn.getId());
+            assertEquals("order-events/order-placed", vn.getContract());
+            assertEquals("demo.events.order-placed", vn.getAddress());
+        }
+
+        @Test
+        @DisplayName("mixed nodes list — component and virtual nodes parsed correctly")
+        void mixedNodesListParsedCorrectly() {
+            String yaml = """
+            nodes:
+              - id: "orderServiceNode"
+                component: "order-service"
+              - id: "orderPlacedChannel"
+                kind: virtual
+                contract: "order-events/order-placed"
+                address: "demo.events.order-placed"
+            """;
+            WiringConfig config = ConfigLoader.parseString(yaml);
+            assertEquals(1, config.componentNodes().size());
+            assertEquals(1, config.virtualNodes().size());
+        }
+
+        @Test
+        @DisplayName("componentNodes() accessor excludes virtual nodes")
+        void componentNodesAccessorExcludesVirtual() {
+            WiringConfig config = ConfigLoader.parseString(FULL_CONFIG_WITH_VIRTUAL_NODE);
+            assertTrue(config.componentNodes().stream()
+                    .noneMatch(n -> n.getId().equals("orderPlacedChannel")));
+        }
+
+        @Test
+        @DisplayName("virtualNodes() accessor excludes component nodes")
+        void virtualNodesAccessorExcludesComponent() {
+            WiringConfig config = ConfigLoader.parseString(FULL_CONFIG_WITH_VIRTUAL_NODE);
+            assertTrue(config.virtualNodes().stream()
+                    .noneMatch(n -> n.getId().equals("orderServiceNode")));
         }
     }
 }

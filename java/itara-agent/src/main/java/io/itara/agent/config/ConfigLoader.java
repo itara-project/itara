@@ -92,19 +92,17 @@ public class ConfigLoader {
                 .toList();
         Set<String> relevantNodeIds = new HashSet<>();
         connections.forEach(connectionEntry -> {
-            if (connectionEntry.getFrom() != null && !connectionEntry.getFrom().isBlank()) {
+            if (connectionEntry.getFrom() != null
+                    && !connectionEntry.getFrom().isBlank()) {
                 relevantNodeIds.add(connectionEntry.getFrom());
             }
             relevantNodeIds.add(connectionEntry.getTo());
         });
-        List<VirtualNodeEntry> relevantVirtualNodes = fullConfig.getVirtualNodes().stream()
-                .filter(v -> relevantNodeIds.contains(v.getId()))
-                .toList();
         relevantConfig.setConnections(connections);
-        relevantConfig.setNodes(fullConfig.getNodes().stream().filter(e -> relevantNodeIds.contains(e.getId())).toList());
+        relevantConfig.setNodes(fullConfig.getNodes().stream()
+                .filter(n -> relevantNodeIds.contains(n.getId()))
+                .toList());
         relevantConfig.setLocalNodeIds(nodeIds);
-        relevantConfig.setVirtualNodes(relevantVirtualNodes);
-
         relevantConfig.validate();
         return relevantConfig;
     }
