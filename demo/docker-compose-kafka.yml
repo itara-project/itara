@@ -1,0 +1,54 @@
+services:
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: itara-kafka
+    ports:
+      - "9092:9092"       # host access — your Java apps connect here
+      - "9093:9093"       # internal cluster port (KRaft controller)
+    environment:
+      # ── KRaft (no ZooKeeper) ──────────────────────────────────────────
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # ── Listeners ─────────────────────────────────────────────────────
+      # INTERNAL — container-to-container traffic
+      # EXTERNAL — host machine access (your Java apps, kafka-ui)
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # ── Cluster identity ──────────────────────────────────────────────
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"   # fixed so restarts are stable
+
+      # ── Sensible defaults for local dev ──────────────────────────────
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: itara-kafka-ui
+    ports:
+      - "8090:8080"       # open http://localhost:8090 in your browser
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+volumes:
+  kafka-data:

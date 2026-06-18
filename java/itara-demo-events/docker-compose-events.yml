@@ -1,0 +1,173 @@
+name: itara-demo-events
+
+# Demonstrates event-driven topology across two containers.
+# order-producer receives HTTP requests and publishes to Kafka.
+# order-consumer listens on Kafka and logs received events.
+#
+# Observability: logging observer (itara-observability-logging).
+# Watch the container logs to see CALL_SENT / RETURN_RECEIVED on the
+# producer side and CALL_RECEIVED / RETURN_SENT on the consumer side.
+# The parentSpanId on the consumer's CALL_RECEIVED is what we are
+# inspecting — it should be absent per spec §13.5.
+#
+# Kafka UI: http://localhost:8090
+# Fire an event:
+#   curl -X POST http://localhost:8081/itara/order-producer/placeOrder \
+#        -H "Content-Type: application/json" \
+#        -d '["cust-001", 99.99]'
+
+services:
+
+  # ── Kafka (KRaft, no ZooKeeper) ───────────────────────────────────────────
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: itara-events-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-events-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - itara-events-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: itara-events-kafka-ui
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - itara-events-net
+
+  # ── Itara Demo ────────────────────────────────────────────────────────────
+
+  order-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: itara-events-consumer
+    volumes:
+      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./order-event-api/target/order-event-api-1.0-SNAPSHOT.jar:/app/order-event-api.jar:ro
+      - ./order-consumer/target/order-consumer-1.0-SNAPSHOT.jar:/app/order-consumer.jar:ro
+      - ./wiring-events-docker.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+      - ./order-event-api/order-event-api.itara:/app/metafiles/order-event-api.itara:ro
+      - ./order-consumer/order-consumer.itara:/app/metafiles/order-consumer.itara:ro
+      - ./order-consumer-api/target/order-consumer-api-1.0-SNAPSHOT.jar:/app/order-consumer-api.jar:ro
+      - ./order-consumer-api/order-consumer-api.itara:/app/metafiles/order-consumer-api.itara:ro
+    environment:
+      - ITARA_LOG_LEVEL=INFO
+      - OTEL_SERVICE_NAME=consumer
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=orderConsumerNode"
+      - "-Ditara.metadata.dir=/app/metafiles"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/order-event-api.jar:/app/order-consumer.jar:/app/order-consumer-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - itara-events-net
+      - itara-net
+
+  order-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: itara-events-producer
+    volumes:
+      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
+      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ./order-event-api/target/order-event-api-1.0-SNAPSHOT.jar:/app/order-event-api.jar:ro
+      - ./order-producer-api/target/order-producer-api-1.0-SNAPSHOT.jar:/app/order-producer-api.jar:ro
+      - ./order-producer-component/target/order-producer-component-1.0-SNAPSHOT.jar:/app/order-producer-component.jar:ro
+      - ./wiring-events-docker.yaml:/app/config/wiring.yaml:ro
+      - ./libs:/app/libs:ro
+      - ./otel-libs:/app/otel-libs:ro
+      - ./order-event-api/order-event-api.itara:/app/metafiles/order-event-api.itara:ro
+      - ./order-producer-api/order-producer-api.itara:/app/metafiles/order-producer-api.itara:ro
+      - ./order-producer-component/order-producer-component.itara:/app/metafiles/order-producer-component.itara:ro
+    ports:
+      - "8081:8081"
+    environment:
+      - ITARA_LOG_LEVEL=INFO
+      - OTEL_SERVICE_NAME=producer
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_JAVA_GLOBAL_AUTOCONFIGURE_ENABLED=true
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_BSP_EXPORT_TIMEOUT=10000
+      - OTEL_BSP_SCHEDULE_DELAY=1000
+    command:
+      - "-Ditara.config=/app/config/wiring.yaml"
+      - "-Ditara.lib.dir=/app/libs"
+      - "-Ditara.nodes=orderProducerNode"
+      - "-Ditara.metadata.dir=/app/metafiles"
+      - "-javaagent:/app/itara-agent.jar"
+      - "-cp"
+      - "/app/itara-common.jar:/app/order-event-api.jar:/app/order-producer-api.jar:/app/order-producer-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "io.itara.runtime.ItaraMain"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      order-consumer:
+        condition: service_started
+    networks:
+      - itara-events-net
+      - itara-net
+
+volumes:
+  kafka-events-data:
+
+networks:
+  itara-events-net:
+    driver: bridge
+  itara-net:
+    external: true
+    name: itara-demo-otel_itara-net

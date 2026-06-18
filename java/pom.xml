@@ -17,10 +17,12 @@
         <module>itara-transport-http</module>
         <module>itara-serializer-json</module>
         <module>itara-demo</module>
+        <module>itara-demo-events</module>
         <module>itara-integration-tests</module>
         <module>itara-serializer-java</module>
         <module>itara-observability-logging</module>
         <module>itara-observability-otel</module>
+        <module>itara-transport-kafka</module>
     </modules>
 
     <properties>
@@ -60,6 +62,11 @@
                 <groupId>io.opentelemetry</groupId>
                 <artifactId>opentelemetry-api</artifactId>
                 <version>1.38.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>3.7.1</version>
             </dependency>
 
             <!-- Test dependencies — OTel SDK with in-memory exporters -->

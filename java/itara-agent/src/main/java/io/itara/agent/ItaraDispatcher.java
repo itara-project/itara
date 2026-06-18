@@ -2,6 +2,7 @@ package io.itara.agent;
 
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
@@ -44,16 +45,19 @@ public class ItaraDispatcher implements DispatchHandler {
     private final ItaraSerializer serializer;
     private final ItaraRegistry registry;
     private final ObservabilityFacade facade;
+    private final ExchangePattern exchangePattern;
 
     public ItaraDispatcher(String componentId,
                            String transportType,
                            ItaraSerializer serializer,
-                           ItaraRegistry registry) {
-        this.componentId   = componentId;
-        this.transportType = transportType;
-        this.serializer    = serializer;
-        this.registry      = registry;
-        this.facade        = ObservabilityFacade.instance();
+                           ItaraRegistry registry,
+                           ExchangePattern exchangePattern) {
+        this.componentId     = componentId;
+        this.transportType   = transportType;
+        this.serializer      = serializer;
+        this.registry        = registry;
+        this.facade          = ObservabilityFacade.instance();
+        this.exchangePattern = exchangePattern;
     }
 
     @Override
@@ -82,7 +86,7 @@ public class ItaraDispatcher implements DispatchHandler {
         }
 
         // 1. Restore inbound context — wraps deserialization, invocation, and serialization
-        try (ItaraScope inboundScope = facade.restoreInboundContext(headers)) {
+        try (ItaraScope inboundScope = facade.restoreInboundContext(headers, exchangePattern)) {
 
             // 2. Deserialize args — within inbound context
             Object[] args;
@@ -98,7 +102,7 @@ public class ItaraDispatcher implements DispatchHandler {
 
             // 3. CALL_RECEIVED — callee scope wraps component invocation only
             Object result = null;
-            try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportType)) {
+            try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportType, exchangePattern)) {
                 try {
                     // 4. Component invocation
                     result = method.invoke(instance, args);

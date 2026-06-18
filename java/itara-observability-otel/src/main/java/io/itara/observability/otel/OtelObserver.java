@@ -1,5 +1,6 @@
 package io.itara.observability.otel;
 
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraObserver;
 import io.opentelemetry.api.GlobalOpenTelemetry;
@@ -8,8 +9,12 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.Context;
@@ -120,6 +125,8 @@ public class OtelObserver implements ItaraObserver {
 
     private static final ThreadLocal<Scope> INBOUND_SCOPE = new ThreadLocal<>();
 
+    private static final ThreadLocal<SpanContext> PENDING_LINK = new ThreadLocal<>();
+
     // ── W3C propagator helpers ─────────────────────────────────────────────
 
     private static final TextMapGetter<Map<String, String>> GETTER =
@@ -162,6 +169,7 @@ public class OtelObserver implements ItaraObserver {
                            String componentId,
                            String methodName,
                            String transport,
+                           ExchangePattern exchangePattern,
                            long timestamp) {
         Span span = tracer
                 .spanBuilder(componentId + "." + methodName)
@@ -170,9 +178,12 @@ public class OtelObserver implements ItaraObserver {
                 .setStartTimestamp(timestamp, TimeUnit.NANOSECONDS)
                 .startSpan();
 
+        SpanKind spanKind = exchangePattern == ExchangePattern.FIRE_AND_FORGET
+                ? SpanKind.PRODUCER
+                : SpanKind.CLIENT;
         Scope scope = span.makeCurrent();
         setAttributes(span, ctx, componentId, methodName, transport);
-        SPAN_STACK.get().push(new PendingSpan(span, scope, timestamp, componentId, methodName, transport, "CLIENT"));
+        SPAN_STACK.get().push(new PendingSpan(span, scope, timestamp, componentId, methodName, transport, spanKind));
     }
 
     /**
@@ -186,17 +197,28 @@ public class OtelObserver implements ItaraObserver {
                                String componentId,
                                String methodName,
                                String transport,
+                               ExchangePattern exchangePattern,
                                long timestamp) {
-        Span span = tracer
+        SpanContext link = PENDING_LINK.get();
+        PENDING_LINK.remove();
+
+        SpanBuilder spanBuilder = tracer
                 .spanBuilder(componentId + "." + methodName)
                 .setSpanKind(SpanKind.SERVER)
                 .setParent(Context.current())
-                .setStartTimestamp(timestamp, TimeUnit.NANOSECONDS)
-                .startSpan();
+                .setStartTimestamp(timestamp, TimeUnit.NANOSECONDS);
 
+        if (link != null && link.isValid()) {
+            spanBuilder.addLink(link);
+        }
+
+        Span span = spanBuilder.startSpan();
         Scope scope = span.makeCurrent();
         setAttributes(span, ctx, componentId, methodName, transport);
-        SPAN_STACK.get().push(new PendingSpan(span, scope, timestamp, componentId, methodName, transport, "SERVER"));
+        SpanKind spanKind = exchangePattern == ExchangePattern.FIRE_AND_FORGET
+                ? SpanKind.CONSUMER
+                : SpanKind.SERVER;
+        SPAN_STACK.get().push(new PendingSpan(span, scope, timestamp, componentId, methodName, transport, spanKind));
     }
 
     @Override
@@ -227,14 +249,30 @@ public class OtelObserver implements ItaraObserver {
     }
 
     @Override
-    public void restoreContext(Map<String, String> headers) {
-        Context extracted = W3CTraceContextPropagator.getInstance()
-                .extract(Context.current(), headers, GETTER);
-        INBOUND_SCOPE.set(extracted.makeCurrent());
+    public void restoreContext(Map<String, String> headers, ExchangePattern exchangePattern) {
+        Context extracted = W3CTraceContextPropagator.getInstance().extract(Context.current(), headers, GETTER);
+
+        if (exchangePattern == ExchangePattern.FIRE_AND_FORGET) {
+            // The consumer is not a child of the producer — it follows from it.
+            // We carry the traceId forward as a SpanLink so the relationship is
+            // visible in the trace backend without asserting parent-child hierarchy.
+            // The SERVER span starts from root context — no inherited parent.
+            INBOUND_SCOPE.set(Context.root().makeCurrent());
+            PENDING_LINK.set(SpanContext.createFromRemoteParent(
+                    Span.fromContext(extracted).getSpanContext().getTraceId(),
+                    Span.fromContext(extracted).getSpanContext().getSpanId(),
+                    TraceFlags.getSampled(),
+                    TraceState.getDefault()
+            ));
+        } else {
+            // REQUEST_REPLY — existing behaviour, parent-child relationship
+            INBOUND_SCOPE.set(extracted.makeCurrent());
+        }
     }
 
     @Override
     public void onInboundContextReleased() {
+        PENDING_LINK.remove();
         Scope inbound = INBOUND_SCOPE.get();
         if (inbound != null) {
             INBOUND_SCOPE.remove();
@@ -273,7 +311,7 @@ public class OtelObserver implements ItaraObserver {
                 ATTR_COMPONENT, pending.componentId,
                 ATTR_METHOD,    pending.methodName,
                 ATTR_TRANSPORT, pending.transport,
-                ATTR_SPAN_KIND, pending.kind,
+                ATTR_SPAN_KIND, pending.kind.toString(),
                 ATTR_ERROR,     error));
     }
 
@@ -286,10 +324,10 @@ public class OtelObserver implements ItaraObserver {
         final String componentId;
         final String methodName;
         final String transport;
-        final String kind;
+        final SpanKind kind;
 
         PendingSpan(Span span, Scope scope, long startNanos, String componentId,
-                    String methodName, String transport, String kind) {
+                    String methodName, String transport, SpanKind kind) {
             this.span        = span;
             this.scope       = scope;
             this.startNanos  = startNanos;

@@ -72,6 +72,21 @@ public class ConnectionEntry {
     @JsonSetter(nulls = Nulls.SKIP)  // keep field default if YAML value is null
     private String serializer = "json";
 
+    /**
+     * Comma-separated list of Kafka broker addresses for async transports.
+     * Format: host1:port1,host2:port2
+     * Required on connections of type 'kafka'.
+     * Ignored for all other transport types.
+     */
+    private String bootstrapServers;
+
+    /**
+     * Consumer group id for async transports (e.g. Kafka).
+     * Required on consumer-side connections of type 'kafka'.
+     * Ignored for all other transport types.
+     */
+    private String consumerGroup;
+
     public String getFrom() { return from; }
     public void setFrom(String from) { this.from = from; }
 
@@ -92,6 +107,12 @@ public class ConnectionEntry {
         this.serializer = (serializer == null || serializer.isBlank())
                 ? "json" : serializer.strip();
     }
+
+    public String getConsumerGroup()                   { return consumerGroup; }
+    public void setConsumerGroup(String consumerGroup) { this.consumerGroup = consumerGroup; }
+
+    public String getBootstrapServers()                      { return bootstrapServers; }
+    public void setBootstrapServers(String bootstrapServers) { this.bootstrapServers = bootstrapServers; }
 
     /**
      * Returns true if the caller is external to the Itara topology.
@@ -114,6 +135,10 @@ public class ConnectionEntry {
         return "http".equalsIgnoreCase(type);
     }
 
+    public boolean isKafka() {
+        return "kafka".equalsIgnoreCase(type);
+    }
+
     @Override
     public String toString() {
         return "ConnectionEntry{from='" + from + "', to='" + to
@@ -129,7 +154,7 @@ public class ConnectionEntry {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'type'.");
         }
-        if (!isDirect()) {
+        if (!isDirect() && !isKafka()) {
             if (port <= 0) {
                 throw new ConfigurationException(
                         "[Itara] Connection to='" + to + "' of type '" + type

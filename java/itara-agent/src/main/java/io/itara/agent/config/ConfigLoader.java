@@ -6,9 +6,10 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,14 +90,20 @@ public class ConfigLoader {
         List<ConnectionEntry> connections = fullConfig.getConnections().stream()
                 .filter(conn -> conn.isRelatedToAnyOfNodes(nodeIds))
                 .toList();
-        List<String> relevantNodeIds = new ArrayList<>();
+        Set<String> relevantNodeIds = new HashSet<>();
         connections.forEach(connectionEntry -> {
-            relevantNodeIds.add(connectionEntry.getFrom());
+            if (connectionEntry.getFrom() != null && !connectionEntry.getFrom().isBlank()) {
+                relevantNodeIds.add(connectionEntry.getFrom());
+            }
             relevantNodeIds.add(connectionEntry.getTo());
         });
+        List<VirtualNodeEntry> relevantVirtualNodes = fullConfig.getVirtualNodes().stream()
+                .filter(v -> relevantNodeIds.contains(v.getId()))
+                .toList();
         relevantConfig.setConnections(connections);
         relevantConfig.setNodes(fullConfig.getNodes().stream().filter(e -> relevantNodeIds.contains(e.getId())).toList());
         relevantConfig.setLocalNodeIds(nodeIds);
+        relevantConfig.setVirtualNodes(relevantVirtualNodes);
 
         relevantConfig.validate();
         return relevantConfig;

@@ -1,0 +1,10 @@
+[artifact]
+kind = "api"
+id = "order-producer"
+version = "1.0-SNAPSHOT"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"

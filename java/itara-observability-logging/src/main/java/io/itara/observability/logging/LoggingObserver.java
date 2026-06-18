@@ -1,5 +1,6 @@
 package io.itara.observability.logging;
 
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraObserver;
 
@@ -34,8 +35,8 @@ public class LoggingObserver implements ItaraObserver {
             = new ConcurrentHashMap<>();
 
     @Override
-    public void onCallSent(ItaraContext ctx, String componentId,
-                           String methodName, String transport, long timestamp) {
+    public void onCallSent(ItaraContext ctx, String componentId, String methodName,
+                           String transport, ExchangePattern exchangePattern, long timestamp) {
         if (ctx != null) callSentTimes.put(ctx.getItaraSpanId(), timestamp);
         log.info("[Itara/obs] CALL_SENT     "
                 + componentId + "." + methodName
@@ -44,8 +45,8 @@ public class LoggingObserver implements ItaraObserver {
     }
 
     @Override
-    public void onCallReceived(ItaraContext ctx, String componentId,
-                               String methodName, String transport, long timestamp) {
+    public void onCallReceived(ItaraContext ctx, String componentId, String methodName,
+                               String transport, ExchangePattern exchangePattern, long timestamp) {
         if (ctx != null) callReceivedTimes.put(ctx.getItaraSpanId(), timestamp);
         log.info("[Itara/obs] CALL_RECEIVED "
                 + componentId + "." + methodName

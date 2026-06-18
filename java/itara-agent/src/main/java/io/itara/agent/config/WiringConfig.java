@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The per-JVM wiring configuration.
@@ -48,12 +49,18 @@ import java.util.List;
 public class WiringConfig {
 
     private List<NodeEntry> nodes = new ArrayList<>();
+    private List<VirtualNodeEntry> virtualNodes = new ArrayList<>();
     private List<ConnectionEntry> connections = new ArrayList<>();
     private List<String> localNodeIds = new ArrayList<>();
 
     public List<NodeEntry> getNodes() { return nodes; }
     public void setNodes(List<NodeEntry> nodes) {
         this.nodes = nodes != null ? nodes : new ArrayList<>();
+    }
+
+    public List<VirtualNodeEntry> getVirtualNodes() { return virtualNodes; }
+    public void setVirtualNodes(List<VirtualNodeEntry> virtualNodes) {
+        this.virtualNodes = virtualNodes != null ? virtualNodes : new ArrayList<>();
     }
 
     public List<ConnectionEntry> getConnections() { return connections; }
@@ -69,12 +76,30 @@ public class WiringConfig {
     public void validate() {
         if (nodes != null) nodes.forEach(NodeEntry::validate);
         if (connections != null) connections.forEach(ConnectionEntry::validate);
+        if (virtualNodes != null) virtualNodes.forEach(VirtualNodeEntry::validate);
     }
 
     public String getComponentOfNodeId(String nodeId) {
         return nodes.stream().filter(node -> node.getId().equals(nodeId)).map(NodeEntry::getComponent)
                 .findFirst()
                 .orElseThrow( () -> new IllegalStateException("Cannot find node entry for nodeId " + nodeId));
+    }
+
+    /**
+     * Returns the VirtualNodeEntry for the given node id, or empty if it is
+     * a component node (or not present at all).
+     */
+    public Optional<VirtualNodeEntry> findVirtualNode(String nodeId) {
+        return virtualNodes.stream()
+                .filter(v -> v.getId().equals(nodeId))
+                .findFirst();
+    }
+
+    /**
+     * Returns true if the given node id refers to a virtual node.
+     */
+    public boolean isVirtualNode(String nodeId) {
+        return virtualNodes.stream().anyMatch(v -> v.getId().equals(nodeId));
     }
 
     public boolean isNodeLocal(NodeEntry nodeEntry) {

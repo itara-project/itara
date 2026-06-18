@@ -6,15 +6,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks an abstract class as a Itara component contract.
+ * Marks an interface as an Itara component contract.
  *
- * Place this on the abstract class in the API jar.
+ * Place this on the interface in the API jar.
  * The id must be unique across the topology and must match
  * the component id used in the wiring config.
  *
  * Example:
  *   @ComponentInterface(id = "pricing-service")
- *   public abstract class PricingService { ... }
+ *   public interface PricingService { ... }
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
