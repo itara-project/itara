@@ -54,6 +54,8 @@ public class ItaraRegistry {
     // to detect circular dependencies. Best-effort.
     private final Map<String, Thread> activating = new ConcurrentHashMap<>();
 
+    private final Map<String, String> aliases = new ConcurrentHashMap<>();
+
     private ItaraRegistry() {}
 
     public static ItaraRegistry instance() {
@@ -86,6 +88,16 @@ public class ItaraRegistry {
         log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
     }
 
+    /**
+     * Registers an alias so that lookups by aliasId delegate to canonicalId.
+     * Used to map event contract ids to consumer component ids.
+     * e.g. "order-events/order-placed" -> "order-consumer"
+     */
+    public void registerAlias(String aliasId, String canonicalId) {
+        aliases.put(aliasId, canonicalId);
+        log.info("[Itara] Registered alias: " + aliasId + " -> " + canonicalId);
+    }
+
     // ── Application API ───────────────────────────────────────────────────────
 
     /**
@@ -101,7 +113,9 @@ public class ItaraRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T> T get(String id, Class<T> type) {
-        return type.cast(proxies.computeIfAbsent(id, key -> decorate(activateRaw(key), key)));
+        // Resolve alias if present — event contract ids map to component ids
+        String resolvedId = aliases.getOrDefault(id, id);
+        return type.cast(proxies.computeIfAbsent(resolvedId, key -> decorate(activateRaw(key), key)));
     }
 
     /**
@@ -119,7 +133,8 @@ public class ItaraRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T> T getRawImplementation(String id, Class<T> type) {
-        return type.cast(rawInstances.computeIfAbsent(id, this::activateRaw));
+        String resolvedId = aliases.getOrDefault(id, id);
+        return type.cast(rawInstances.computeIfAbsent(resolvedId, this::activateRaw));
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────

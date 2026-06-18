@@ -2,6 +2,7 @@ package io.itara.agent;
 
 import io.itara.exceptions.ItaraErrorPayload;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
@@ -39,17 +40,20 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final ItaraTransport transport;
     private final Map<String, String> properties;
     private final ObservabilityFacade facade;
+    private final ExchangePattern exchangePattern;
 
     public ItaraProxyHandler(String componentId,
                              ItaraSerializer serializer,
                              ItaraTransport transport,
-                             Map<String, String> properties) {
-        this.componentId   = componentId;
-        this.transportType = transport.type();
-        this.serializer    = serializer;
-        this.transport     = transport;
-        this.properties    = properties;
-        this.facade        = ObservabilityFacade.instance();
+                             Map<String, String> properties,
+                             ExchangePattern exchangePattern) {
+        this.componentId     = componentId;
+        this.transportType   = transport.type();
+        this.serializer      = serializer;
+        this.transport       = transport;
+        this.properties      = properties;
+        this.facade          = ObservabilityFacade.instance();
+        this.exchangePattern = exchangePattern;
     }
 
     @Override
@@ -61,7 +65,7 @@ public class ItaraProxyHandler implements InvocationHandler {
         ItaraContext previousCtx = ItaraContext.current();
 
         // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
-        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportType)) {
+        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportType, exchangePattern)) {
 
             // 2. Build outbound headers — Itara-native + per-observer (e.g. OTel W3C)
             Map<String, String> headers = facade.buildOutboundHeaders();

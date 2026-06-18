@@ -3,9 +3,11 @@ package io.itara.agent;
 import io.itara.agent.config.NodeEntry;
 import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
+import io.itara.agent.config.VirtualNodeEntry;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.SerializerRegistry;
@@ -81,12 +83,17 @@ public class ItaraAgent {
         log.info("[Itara] Building metadata index from: " + System.getProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY));
         ItaraMetadataIndex.instance().build();
 
-        // ── Step 3: Scan for contracts (@ComponentInterface) ───────────────
+        // ── Step 3: Scan for contracts (@ComponentInterface and @EventContractInterface) ───────────────
         log.info("[Itara] Scanning classpath for component contracts...");
         Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
         if (contracts.isEmpty()) {
             log.warning("[Itara] WARNING: No @ComponentInterface classes found. "
                     + "Check that API jars are on the classpath.");
+        }
+        Map<String, Class<?>> eventContracts = EventContractScanner.scan(itaraClassLoader);
+        if (!eventContracts.isEmpty()) {
+            log.info("[Itara] Found " + eventContracts.size() + " event contract(s).");
+            contracts.putAll(eventContracts);
         }
 
         // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
@@ -114,6 +121,8 @@ public class ItaraAgent {
                 ActivatedComponent activated = activators.get(entry.getComponent());
 
                 if (activated != null) {
+                    log.info("GKISSLOG: component: " + entry.getComponent() + ", activated: " + activated
+                     + ", contract class: " + contracts.get(entry.getComponent()));
                     registry.registerActivator(
                             entry.getComponent(),
                             activated.getActivatorClass(),
@@ -142,7 +151,72 @@ public class ItaraAgent {
                 // Build properties map from the connection entry
                 Map<String, String> props = buildProperties(conn, config);
 
-                if (isOutbound(conn, config)) {
+                boolean toIsVirtual   = config.isVirtualNode(conn.getTo());
+                boolean fromIsVirtual = config.isVirtualNode(conn.getFrom());
+
+                if (toIsVirtual) {
+                    // Producer side: local component node -> virtual node
+                    // Wire a proxy for the event contract so the producer can call it
+                    // like any other component method.
+                    if (!config.getLocalNodeIds().contains(conn.getFrom())) {
+                        // Not our producer — skip
+                        continue;
+                    }
+                    VirtualNodeEntry virtualNode = config.findVirtualNode(conn.getTo()).orElseThrow();
+
+                    // using virtualNode.getContract() as the lookup key.
+                    // For now, look it up in the existing contracts map as a fallback.
+                    String contractId = virtualNode.getContract();
+                    Class<?> eventContractClass = contracts.get(contractId);
+                    if (eventContractClass == null) {
+                        throw new IllegalStateException(
+                                "[Itara] Cannot create producer proxy for virtual node '"
+                                        + conn.getTo() + "': no event contract class found for '"
+                                        + contractId + "'. "
+                                        + "Is the events artifact jar on the classpath?");
+                    }
+
+                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
+                            itaraClassLoader,
+                            new Class<?>[]{ eventContractClass },
+                            new ItaraProxyHandler(contractId, serializer, transport, props, ExchangePattern.FIRE_AND_FORGET)
+                    );
+                    registry.preRegister(contractId, proxy);
+
+                    log.info("[Itara] Connection: " + conn.getFrom()
+                            + " -> " + conn.getTo()
+                            + " [" + type + " producer]");
+
+                } else if (fromIsVirtual) {
+                    // Consumer side: virtual node -> local component node
+                    // Wire a dispatcher and start a listener — same shape as inbound HTTP.
+                    if (!config.getLocalNodeIds().contains(conn.getTo())) {
+                        // Not our consumer — skip
+                        continue;
+                    }
+                    String localComponentId = config.getComponentOfNodeId(conn.getTo());
+
+                    VirtualNodeEntry virtualNode = config.findVirtualNode(conn.getFrom()).orElseThrow();
+                    String contractId = virtualNode.getContract();
+                    registry.registerAlias(contractId, localComponentId);
+                    log.info("[Itara] Registered consumer alias: " + contractId + " -> " + localComponentId);
+
+                    DispatchHandler dispatcher = new ItaraDispatcher(
+                            localComponentId, type, serializer, registry, ExchangePattern.FIRE_AND_FORGET
+                    );
+                    transport.startListener(localComponentId, props, dispatcher);
+
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                        log.info("[Itara] Stopping " + type + " listener for "
+                                + localComponentId + "...");
+                        transport.stopListener();
+                    }));
+
+                    log.info("[Itara] Connection: " + conn.getFrom()
+                            + " -> " + conn.getTo()
+                            + " [" + type + " consumer]");
+
+                } else if (isOutbound(conn, config)) {
                     // Outbound — agent owns the proxy, transport is just a byte carrier
                     String remoteComponentId = config.getComponentOfNodeId(conn.getTo());
                     Class<?> contractClass = contracts.get(remoteComponentId);
@@ -156,7 +230,7 @@ public class ItaraAgent {
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             itaraClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(remoteComponentId, serializer, transport, props)
+                            new ItaraProxyHandler(remoteComponentId, serializer, transport, props, ExchangePattern.REQUEST_REPLY)
                     );
                     registry.preRegister(remoteComponentId, proxy);
 
@@ -168,7 +242,7 @@ public class ItaraAgent {
                     String localComponentId = config.getComponentOfNodeId(conn.getTo());
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            localComponentId, type, serializer, registry
+                            localComponentId, type, serializer, registry, ExchangePattern.REQUEST_REPLY
                     );
                     transport.startListener(localComponentId, props, dispatcher);
 
@@ -215,8 +289,24 @@ public class ItaraAgent {
         Map<String, String> props = new HashMap<>();
         if (conn.getHost() != null)  props.put("host", conn.getHost());
         if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
-        if (conn.getFrom() != null)  props.put("from", config.getComponentOfNodeId(conn.getFrom()));
-        if (conn.getTo() != null)    props.put("to", config.getComponentOfNodeId(conn.getTo()));
+
+        // from: resolve component id for component nodes, skip for virtual nodes
+        if (conn.getFrom() != null && !conn.getFrom().isBlank()
+                && !config.isVirtualNode(conn.getFrom())) {
+            props.put("from", config.getComponentOfNodeId(conn.getFrom()));
+        }
+
+        // to: resolve component id for component nodes, skip for virtual nodes
+        if (conn.getTo() != null && !config.isVirtualNode(conn.getTo())) {
+            props.put("to", config.getComponentOfNodeId(conn.getTo()));
+        }
+
+        // Kafka-specific: topic address from the virtual node, consumer group from the connection
+        config.findVirtualNode(conn.getFrom()).ifPresent(vn -> props.put("topic", vn.getAddress()));
+        config.findVirtualNode(conn.getTo()).ifPresent(vn -> props.put("topic", vn.getAddress()));
+        if (conn.getConsumerGroup() != null) props.put("consumerGroup", conn.getConsumerGroup());
+        if (conn.getBootstrapServers() != null) props.put("bootstrapServers", conn.getBootstrapServers());
+
         // Future: additional connection properties from the YAML will be added here
         return props;
     }
