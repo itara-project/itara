@@ -140,6 +140,26 @@ public class ItaraMetadataIndex {
         return Optional.ofNullable(entries.get(artifactName));
     }
 
+    /**
+     * Looks up metadata by component id — the id declared in the
+     * [artifact] section of the .itara file.
+     *
+     * Used by the agent to find the [implemented-event-contracts]
+     * declarations for a component during step 9 of startup.
+     *
+     * Returns the first match — component ids are expected to be unique
+     * within a deployment's metadata directory.
+     */
+    public Optional<MetadataFile> lookupByComponentId(String componentId) {
+        ensureBuilt();
+        Optional<MetadataFile> found = entries.values().stream()
+                .filter(m -> m.getArtifact() != null
+                        && "component".equals(m.getArtifact().getKind())
+                        && componentId.equals(m.getArtifact().getId()))
+                .findFirst();
+        return found;
+    }
+
     private void ensureBuilt() {
         if (!built) {
             throw new IllegalStateException(

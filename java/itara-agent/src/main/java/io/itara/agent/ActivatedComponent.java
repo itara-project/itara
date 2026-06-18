@@ -14,15 +14,15 @@ import io.itara.api.ItaraActivator;
  */
 public class ActivatedComponent {
 
-    private final Class<? extends ItaraActivator<?>> activatorClass;
+    private final Class<? extends ItaraActivator> activatorClass;
     private final MetadataFile metadata;
 
-    public ActivatedComponent(Class<? extends ItaraActivator<?>> activatorClass, MetadataFile metadata) {
+    public ActivatedComponent(Class<? extends ItaraActivator> activatorClass, MetadataFile metadata) {
         this.activatorClass = activatorClass;
         this.metadata = metadata;
     }
 
-    public Class<? extends ItaraActivator<?>> getActivatorClass() {
+    public Class<? extends ItaraActivator> getActivatorClass() {
         return activatorClass;
     }
 

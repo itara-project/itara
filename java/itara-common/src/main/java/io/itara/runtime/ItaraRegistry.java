@@ -44,7 +44,7 @@ public class ItaraRegistry {
     private final Map<String, Object> rawInstances = new ConcurrentHashMap<>();
 
     // Activator classes for local components, registered by the agent
-    private final Map<String, Class<? extends ItaraActivator<?>>> activators =
+    private final Map<String, Class<? extends ItaraActivator>> activators =
             new ConcurrentHashMap<>();
 
     // Contract classes per component id — needed to create the observability proxy
@@ -81,7 +81,7 @@ public class ItaraRegistry {
      * after the application context is ready, not during premain.
      */
     public void registerActivator(String id,
-                                  Class<? extends ItaraActivator<?>> activatorClass,
+                                  Class<? extends ItaraActivator> activatorClass,
                                   Class<?> contractClass) {
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
@@ -148,7 +148,7 @@ public class ItaraRegistry {
         }
 
         try {
-            Class<? extends ItaraActivator<?>> activatorClass = activators.get(id);
+            Class<? extends ItaraActivator> activatorClass = activators.get(id);
             if (activatorClass == null) {
                 throw new IllegalStateException(
                         "[Itara] Topology error: component '" + id
@@ -157,7 +157,7 @@ public class ItaraRegistry {
             }
 
             log.info("[Itara] Activating: " + id);
-            ItaraActivator<?> activator = activatorClass.getDeclaredConstructor().newInstance();
+            ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
             Object instance = activator.activate(this);
             log.info("[Itara] Activated:  " + id
                     + " -> " + instance.getClass().getSimpleName());
