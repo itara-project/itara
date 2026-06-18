@@ -78,7 +78,7 @@ public class ActivatorScanner {
                         + " does not implement ItaraActivator. "
                         + "Check META-INF/itara/activator in the component jar.");
             }
-            Class<? extends ItaraActivator<?>> activatorClass = (Class<? extends ItaraActivator<?>>) raw;
+            Class<? extends ItaraActivator> activatorClass = (Class<? extends ItaraActivator>) raw;
 
             MetadataFile metadata = resolveMetadata(activatorClass, url);
             ActivatedComponent component = new ActivatedComponent(activatorClass, metadata);
@@ -123,7 +123,7 @@ public class ActivatorScanner {
      *                            codesource / not a file URL) or if no
      *                            matching `.itara` entry is found.
      */
-    private static MetadataFile resolveMetadata(Class<? extends ItaraActivator<?>> activatorClass, URL descriptorUrl) {
+    private static MetadataFile resolveMetadata(Class<? extends ItaraActivator> activatorClass, URL descriptorUrl) {
         ProtectionDomain protectionDomain = activatorClass.getProtectionDomain();
         CodeSource codeSource = (protectionDomain != null) ? protectionDomain.getCodeSource() : null;
         URL location = (codeSource != null) ? codeSource.getLocation() : null;

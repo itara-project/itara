@@ -130,4 +130,107 @@ class MetadataFileTest {
 
         assertNull(metadata.getArtifact());
     }
+
+    @Test
+    @DisplayName("parses implemented-event-contracts section with single entry")
+    void parsesImplementedEventContractsSingle() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "order-consumer"
+            version = "1.0.0"
+
+            [implemented-event-contracts]
+            contracts = [
+              { id = "order-events/order-placed", version = "1.0.0" }
+            ]
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getImplementedEventContracts());
+        List<ImplementedEventContract> contracts =
+                metadata.getImplementedEventContracts().getContracts();
+        assertEquals(1, contracts.size());
+        assertEquals("order-events/order-placed", contracts.get(0).getId());
+        assertEquals("1.0.0", contracts.get(0).getVersion());
+    }
+
+    @Test
+    @DisplayName("parses implemented-event-contracts section with multiple entries")
+    void parsesImplementedEventContractsMultiple() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "notification-service"
+            version = "1.0.0"
+
+            [implemented-event-contracts]
+            contracts = [
+              { id = "order-events/order-placed",    version = "1.0.0" },
+              { id = "order-events/order-cancelled", version = "1.0.0" }
+            ]
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        List<ImplementedEventContract> contracts =
+                metadata.getImplementedEventContracts().getContracts();
+        assertEquals(2, contracts.size());
+        assertEquals("order-events/order-placed",    contracts.get(0).getId());
+        assertEquals("order-events/order-cancelled", contracts.get(1).getId());
+    }
+
+    @Test
+    @DisplayName("implementedEventContracts defaults to empty when section absent")
+    void implementedEventContractsDefaultsToEmptyWhenAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "order-producer"
+            version = "1.0.0"
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getImplementedEventContracts());
+        assertTrue(metadata.getImplementedEventContracts().getContracts().isEmpty());
+    }
+
+    @Test
+    @DisplayName("implementedEventContracts contracts list is empty when declared empty")
+    void implementedEventContractsEmptyList() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "order-consumer"
+            version = "1.0.0"
+
+            [implemented-event-contracts]
+            contracts = []
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getImplementedEventContracts());
+        assertTrue(metadata.getImplementedEventContracts().getContracts().isEmpty());
+    }
+
+    @Test
+    @DisplayName("unknown fields in implemented-event-contracts entries are ignored")
+    void implementedEventContractsIgnoresUnknownFields() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "order-consumer"
+            version = "1.0.0"
+
+            [implemented-event-contracts]
+            contracts = [
+              { id = "order-events/order-placed", version = "1.0.0", future-field = "ignored" }
+            ]
+            """;
+
+        assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
+    }
 }

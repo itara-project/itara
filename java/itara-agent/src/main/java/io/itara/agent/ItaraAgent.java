@@ -27,6 +27,9 @@ import java.util.logging.Logger;
  *   1. Load wiring config
  *   2. Build metadata index from .itara files (itara.metadata.dir)
  *   3. Scan classpath for @ComponentInterface contracts
+ *   3b. For each local component, read [implemented-event-contracts]
+ *       from its .itara metadata and register registry aliases so the
+ *       dispatcher can find the implementation by event contract id
  *   4. Scan META-INF/itara/activator for local activator classes,
  *      resolving component identity (id, version, api-version) via the
  *      metadata index built in step 2
@@ -121,12 +124,28 @@ public class ItaraAgent {
                 ActivatedComponent activated = activators.get(entry.getComponent());
 
                 if (activated != null) {
-                    log.info("GKISSLOG: component: " + entry.getComponent() + ", activated: " + activated
-                     + ", contract class: " + contracts.get(entry.getComponent()));
                     registry.registerActivator(
                             entry.getComponent(),
                             activated.getActivatorClass(),
                             contracts.get(entry.getComponent()));
+
+                    // Register aliases for all event contracts this component
+                    // implements, as declared in [implemented-event-contracts]
+                    // in its .itara metadata file.
+                    // Aliases are registered here — before any listeners start
+                    // in step 10 — so the registry is ready the moment the
+                    // first message arrives.
+                    ItaraMetadataIndex.instance()
+                            .lookupByComponentId(entry.getComponent())
+                            .ifPresent(metadata -> {
+                                for (var contract : metadata.getImplementedEventContracts().getContracts()) {
+                                    registry.registerAlias(
+                                            contract.getId(), entry.getComponent());
+                                    log.info("[Itara] Registered event contract alias: "
+                                            + contract.getId()
+                                            + " -> " + entry.getComponent());
+                                }
+                            });
                 }
             }
         }
@@ -195,11 +214,6 @@ public class ItaraAgent {
                         continue;
                     }
                     String localComponentId = config.getComponentOfNodeId(conn.getTo());
-
-                    VirtualNodeEntry virtualNode = config.findVirtualNode(conn.getFrom()).orElseThrow();
-                    String contractId = virtualNode.getContract();
-                    registry.registerAlias(contractId, localComponentId);
-                    log.info("[Itara] Registered consumer alias: " + contractId + " -> " + localComponentId);
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
                             localComponentId, type, serializer, registry, ExchangePattern.FIRE_AND_FORGET

@@ -5,7 +5,7 @@ import io.itara.api.ItaraActivator;
 import demo.events.api.OrderPlacedContract;
 import io.itara.runtime.ItaraRegistry;
 
-public class OrderConsumerActivator implements ItaraActivator<OrderConsumerService> {
+public class OrderConsumerActivator implements ItaraActivator {
 
     @Override
     public OrderConsumerService activate(ItaraRegistry registry) {

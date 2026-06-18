@@ -1,6 +1,7 @@
 package io.itara.agent.metadata;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Parsed contents of a single `.itara` metadata file.
@@ -29,6 +30,8 @@ public class MetadataFile {
     private RuntimeMeta runtime;
     private ItaraSpecMeta itara;
     private SerializersMeta serializers;
+    @JsonProperty("implemented-event-contracts")
+    private ImplementedEventContractsMeta implementedEventContracts = ImplementedEventContractsMeta.ofEmpty();
 
     public ArtifactMeta getArtifact() { return artifact; }
     public void setArtifact(ArtifactMeta artifact) { this.artifact = artifact; }
@@ -42,9 +45,17 @@ public class MetadataFile {
     public SerializersMeta getSerializers() { return serializers; }
     public void setSerializers(SerializersMeta serializers) { this.serializers = serializers; }
 
+    public ImplementedEventContractsMeta getImplementedEventContracts() {
+        return implementedEventContracts;
+    }
+    public void setImplementedEventContracts(ImplementedEventContractsMeta m) {
+        this.implementedEventContracts = m;
+    }
+
     @Override
     public String toString() {
         return "MetadataFile{artifact=" + artifact + ", runtime=" + runtime
-                + ", itara=" + itara + ", serializers=" + serializers + "}";
+                + ", itara=" + itara + ", serializers=" + serializers
+                + ", implementedEventContracts=" + implementedEventContracts + "}";
     }
 }

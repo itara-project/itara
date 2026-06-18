@@ -33,6 +33,11 @@
                 <artifactId>order-producer-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>io.itara.demo.events</groupId>
+                <artifactId>order-consumer-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

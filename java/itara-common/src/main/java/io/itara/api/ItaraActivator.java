@@ -23,6 +23,6 @@ import io.itara.runtime.ItaraRegistry;
  *       }
  *   }
  */
-public interface ItaraActivator<T> {
-    T activate(ItaraRegistry registry) throws Exception;
+public interface ItaraActivator {
+    Object activate(ItaraRegistry registry) throws Exception;
 }
