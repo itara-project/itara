@@ -1,5 +1,5 @@
 use clap;
-use itara_config::{parse_file, relevant_part_of, WiringConfig, ConnectionEntry};
+use itara_config::{parse_file, relevant_part_of, WiringConfig, ConnectionEntry, Node};
 
 use crate::output::{kv, section, blank};
 
@@ -13,6 +13,9 @@ pub struct Args {
     /// Suppress deployment group derivation.
     #[arg(long)]
     pub no_groups: bool,
+    /// Suppress event connection output (emits / listens to) in deployment groups.
+    #[arg(long)]
+    pub no_events: bool,
     /// Show only the specified node(s) and their direct connections. Can be repeated.
     #[arg(long, value_name = "id")]
     pub node: Vec<String>,
@@ -29,7 +32,7 @@ pub fn run(args: Args) -> i32 {
     };
 
     for id in &args.node {
-        if !config.nodes.iter().any(|n| n.id == *id) {
+        if !config.nodes.iter().any(|n| n.id() == *id) {
             eprintln!("warning: node '{}' not found in config", id);
         }
     }
@@ -47,7 +50,7 @@ pub fn run(args: Args) -> i32 {
     print_nodes(&config);
     print_connections(&config);
     if !args.no_groups {
-        print_deployment_groups(&config);
+        print_deployment_groups(&config, args.no_events);
     }
     if !args.no_graph {
         print_graph(&config);
@@ -65,7 +68,7 @@ fn print_header(path: &str) {
 
 fn print_nodes(config: &WiringConfig) {
     let id_width = config.nodes.iter()
-        .map(|n| n.id.len())
+        .map(|n| n.id().len())
         .max()
         .unwrap_or(0)
         .max(16);
@@ -75,12 +78,15 @@ fn print_nodes(config: &WiringConfig) {
         println!("  (none)");
     }
     for node in &config.nodes {
-        let is_entry = has_external_inbound(config, &node.id);
-        let component_part = format!("component: {}", node.component);
+        let is_entry = has_external_inbound(config, &node.id());
+        let detail = match node {
+            Node::Component(n) => format!("component: {}", n.component),
+            Node::Virtual(n)   => format!("virtual:   {} @ {}", n.contract, n.address),
+        };
         if is_entry {
-            kv(&node.id, &format!("{:<30} (external entry point)", component_part), id_width);
+            kv(&node.id(), &format!("{:<40} (external entry point)", detail), id_width);
         } else {
-            kv(&node.id, &component_part, id_width);
+            kv(&node.id(), &detail, id_width);
         }
     }
     blank();
@@ -113,7 +119,7 @@ fn print_connections(config: &WiringConfig) {
     blank();
 }
 
-fn print_deployment_groups(config: &WiringConfig) {
+fn print_deployment_groups(config: &WiringConfig, no_events: bool) {
     section("Deployment groups (derived)");
     if config.nodes.is_empty() {
         println!("  (none)");
@@ -133,7 +139,9 @@ fn print_deployment_groups(config: &WiringConfig) {
 
             // Inbound cross-group connections (non-direct) to this node.
             let inbound: Vec<&ConnectionEntry> = config.connections.iter()
-                .filter(|c| c.to == *node_id && !c.is_direct())
+                .filter(|c| c.to == *node_id && !c.is_direct()
+                        && !config.is_virtual_node(
+                            c.from.as_deref().unwrap_or("")))
                 .collect();
 
             for conn in &inbound {
@@ -148,11 +156,45 @@ fn print_deployment_groups(config: &WiringConfig) {
 
             // Outbound cross-group connections (non-direct) from this node.
             let outbound: Vec<&ConnectionEntry> = config.connections.iter()
-                .filter(|c| c.from.as_deref() == Some(node_id.as_str()))
+                .filter(|c| c.from.as_deref() == Some(node_id.as_str())
+                        && !config.is_virtual_node(&c.to))
                 .collect();
 
             for conn in &outbound {
                 println!("      Calls:    {} via {}", conn.to, conn.transport_type);
+            }
+
+            if !no_events {
+                // Emits — outbound connections from this node to a virtual node.
+                let emits: Vec<&ConnectionEntry> = config.connections.iter()
+                    .filter(|c| c.from.as_deref() == Some(node_id.as_str())
+                            && config.is_virtual_node(&c.to))
+                    .collect();
+
+                for conn in &emits {
+                    let contract = config.find_node(&conn.to)
+                        .and_then(|n| n.as_virtual())
+                        .map(|v| v.contract.as_str())
+                        .unwrap_or("?");
+                    println!("      Emits:       {} ({})", conn.to, contract);
+                }
+
+                // Listens to — inbound connections from a virtual node to this node.
+                let listens: Vec<&ConnectionEntry> = config.connections.iter()
+                    .filter(|c| c.to == *node_id
+                            && c.from.as_deref()
+                                .map(|f| config.is_virtual_node(f))
+                                .unwrap_or(false))
+                    .collect();
+
+                for conn in &listens {
+                    let from = conn.from.as_deref().unwrap_or("?");
+                    let contract = config.find_node(from)
+                        .and_then(|n| n.as_virtual())
+                        .map(|v| v.contract.as_str())
+                        .unwrap_or("?");
+                    println!("      Listens to:  {} ({})", from, contract);
+                }
             }
         }
 
@@ -187,7 +229,7 @@ fn derive_deployment_groups(config: &WiringConfig) -> Vec<Vec<String>> {
     let mut visited: HashSet<&str> = HashSet::new();
     let mut groups: Vec<Vec<String>> = Vec::new();
 
-    for node in &config.nodes {
+    for node in &config.component_nodes() {
         let id = node.id.as_str();
         if visited.contains(id) {
             continue;
@@ -349,12 +391,20 @@ fn group_label(i: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itara_config::{WiringConfig, NodeEntry, ConnectionEntry};
+    use itara_config::{ConnectionEntry, Node, ComponentNode, VirtualNode, WiringConfig};
  
     // ── Test helpers ──────────────────────────────────────────────────────────
  
-    fn node(id: &str, component: &str) -> NodeEntry {
-        NodeEntry { id: id.into(), component: component.into() }
+    fn node(id: &str, component: &str) -> Node {
+        Node::Component(ComponentNode { id: id.into(), component: component.into() })
+    }
+
+    fn virtual_node(id: &str, contract: &str, address: &str) -> Node {
+        Node::Virtual(VirtualNode {
+            id: id.into(),
+            contract: contract.into(),
+            address: address.into(),
+        })
     }
  
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
@@ -379,7 +429,7 @@ mod tests {
         }
     }
  
-    fn config(nodes: Vec<NodeEntry>, connections: Vec<ConnectionEntry>) -> WiringConfig {
+    fn config(nodes: Vec<Node>, connections: Vec<ConnectionEntry>) -> WiringConfig {
         WiringConfig { nodes, connections, local_node_ids: vec![] }
     }
  
@@ -570,5 +620,24 @@ mod tests {
         let cfg = config(vec![node("a", "ca")], vec![]);
         let chains = build_chains(&cfg);
         assert!(chains.is_empty());
+    }
+
+    #[test]
+    fn groups_virtual_nodes_excluded() {
+        let cfg = config(
+            vec![
+                node("a", "ca"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+                node("b", "cb"),
+            ],
+            vec![
+                http(None, "a", 8080),
+                // a emits to channel, b listens — neither is direct
+            ],
+        );
+        let groups = derive_deployment_groups(&cfg);
+        // Only component nodes form groups — virtual node excluded
+        assert_eq!(groups.len(), 2);
+        assert!(groups.iter().all(|g| !g.contains(&"channel".to_string())));
     }
 }
