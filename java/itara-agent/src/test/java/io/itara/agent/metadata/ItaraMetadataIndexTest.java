@@ -205,6 +205,93 @@ class ItaraMetadataIndexTest {
         }
     }
 
+    @Nested
+    @DisplayName("lookupByComponentId")
+    class LookupByComponentId {
+
+        @Test
+        @DisplayName("returns component artifact when both api and component share the same artifact id")
+        void returnsComponentWhenBothKindsPresent(@TempDir Path dir) throws IOException {
+            // Both have id = "order-consumer" — lookup must return the component, not the api
+            writeItaraFile(dir, "order-consumer-api.itara", """
+                [artifact]
+                kind = "api"
+                id = "order-consumer"
+                version = "1.0-SNAPSHOT"
+                """);
+            writeItaraFile(dir, "order-consumer-component.itara", """
+                [artifact]
+                kind = "component"
+                id = "order-consumer"
+                version = "1.0-SNAPSHOT"
+
+                [implemented-event-contracts]
+                contracts = [
+                  { id = "order-events/order-placed", version = "1.0-SNAPSHOT" }
+                ]
+                """);
+
+            System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
+            index.build();
+
+            MetadataFile result = index.lookupByComponentId("order-consumer").orElseThrow();
+            assertEquals("component", result.getArtifact().getKind());
+            assertEquals("order-consumer", result.getArtifact().getId());
+            assertEquals(1, result.getImplementedEventContracts().getContracts().size());
+            assertEquals("order-events/order-placed",
+                    result.getImplementedEventContracts().getContracts().get(0).getId());
+        }
+
+        @Test
+        @DisplayName("returns empty when no component artifact exists for the given id")
+        void returnsEmptyWhenNoComponentArtifact(@TempDir Path dir) throws IOException {
+            writeItaraFile(dir, "order-consumer-api.itara", """
+                [artifact]
+                kind = "api"
+                id = "order-consumer"
+                version = "1.0-SNAPSHOT"
+                """);
+
+            System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
+            index.build();
+
+            assertTrue(index.lookupByComponentId("order-consumer").isEmpty());
+        }
+
+        @Test
+        @DisplayName("returns empty when no artifact with the given id exists at all")
+        void returnsEmptyWhenIdNotFound(@TempDir Path dir) throws IOException {
+            writeItaraFile(dir, "some-component.itara", """
+                [artifact]
+                kind = "component"
+                id = "some-component"
+                version = "1.0-SNAPSHOT"
+                """);
+
+            System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
+            index.build();
+
+            assertTrue(index.lookupByComponentId("nonexistent").isEmpty());
+        }
+
+        @Test
+        @DisplayName("returns component artifact when only component exists — no api counterpart")
+        void returnsComponentWhenOnlyComponentPresent(@TempDir Path dir) throws IOException {
+            writeItaraFile(dir, "order-producer-component.itara", """
+                [artifact]
+                kind = "component"
+                id = "order-producer"
+                version = "1.0-SNAPSHOT"
+                """);
+
+            System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
+            index.build();
+
+            MetadataFile result = index.lookupByComponentId("order-producer").orElseThrow();
+            assertEquals("component", result.getArtifact().getKind());
+        }
+    }
+
     private static void writeItaraFile(Path dir, String name, String contents) throws IOException {
         Files.writeString(dir.resolve(name), contents);
     }

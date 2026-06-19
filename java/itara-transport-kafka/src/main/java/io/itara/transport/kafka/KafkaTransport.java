@@ -52,8 +52,8 @@ public class KafkaTransport implements ItaraTransport {
 
     public static final String TYPE = "kafka";
 
-    static final String HEADER_COMPONENT_ID = "x-itara-component-id";
-    static final String HEADER_METHOD_NAME  = "x-itara-method-name";
+    public static final String HEADER_COMPONENT_ID = "x-itara-component-id";
+    public static final String HEADER_METHOD_NAME  = "x-itara-method-name";
 
     private static final Logger log = Logger.getLogger(KafkaTransport.class.getName());
 
