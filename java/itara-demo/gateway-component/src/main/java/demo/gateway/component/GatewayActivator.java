@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  * a direct instance (collocated topology) or an HTTP proxy (remote topology).
  * This code does not change between the two topologies. That is the point.
  */
-public class GatewayActivator implements ItaraActivator<GatewayService> {
+public class GatewayActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(GatewayActivator.class.getName());
 

@@ -17,10 +17,12 @@
         <module>itara-transport-http</module>
         <module>itara-serializer-json</module>
         <module>itara-demo</module>
+        <module>itara-demo-events</module>
         <module>itara-integration-tests</module>
         <module>itara-serializer-java</module>
         <module>itara-observability-logging</module>
         <module>itara-observability-otel</module>
+        <module>itara-transport-kafka</module>
     </modules>
 
     <properties>
@@ -61,6 +63,11 @@
                 <artifactId>opentelemetry-api</artifactId>
                 <version>1.38.0</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>3.7.1</version>
+            </dependency>
 
             <!-- Test dependencies — OTel SDK with in-memory exporters -->
             <dependency>
@@ -85,6 +92,24 @@
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>
                 <version>5.11.0</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers</artifactId>
+                <version>1.19.8</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>kafka</artifactId>
+                <version>1.19.8</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>1.19.8</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>

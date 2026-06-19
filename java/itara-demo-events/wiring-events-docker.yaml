@@ -1,0 +1,28 @@
+nodes:
+  - id: "orderProducerNode"
+    component: "order-producer"
+  - id: "orderConsumerNode"
+    component: "order-consumer"
+  - id: "orderPlacedChannel"
+    kind: virtual
+    contract: "order-events/order-placed"
+    address: "demo.events.order-placed"
+
+connections:
+  - from:
+    to: "orderProducerNode"
+    type: http
+    host: "order-producer"
+    port: 8081
+    serializer: "json"
+  - from: "orderProducerNode"
+    to: "orderPlacedChannel"
+    type: kafka
+    serializer: "json"
+    bootstrapServers: "kafka:29092"
+  - from: "orderPlacedChannel"
+    to: "orderConsumerNode"
+    type: kafka
+    serializer: "json"
+    bootstrapServers: "kafka:29092"
+    consumerGroup: "order-consumer-group"

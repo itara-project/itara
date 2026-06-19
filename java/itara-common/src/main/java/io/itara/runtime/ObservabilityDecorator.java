@@ -54,10 +54,10 @@ public class ObservabilityDecorator {
             ObservabilityFacade facade = ObservabilityFacade.instance();
 
             // CALL_SENT — caller scope; close fires RETURN_RECEIVED
-            try (ItaraScope callerScope = facade.fireCallSent(componentId, method.getName(), TRANSPORT)) {
+            try (ItaraScope callerScope = facade.fireCallSent(componentId, method.getName(), TRANSPORT, ExchangePattern.REQUEST_REPLY)) {
 
                 // CALL_RECEIVED — callee scope; close fires RETURN_SENT
-                try (ItaraScope calleeScope = facade.fireCallReceived(componentId, method.getName(), TRANSPORT)) {
+                try (ItaraScope calleeScope = facade.fireCallReceived(componentId, method.getName(), TRANSPORT, ExchangePattern.REQUEST_REPLY)) {
 
                     try {
                         return method.invoke(delegate, args);

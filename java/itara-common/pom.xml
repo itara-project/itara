@@ -14,4 +14,11 @@
     <artifactId>itara-common</artifactId>
     <name>Itara Common Library</name>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

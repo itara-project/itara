@@ -11,7 +11,7 @@ import java.util.logging.Logger;
  * Constructs and returns the implementation instance.
  * No dependencies on other components — this one is self-contained.
  */
-public class CalculatorActivator implements ItaraActivator<CalculatorService> {
+public class CalculatorActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(CalculatorActivator.class.getName());
 

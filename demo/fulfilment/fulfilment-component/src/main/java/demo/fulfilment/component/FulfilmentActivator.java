@@ -6,7 +6,7 @@ import io.itara.runtime.ItaraRegistry;
 
 import java.util.logging.Logger;
 
-public class FulfilmentActivator implements ItaraActivator<FulfilmentService> {
+public class FulfilmentActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(FulfilmentActivator.class.getName());
 

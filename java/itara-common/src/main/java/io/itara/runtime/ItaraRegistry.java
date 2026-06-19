@@ -44,7 +44,7 @@ public class ItaraRegistry {
     private final Map<String, Object> rawInstances = new ConcurrentHashMap<>();
 
     // Activator classes for local components, registered by the agent
-    private final Map<String, Class<? extends ItaraActivator<?>>> activators =
+    private final Map<String, Class<? extends ItaraActivator>> activators =
             new ConcurrentHashMap<>();
 
     // Contract classes per component id — needed to create the observability proxy
@@ -53,6 +53,8 @@ public class ItaraRegistry {
     // Tracks which component ids are currently being activated
     // to detect circular dependencies. Best-effort.
     private final Map<String, Thread> activating = new ConcurrentHashMap<>();
+
+    private final Map<String, String> aliases = new ConcurrentHashMap<>();
 
     private ItaraRegistry() {}
 
@@ -79,11 +81,21 @@ public class ItaraRegistry {
      * after the application context is ready, not during premain.
      */
     public void registerActivator(String id,
-                                  Class<? extends ItaraActivator<?>> activatorClass,
+                                  Class<? extends ItaraActivator> activatorClass,
                                   Class<?> contractClass) {
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
         log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
+    }
+
+    /**
+     * Registers an alias so that lookups by aliasId delegate to canonicalId.
+     * Used to map event contract ids to consumer component ids.
+     * e.g. "order-events/order-placed" -> "order-consumer"
+     */
+    public void registerAlias(String aliasId, String canonicalId) {
+        aliases.put(aliasId, canonicalId);
+        log.info("[Itara] Registered alias: " + aliasId + " -> " + canonicalId);
     }
 
     // ── Application API ───────────────────────────────────────────────────────
@@ -101,7 +113,9 @@ public class ItaraRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T> T get(String id, Class<T> type) {
-        return type.cast(proxies.computeIfAbsent(id, key -> decorate(activateRaw(key), key)));
+        // Resolve alias if present — event contract ids map to component ids
+        String resolvedId = aliases.getOrDefault(id, id);
+        return type.cast(proxies.computeIfAbsent(resolvedId, key -> decorate(activateRaw(key), key)));
     }
 
     /**
@@ -119,7 +133,8 @@ public class ItaraRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T> T getRawImplementation(String id, Class<T> type) {
-        return type.cast(rawInstances.computeIfAbsent(id, this::activateRaw));
+        String resolvedId = aliases.getOrDefault(id, id);
+        return type.cast(rawInstances.computeIfAbsent(resolvedId, this::activateRaw));
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────
@@ -133,7 +148,7 @@ public class ItaraRegistry {
         }
 
         try {
-            Class<? extends ItaraActivator<?>> activatorClass = activators.get(id);
+            Class<? extends ItaraActivator> activatorClass = activators.get(id);
             if (activatorClass == null) {
                 throw new IllegalStateException(
                         "[Itara] Topology error: component '" + id
@@ -142,7 +157,7 @@ public class ItaraRegistry {
             }
 
             log.info("[Itara] Activating: " + id);
-            ItaraActivator<?> activator = activatorClass.getDeclaredConstructor().newInstance();
+            ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
             Object instance = activator.activate(this);
             log.info("[Itara] Activated:  " + id
                     + " -> " + instance.getClass().getSimpleName());

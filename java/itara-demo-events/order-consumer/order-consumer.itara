@@ -1,0 +1,15 @@
+[artifact]
+kind = "component"
+id = "order-consumer"
+version = "1.0-SNAPSHOT"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"
+
+[implemented-event-contracts]
+contracts = [
+  { id = "order-events/order-placed", version = "1.0-SNAPSHOT" }
+]

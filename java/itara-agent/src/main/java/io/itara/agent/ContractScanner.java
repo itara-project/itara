@@ -2,125 +2,106 @@ package io.itara.agent;
 
 import io.itara.api.ComponentInterface;
 
-import java.io.File;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.logging.Logger;
 
 /**
- * Scans the classpath for classes annotated with @ComponentInterface.
+ * Discovers component contract interfaces from API artifact jars.
  *
- * The agent needs to know the actual Class object for each contract
- * interface so it can generate the correct proxy type for remote
- * connections. The component id in the annotation ties the class
- * to the id used in the wiring config.
+ * Each API artifact jar includes a descriptor file at:
+ *   META-INF/itara/contract
  *
- * Scans all jars and directories on the classpath. For the PoC this
- * is a full scan — a future version could use an index in META-INF
- * to avoid scanning every class.
+ * The file contains one fully qualified interface class name per line.
+ * Blank lines and '#' comments are ignored.
+ *
+ * Example:
+ *   com.example.inventory.InventoryService
+ *   com.example.inventory.InventoryAdminService
+ *
+ * The agent uses the discovered Class objects to generate proxy types
+ * for remote connections. The component id is read from the
+ * @ComponentInterface annotation on each interface — it must match
+ * the component id used in the wiring config.
+ *
+ * Descriptor files are hand-authored for the PoC. The itara-processor
+ * annotation processor will generate them automatically at build time.
  */
 public class ContractScanner {
 
     private static final Logger log = Logger.getLogger(ContractScanner.class.getName());
 
+    private static final String RESOURCE_PATH = "META-INF/itara/contract";
+
     /**
-     * Scans the classpath for @ComponentInterface-annotated classes.
+     * Scans the classpath for META-INF/itara/contract descriptor files.
      *
-     * @return Map of component-id -> contract class
+     * @return Map of component-id -> contract interface class
      */
     public static Map<String, Class<?>> scan(ClassLoader classLoader) {
         Map<String, Class<?>> result = new HashMap<>();
 
-        // Get the classpath entries from the system class loader
-        String classpath = System.getProperty("java.class.path");
-        if (classpath == null || classpath.isBlank()) return result;
-
-        String[] entries = classpath.split(File.pathSeparator);
-        for (String entry : entries) {
-            File file = new File(entry);
-            if (!file.exists()) continue;
-
-            if (file.isDirectory()) {
-                scanDirectory(file, file, classLoader, result);
-            } else if (file.getName().endsWith(".jar")) {
-                scanJar(file, classLoader, result);
+        try {
+            Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
+            while (resources.hasMoreElements()) {
+                URL url = resources.nextElement();
+                log.info("[Itara] Found contract descriptor: " + url);
+                processDescriptor(url, classLoader, result);
             }
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "[Itara] Failed to scan for contract descriptors: "
+                            + e.getMessage(), e);
         }
 
         return result;
     }
 
-    private static void scanDirectory(File root, File dir,
-                                       ClassLoader classLoader,
-                                       Map<String, Class<?>> result) {
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                scanDirectory(root, f, classLoader, result);
-            } else if (f.getName().endsWith(".class")) {
-                String className = toClassName(root, f);
-                checkClass(className, classLoader, result);
-            }
-        }
-    }
-
-    private static void scanJar(File jarFile, ClassLoader classLoader,
-                                  Map<String, Class<?>> result) {
-        try (JarFile jar = new JarFile(jarFile)) {
-            Enumeration<JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                if (entry.getName().endsWith(".class")
-                        && !entry.getName().contains("$")) { // skip inner classes for now
-                    String className = entry.getName()
-                            .replace('/', '.')
-                            .replace(".class", "");
-                    checkClass(className, classLoader, result);
-                }
+    private static void processDescriptor(URL url, ClassLoader classLoader,
+                                          Map<String, Class<?>> result) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(url.openStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.strip();
+                if (line.isBlank() || line.startsWith("#")) continue;
+                loadContractClass(line, classLoader, result, url);
             }
         } catch (Exception e) {
-            // Skip unreadable jars — JDK jars, etc.
+            throw new IllegalStateException(
+                    "[Itara] Failed to read contract descriptor at "
+                            + url + ": " + e.getMessage(), e);
         }
     }
 
-    private static void checkClass(String className, ClassLoader classLoader,
-                                    Map<String, Class<?>> result) {
-        // Skip known framework and JDK packages to avoid loading thousands
-        // of classes unnecessarily
-        if (className.startsWith("java.")
-                || className.startsWith("javax.")
-                || className.startsWith("sun.")
-                || className.startsWith("com.sun.")
-                || className.startsWith("jdk.")
-                || className.startsWith("itara.")) {
-            return;
-        }
-
+    private static void loadContractClass(String className,
+                                          ClassLoader classLoader,
+                                          Map<String, Class<?>> result,
+                                          URL descriptorUrl) {
+        Class<?> cls;
         try {
-            Class<?> cls = classLoader.loadClass(className);
-            ComponentInterface annotation = cls.getAnnotation(ComponentInterface.class);
-            if (annotation != null) {
-                String id = annotation.id();
-                result.put(id, cls);
-                log.info("[Itara] Found contract: " + id
-                        + " -> " + className);
-            }
-        } catch (Throwable ignored) {
-            // Many classes will fail to load due to missing dependencies
-            // in the scanning context — this is expected and safe to skip
+            cls = classLoader.loadClass(className);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    "[Itara] Contract class '" + className
+                            + "' listed in " + descriptorUrl
+                            + " could not be loaded. Is the API jar on the classpath?", e);
         }
-    }
 
-    private static String toClassName(File root, File classFile) {
-        String rootPath = root.getAbsolutePath();
-        String classPath = classFile.getAbsolutePath();
-        return classPath
-                .substring(rootPath.length() + 1)
-                .replace(File.separatorChar, '.')
-                .replace(".class", "");
+        ComponentInterface annotation = cls.getAnnotation(ComponentInterface.class);
+        if (annotation == null) {
+            throw new IllegalStateException(
+                    "[Itara] Class '" + className
+                            + "' listed in " + descriptorUrl
+                            + " is not annotated with @ComponentInterface.");
+        }
+
+        String id = annotation.id();
+        result.put(id, cls);
+        log.info("[Itara] Registered contract: " + id + " -> " + className);
     }
 }

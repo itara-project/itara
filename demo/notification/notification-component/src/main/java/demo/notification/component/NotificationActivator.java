@@ -6,7 +6,7 @@ import io.itara.runtime.ItaraRegistry;
 
 import java.util.logging.Logger;
 
-public class NotificationActivator implements ItaraActivator<NotificationService> {
+public class NotificationActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(NotificationActivator.class.getName());
 

@@ -1,5 +1,6 @@
 package io.itara.observability.otel;
 
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -78,7 +79,7 @@ class OtelObserverTest {
         @DisplayName("CALL_SENT + RETURN_RECEIVED produces a CLIENT span")
         void callerSpan() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             List<SpanData> spans = spanExporter.getFinishedSpanItems();
@@ -94,7 +95,7 @@ class OtelObserverTest {
         void calleeSpan() {
             ItaraContext parent = ItaraContext.newRoot("gateway");
             ItaraContext ctx = parent.newChildSpan("calculator");
-            observer.onCallReceived(ctx, "calculator", "add", "http", now());
+            observer.onCallReceived(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnSent(ctx, "calculator", "add", now(), false);
 
             List<SpanData> spans = spanExporter.getFinishedSpanItems();
@@ -108,7 +109,7 @@ class OtelObserverTest {
         @DisplayName("error sets span status to ERROR")
         void errorSpan() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "divide", "http", now());
+            observer.onCallSent(ctx, "calculator", "divide", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "divide", now(), true);
 
             assertEquals(StatusCode.ERROR, spanExporter.getFinishedSpanItems().get(0).getStatus().getStatusCode());
@@ -119,7 +120,7 @@ class OtelObserverTest {
         @DisplayName("null context is handled gracefully — no span created")
         void nullContext() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             assertEquals(StatusCode.UNSET, spanExporter.getFinishedSpanItems().get(0).getStatus().getStatusCode());
@@ -130,11 +131,11 @@ class OtelObserverTest {
         @DisplayName("two unrelated root calls produce spans with different OTel traceIds")
         void unrelatedCallsHaveDifferentTraceIds() {
             ItaraContext ctx1 = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx1, "calculator", "add", "http", now());
+            observer.onCallSent(ctx1, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx1, "calculator", "add", now(), false);
 
             ItaraContext ctx2 = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx2, "calculator", "add", "http", now());
+            observer.onCallSent(ctx2, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx2, "calculator", "add", now(), false);
 
             List<SpanData> spans = spanExporter.getFinishedSpanItems();
@@ -158,8 +159,8 @@ class OtelObserverTest {
             ItaraContext calleeCtx = callerCtx.newChildSpan("calculator");
 
             // Opener events push onto OTel's context stack via makeCurrent()
-            observer.onCallSent(callerCtx, "calculator", "add", "direct", now());
-            observer.onCallReceived(calleeCtx, "calculator", "add", "direct", now());
+            observer.onCallSent(callerCtx, "calculator", "add", "direct", ExchangePattern.REQUEST_REPLY, now());
+            observer.onCallReceived(calleeCtx, "calculator", "add", "direct", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnSent(calleeCtx, "calculator", "add", now(), false);
             observer.onReturnReceived(callerCtx, "calculator", "add", now(), false);
 
@@ -185,7 +186,7 @@ class OtelObserverTest {
         @DisplayName("root CLIENT span has no parent in the backend")
         void rootSpanHasNoParent() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             SpanData span = spanExporter.getFinishedSpanItems().get(0);
@@ -199,14 +200,14 @@ class OtelObserverTest {
         void remoteCallParentChild() {
             // ── Caller side ────────────────────────────────────────────────
             ItaraContext callerCtx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(callerCtx, "calculator", "add", "http", now());
+            observer.onCallSent(callerCtx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             Map<String, String> headers = observer.serializeContext();
             observer.onReturnReceived(callerCtx, "calculator", "add", now(), false);
 
             // ── Callee side (simulated on same thread) ─────────────────────
             ItaraContext calleeCtx = callerCtx.newChildSpan("calculator");
-            observer.restoreContext(headers);
-            observer.onCallReceived(calleeCtx, "calculator", "add", "http", now());
+            observer.restoreContext(headers, ExchangePattern.REQUEST_REPLY);
+            observer.onCallReceived(calleeCtx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnSent(calleeCtx, "calculator", "add", now(), false);
             observer.onInboundContextReleased();
 
@@ -239,7 +240,7 @@ class OtelObserverTest {
         @DisplayName("component, method, and transport are set on every span")
         void coreAttributesPresent() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             SpanData span = spanExporter.getFinishedSpanItems().get(0);
@@ -256,7 +257,7 @@ class OtelObserverTest {
             // They allow cross-observer correlation: find the audit log entry
             // that matches this OTel span without timestamp heuristics.
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             SpanData span = spanExporter.getFinishedSpanItems().get(0);
@@ -273,7 +274,7 @@ class OtelObserverTest {
         @DisplayName("requestId is set for cross-signal correlation")
         void requestIdPresent() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             assertNotNull(
@@ -287,7 +288,7 @@ class OtelObserverTest {
         @DisplayName("correlationId is visible when set on the context")
         void correlationIdVisibleWhenSet() {
             ItaraContext ctx = ItaraContext.newRoot("gateway", "order-12345");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             assertEquals("order-12345",
@@ -301,7 +302,7 @@ class OtelObserverTest {
         @DisplayName("sourceNode is visible on every span")
         void sourceNodePresent() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             assertEquals("gateway",
@@ -321,7 +322,7 @@ class OtelObserverTest {
         @DisplayName("serializeContext produces a traceparent header after onCallSent")
         void serializeContextProducesTraceparent() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
 
             Map<String, String> headers = observer.serializeContext();
             assertNotNull(headers.get("traceparent"),
@@ -354,7 +355,7 @@ class OtelObserverTest {
         @DisplayName("call duration is recorded for every completed call")
         void durationRecorded() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             MetricData histogram = metricReader.collectAllMetrics().stream()
@@ -370,7 +371,7 @@ class OtelObserverTest {
         @DisplayName("call duration is non-negative")
         void durationNonNegative() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             MetricData histogram = metricReader.collectAllMetrics().stream()
@@ -389,11 +390,11 @@ class OtelObserverTest {
         @DisplayName("each call increments the metric count")
         void countIncrements() {
             ItaraContext ctx1 = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx1, "calculator", "add", "http", now());
+            observer.onCallSent(ctx1, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx1, "calculator", "add", now(), false);
 
             ItaraContext ctx2 = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx2, "calculator", "add", "http", now());
+            observer.onCallSent(ctx2, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx2, "calculator", "add", now(), false);
 
             MetricData histogram = metricReader.collectAllMetrics().stream()
@@ -412,7 +413,7 @@ class OtelObserverTest {
         @DisplayName("failed calls are distinguishable via error=true dimension")
         void errorDimension() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "divide", "http", now());
+            observer.onCallSent(ctx, "calculator", "divide", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "divide", now(), true);
 
             MetricData histogram = metricReader.collectAllMetrics().stream()
@@ -432,7 +433,7 @@ class OtelObserverTest {
         @DisplayName("transport type is a metric dimension")
         void transportDimension() {
             ItaraContext ctx = ItaraContext.newRoot("gateway");
-            observer.onCallSent(ctx, "calculator", "add", "http", now());
+            observer.onCallSent(ctx, "calculator", "add", "http", ExchangePattern.REQUEST_REPLY, now());
             observer.onReturnReceived(ctx, "calculator", "add", now(), false);
 
             MetricData histogram = metricReader.collectAllMetrics().stream()

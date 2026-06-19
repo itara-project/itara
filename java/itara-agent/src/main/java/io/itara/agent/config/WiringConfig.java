@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The per-JVM wiring configuration.
@@ -47,12 +48,12 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WiringConfig {
 
-    private List<NodeEntry> nodes = new ArrayList<>();
+    private List<Node> nodes = new ArrayList<>();
     private List<ConnectionEntry> connections = new ArrayList<>();
     private List<String> localNodeIds = new ArrayList<>();
 
-    public List<NodeEntry> getNodes() { return nodes; }
-    public void setNodes(List<NodeEntry> nodes) {
+    public List<Node> getNodes() { return nodes; }
+    public void setNodes(List<Node> nodes) {
         this.nodes = nodes != null ? nodes : new ArrayList<>();
     }
 
@@ -66,22 +67,66 @@ public class WiringConfig {
         this.localNodeIds = localNodeIds;
     }
 
+    public List<ComponentNode> componentNodes() {
+        return nodes.stream()
+                .filter(n -> n instanceof ComponentNode)
+                .map(n -> (ComponentNode) n)
+                .toList();
+    }
+
+    public List<VirtualNode> virtualNodes() {
+        return nodes.stream()
+                .filter(n -> n instanceof VirtualNode)
+                .map(n -> (VirtualNode) n)
+                .toList();
+    }
+
     public void validate() {
-        if (nodes != null) nodes.forEach(NodeEntry::validate);
+        if (nodes != null) nodes.forEach(Node::validate);
         if (connections != null) connections.forEach(ConnectionEntry::validate);
     }
 
     public String getComponentOfNodeId(String nodeId) {
-        return nodes.stream().filter(node -> node.getId().equals(nodeId)).map(NodeEntry::getComponent)
+        return componentNodes().stream()
+                .filter(n -> n.getId().equals(nodeId))
+                .map(ComponentNode::getComponent)
                 .findFirst()
-                .orElseThrow( () -> new IllegalStateException("Cannot find node entry for nodeId " + nodeId));
+                .orElseThrow(() -> new IllegalStateException(
+                        "[Itara] Cannot find component node for nodeId '" + nodeId + "'"));
     }
 
-    public boolean isNodeLocal(NodeEntry nodeEntry) {
-        return localNodeIds.contains(nodeEntry.getId());
+    public Optional<Node> findNode(String nodeId) {
+        return nodes.stream()
+                .filter(n -> n.getId().equals(nodeId))
+                .findFirst();
     }
 
-    public List<NodeEntry> getLocalNodes() {
-        return nodes.stream().filter(this::isNodeLocal).toList();
+    /**
+     * Returns the VirtualNodeEntry for the given node id, or empty if it is
+     * a component node (or not present at all).
+     */
+    public Optional<VirtualNode> findVirtualNode(String nodeId) {
+        return findNode(nodeId)
+                .filter(n -> n.getKind() == NodeKind.VIRTUAL)
+                .map(n -> (VirtualNode) n);
+    }
+
+    /**
+     * Returns true if the given node id refers to a virtual node.
+     */
+    public boolean isVirtualNode(String nodeId) {
+        return findNode(nodeId)
+                .map(n -> n.getKind() == NodeKind.VIRTUAL)
+                .orElse(false);
+    }
+
+    public boolean isNodeLocal(Node node) {
+        return localNodeIds.contains(node.getId());
+    }
+
+    public List<ComponentNode> getLocalNodes() {
+        return componentNodes().stream()
+                .filter(this::isNodeLocal)
+                .toList();
     }
 }

@@ -112,13 +112,13 @@ public final class ObservabilityFacade {
      * @param headers the full inbound header map from the transport
      * @return a scope that pops the restored context on close
      */
-    public ItaraScope restoreInboundContext(Map<String, String> headers) {
-        ItaraContext ctx = ContextPropagation.fromHeaders(headers);
+    public ItaraScope restoreInboundContext(Map<String, String> headers, ExchangePattern exchangePattern) {
+        ItaraContext ctx = ContextPropagation.fromHeaders(headers, exchangePattern);
         ItaraContext.push(ctx);
 
         for (var observer : registry.getObservers()) {
             try {
-                observer.restoreContext(headers);
+                observer.restoreContext(headers, exchangePattern);
             } catch (Exception e) {
                 log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                         + " threw on restoreContext: " + e.getMessage());
@@ -165,7 +165,8 @@ public final class ObservabilityFacade {
      */
     public ItaraScope fireCallSent(String componentId,
                                    String methodName,
-                                   String transport) {
+                                   String transport,
+                                   ExchangePattern exchangePattern) {
         ItaraContext parent = ItaraContext.current();
         ItaraContext ctx = (parent != null)
                 ? parent.newCallerSpan()
@@ -176,7 +177,7 @@ public final class ObservabilityFacade {
         for (var observer : registry.getObservers()) {
             try {
                 observer.onCallSent(ctx, componentId, methodName,
-                        transport, timestamp);
+                        transport, exchangePattern, timestamp);
             } catch (Exception e) {
                 log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                         + " threw on onCallSent: " + e.getMessage());
@@ -197,7 +198,8 @@ public final class ObservabilityFacade {
      */
     public ItaraScope fireCallReceived(String componentId,
                                        String methodName,
-                                       String transport) {
+                                       String transport,
+                                       ExchangePattern exchangePattern) {
         ItaraContext parent = ItaraContext.current();
         ItaraContext ctx = (parent != null)
                 ? parent.newChildSpan(componentId)
@@ -208,7 +210,7 @@ public final class ObservabilityFacade {
         for (var observer : registry.getObservers()) {
             try {
                 observer.onCallReceived(ctx, componentId, methodName,
-                        transport, timestamp);
+                        transport, exchangePattern, timestamp);
             } catch (Exception e) {
                 log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                         + " threw on onCallReceived: " + e.getMessage());

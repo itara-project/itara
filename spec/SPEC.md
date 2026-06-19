@@ -39,6 +39,7 @@ Feedback, objections, and proposals are welcome as GitHub issues on the Itara re
 10. Context Propagation
 11. Tooling
 12. Conformance
+13. Event-Driven Topology
 
 ---
 
@@ -226,7 +227,9 @@ The wiring configuration format is not prescribed by this specification. The ref
 
 ### 4.3 Node Declarations
 
-The wiring configuration MUST declare nodes using the following structure:
+The wiring configuration MUST support two node types: **component nodes** and **virtual nodes**. Component nodes reference a deployable component. Virtual nodes represent communication channels with no component implementation. Virtual nodes are defined fully in §13.
+
+A component node declaration MUST include a node identifier and a component reference:
 
 ```yaml
 nodes:
@@ -909,6 +912,247 @@ New transport types, serializer formats, observer backends, and service discover
 ### 12.4 Versioning
 
 This document is version 0.1. It covers the core component model, wiring model, agent contract, transport interface, serializer interface, observer interface, and context propagation model. Open design questions are marked **[OPEN]** and will be addressed in future versions.
+
+---
+
+## 13. Event-Driven Topology
+
+### 13.1 Summary
+
+The wiring model defined in §4 covers synchronous point-to-point communication.
+This section extends it to cover event-driven communication — patterns where a
+producer emits an event without knowledge of its consumers, and one or more
+consumers receive it without knowledge of the producer.
+
+The developer experience requirement is unchanged: component code MUST NOT be
+required to know whether a method call results in a direct invocation, an HTTP
+request, or a message published to a broker. The topology decision lives in the
+wiring configuration. The code does not change.
+
+### 13.2 New Concepts
+
+Event-driven topology introduces two concepts not present in the synchronous
+model: **virtual nodes** and **events artifacts**.
+
+#### 13.2.1 Virtual Nodes
+
+A virtual node represents a communication channel in the wiring data model.
+It has no component implementation, no activator, and no agent-managed
+lifecycle. It is a topology declaration — a named point through which producers
+and consumers are connected without direct knowledge of each other.
+
+A virtual node MUST be expressible in the wiring data model as a distinct node
+type, separate from component nodes. It MUST carry:
+
+- A stable identifier, unique within the wiring configuration
+- A reference to the event contract it carries, resolvable against the artifact
+  directory (events-artifact-id and contract-id within that artifact)
+- A channel address — the broker-specific address of the channel (topic name,
+  queue name, ARN, or equivalent). The format and interpretation of the address
+  is transport-specific and is not prescribed by this specification.
+
+A virtual node MUST NOT participate in deployment group computation. Virtual
+nodes are not deployable units.
+
+A conforming `itara inspect` implementation MUST render virtual nodes
+distinctly from component nodes in the topology graph.
+
+#### 13.2.2 Events Artifacts
+
+An events artifact contains event contracts — interfaces or traits defining
+the shape of events. Each contract consists of a single method with typed
+parameters. The return type of the contract method MUST be void or the
+language-idiomatic equivalent for fire-and-forget semantics (e.g. a unit
+result type in languages where methods cannot be declared void).
+
+An events artifact MUST have `kind = "events"` in its `.itara` metadata file.
+It MUST NOT contain an activator. It is a compile-time dependency for
+producers and consumers.
+
+The `.itara` metadata file MUST enumerate the contracts contained in the
+artifact. This enumeration is used by tooling to validate virtual node
+contract references.
+
+```toml
+[artifact]
+kind    = "events"
+id      = "order-events"
+version = "1.0.0"
+
+[contracts]
+ids = ["order-created", "order-cancelled", "order-shipped"]
+```
+
+An events artifact MAY contain one contract or many. The granularity of
+events artifacts is not prescribed by this specification — it is a decision
+for the component authors, in the same way that component granularity is not
+prescribed.
+
+A virtual node references exactly one contract from exactly one events
+artifact. The wiring configuration is the authoritative binding between a
+channel and the contract it carries.
+
+### 13.3 Producer and Consumer Contracts
+
+#### 13.3.1 Producer Side
+
+A producer calls a method on an event contract as it would call any other
+component method. The producer MUST NOT be required to know which consumers,
+if any, will receive the event.
+
+The proxy wired by the agent at startup MUST, on each method call:
+
+- Fire `CALL_SENT`
+- Delegate to the transport for publication to the declared channel address
+- Fire `RETURN_RECEIVED` on broker acknowledgement
+
+`RETURN_RECEIVED` fires on broker acknowledgement — not on consumer completion.
+
+The proxy MUST propagate `ItaraContext` in the message headers, including
+`itaraTraceId`.
+
+#### 13.3.2 Consumer Side
+
+A consumer implements one or more event contract interfaces or traits. The
+proxy wired by the agent at startup MUST, on each received message:
+
+- Restore `ItaraContext` from the message headers (see §13.5)
+- Fire `CALL_RECEIVED`
+- Dispatch to the consumer implementation
+- Fire `RETURN_SENT` on completion
+
+A consumer implementation MAY implement multiple event contracts. Method name
+collisions across implemented contracts are subject to the collision resolution
+rules of the implementation language.
+
+#### 13.3.3 Contract Associations
+
+An event contract MAY be associated with multiple virtual nodes. An event
+contract MAY be produced by multiple producers and consumed by multiple
+consumers. This specification does not constrain the number of producers or
+consumers for a given contract. The wiring configuration is the complete and
+authoritative description of all associations.
+
+### 13.4 Wiring Data Model
+
+The transport type is declared on the connection, not on the virtual node.
+Transport is an edge property — the virtual node is transport-agnostic.
+Producers connect to the virtual node; consumers connect from it.
+
+The channel address is declared on the virtual node — it is a property of the
+channel, declared once, independent of how many producers or consumers connect
+to it.
+
+Transport-specific connection settings (consumer group ID, acknowledgement
+mode, partition assignment strategy, dead letter queue configuration, etc.)
+are declared on the connection. They are not declared on the virtual node.
+
+The following is a non-normative illustration of the data model in the
+reference YAML format:
+
+```yaml
+nodes:
+  - id: "orderServiceNode"
+    component: "order-service"
+
+  - id: "orderCreatedChannel"
+    kind: virtual
+    contract: "order-events/order-created"
+    address: "org.orders.created"
+
+  - id: "inventoryServiceNode"
+    component: "inventory-service"
+
+  - id: "notificationServiceNode"
+    component: "notification-service"
+
+connections:
+  - from: "orderServiceNode"
+    to: "orderCreatedChannel"
+    type: kafka
+    serializer: "json"
+
+  - from: "orderCreatedChannel"
+    to: "inventoryServiceNode"
+    type: kafka
+    serializer: "json"
+    consumer-group: "inventory-consumer-group"
+
+  - from: "orderCreatedChannel"
+    to: "notificationServiceNode"
+    type: kafka
+    serializer: "json"
+    consumer-group: "notification-consumer-group"
+```
+
+### 13.5 Context Propagation
+
+The producer-side proxy MUST include `itaraTraceId` in the message headers
+when publishing an event. The consumer-side proxy MUST read `itaraTraceId`
+from the message headers and restore it on the consumer-side `ItaraContext`.
+
+The `parentSpanId` field of the consumer-side `ItaraContext` MUST be null or
+absent. The producer and consumer are decoupled in time — the producer context
+that created the message no longer exists when the message is consumed.
+
+`itaraTraceId` is the correlation key across this boundary. It is available
+on both the producer-side and consumer-side `ItaraContext` and can be used to
+correlate events across the async boundary.
+
+What observers do with the context they receive — including how they represent
+the relationship between producer and consumer spans in their own data model
+or backend — is not prescribed by this specification.
+
+### 13.6 Observability
+
+The four-event model applies to event-driven communication without modification.
+
+| Event | When it fires |
+|-------|--------------|
+| `CALL_SENT` | Producer proxy calls the event contract method — before publication |
+| `RETURN_RECEIVED` | Broker acknowledges the message |
+| `CALL_RECEIVED` | Consumer proxy receives the message and begins dispatch |
+| `RETURN_SENT` | Consumer implementation returns |
+
+### 13.7 Point-to-Point Async
+
+For queue-based communication between one producer and one consumer, a virtual
+node is not required. An async transport type MAY be declared directly on a
+connection between two component nodes. The data model, context propagation
+rules, and four-event model defined in this section apply unchanged.
+
+### 13.8 Tooling
+
+#### 13.8.1 Inspect
+
+The `inspect` command MUST render virtual nodes distinctly from component nodes.
+A conforming implementation MUST NOT include virtual nodes in deployment group
+computation (§11.4).
+
+#### 13.8.2 Verify
+
+The `verify` command MUST apply the following additional checks when virtual
+nodes are present:
+
+| Check | Severity | Condition |
+|-------|----------|-----------|
+| Unresolvable contract reference | ERROR | A virtual node references an events artifact or contract ID not present in the artifact directory |
+| Virtual node with no producers | WARNING | A virtual node has no inbound connections |
+| Virtual node with no consumers | WARNING | A virtual node has no outbound connections |
+| Transport mismatch | WARNING | Inbound and outbound connections on a virtual node declare different transport types |
+
+Transport mismatch is a warning, not an error — mixed transports on a virtual
+node may be intentional in bridge or migration scenarios.
+
+### 13.9 What This Section Does Not Cover
+
+**Broker management** — Itara declares connections to brokers. It does not
+manage broker infrastructure, topic creation, schema registry integration, or
+consumer group offset management.
+
+**Failure semantics** — retry behaviour, dead letter queue routing, and
+delivery guarantees are covered by the failure semantics SPI, specified
+separately.
 
 ---
 

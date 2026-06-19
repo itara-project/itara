@@ -31,38 +31,229 @@ impl std::fmt::Display for ConfigError {
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
-/// A node declared in the wiring configuration.
-///
-/// A node is a deployment identity — one position in the topology.
-/// Multiple nodes can run the same component with different node ids.
+/// The kind of a node in the wiring configuration.
+/// When absent, `component` is assumed for backwards compatibility.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeKind {
+    Component,
+    Virtual,
+}
+
+/// A component node - a deployable component with an activator and a contract.
 ///
 /// Example YAML:
+/// ```yaml
 ///   nodes:
-///     - id: "calculatorNode"
-///       component: "calculator"
-// Unknown fields are silently ignored by default in serde — forward compatibility preserved
-#[derive(Debug, Clone, Deserialize)]
-pub struct NodeEntry {
-    /// The node identity. Used in connections and as the -Ditara.nodes value.
+///     - id: "orderServiceNode"
+///       component: "order-service"
+///
+///     - id: "inventoryNode"
+///       kind: component      # optional — component is the default
+///       component: "inventory"
+/// ```
+#[derive(Debug, Clone)]
+pub struct ComponentNode {
     pub id: String,
-
-    /// The component identity. Must match the activator registration.
+    /// Must match the id declared in the @ComponentInterface annotation.
     pub component: String,
 }
 
-impl NodeEntry {
+impl ComponentNode {
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.id.trim().is_empty() {
             return Err(ConfigError::Invalid(
-                "Node entry is missing required field 'id'.".to_string(),
+                "Component node is missing required field 'id'.".to_string(),
             ));
         }
         if self.component.trim().is_empty() {
-            return Err(ConfigError::Invalid(
-                format!("Node '{}' is missing required field 'component'.", self.id),
-            ));
+            return Err(ConfigError::Invalid(format!(
+                "Component node '{}' is missing required field 'component'.",
+                self.id
+            )));
         }
         Ok(())
+    }
+}
+
+/// A virtual node — a communication channel with no component implementation.
+/// Decouples producers from consumers via a broker.
+///
+/// Example YAML:
+///   nodes:
+///     - id: "orderPlacedChannel"
+///       kind: virtual
+///       contract: "order-events/order-placed"
+///       address: "demo.events.order-placed"
+///
+/// See spec §13.2.1.
+#[derive(Debug, Clone)]
+pub struct VirtualNode {
+    pub id: String,
+    /// Full contract reference: "<collection-id>/<contract-id>"
+    /// e.g. "order-events/order-placed"
+    pub contract: String,
+    /// Broker-specific channel address (e.g. Kafka topic name).
+    pub address: String,
+}
+
+impl VirtualNode {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.id.trim().is_empty() {
+            return Err(ConfigError::Invalid(
+                "Virtual node is missing required field 'id'.".to_string(),
+            ));
+        }
+        if self.contract.trim().is_empty() {
+            return Err(ConfigError::Invalid(format!(
+                "Virtual node '{}' is missing required field 'contract'.",
+                self.id
+            )));
+        }
+        if self.address.trim().is_empty() {
+            return Err(ConfigError::Invalid(format!(
+                "Virtual node '{}' is missing required field 'address'.",
+                self.id
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// A node declared in the wiring configuration.
+///
+/// The `kind` field is the discriminator. When absent, `component` is assumed
+/// for backwards compatibility with existing wiring configs.
+///
+/// Provides `contract_identifier()` — the id used to look up the contract
+/// class and register proxies or dispatchers — without branching on node type.
+///
+/// See spec §4.3.
+#[derive(Debug, Clone)]
+pub enum Node {
+    Component(ComponentNode),
+    Virtual(VirtualNode),
+}
+
+impl Node {
+    pub fn id(&self) -> &str {
+        match self {
+            Node::Component(n) => &n.id,
+            Node::Virtual(n)   => &n.id,
+        }
+    }
+
+    pub fn kind(&self) -> NodeKind {
+        match self {
+            Node::Component(_) => NodeKind::Component,
+            Node::Virtual(_)   => NodeKind::Virtual,
+        }
+    }
+
+    pub fn is_virtual(&self) -> bool {
+        matches!(self, Node::Virtual(_))
+    }
+
+    /// The contract identifier for this node.
+    /// For component nodes: the component id (e.g. "order-service").
+    /// For virtual nodes: the full contract reference
+    ///                    (e.g. "order-events/order-placed").
+    pub fn contract_identifier(&self) -> &str {
+        match self {
+            Node::Component(n) => &n.component,
+            Node::Virtual(n)   => &n.contract,
+        }
+    }
+
+    pub fn as_component(&self) -> Option<&ComponentNode> {
+        match self {
+            Node::Component(n) => Some(n),
+            _                  => None,
+        }
+    }
+
+    pub fn as_virtual(&self) -> Option<&VirtualNode> {
+        match self {
+            Node::Virtual(n) => Some(n),
+            _                => None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        match self {
+            Node::Component(n) => n.validate(),
+            Node::Virtual(n)   => n.validate(),
+        }
+    }
+}
+
+/// Private helper for deserialising a Node from YAML.
+///
+/// Collects all possible fields across all node types as Options.
+/// `kind` defaults to "component" when absent — backwards compatibility
+/// with existing wiring configs that have no `kind` field.
+///
+/// The custom Deserialize impl on Node uses this to dispatch to the
+/// correct variant and validate that variant-specific required fields
+/// are present, producing clear error messages.
+#[derive(Deserialize)]
+struct NodeHelper {
+    id: String,
+    #[serde(default = "default_node_kind")]
+    kind: String,
+    // ComponentNode fields
+    component: Option<String>,
+    // VirtualNode fields
+    contract: Option<String>,
+    address: Option<String>,
+}
+
+fn default_node_kind() -> String {
+    "component".to_string()
+}
+
+impl<'de> serde::Deserialize<'de> for Node {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+
+        let h = NodeHelper::deserialize(d)?;
+
+        match h.kind.to_lowercase().as_str() {
+            "component" => {
+                let component = h.component.ok_or_else(|| {
+                    D::Error::custom(format!(
+                        "component node '{}' is missing required field 'component'",
+                        h.id
+                    ))
+                })?;
+                Ok(Node::Component(ComponentNode {
+                    id: h.id,
+                    component,
+                }))
+            }
+            "virtual" => {
+                let contract = h.contract.ok_or_else(|| {
+                    D::Error::custom(format!(
+                        "virtual node '{}' is missing required field 'contract'",
+                        h.id
+                    ))
+                })?;
+                let address = h.address.ok_or_else(|| {
+                    D::Error::custom(format!(
+                        "virtual node '{}' is missing required field 'address'",
+                        h.id
+                    ))
+                })?;
+                Ok(Node::Virtual(VirtualNode {
+                    id: h.id,
+                    contract,
+                    address,
+                }))
+            }
+            other => Err(D::Error::unknown_variant(
+                other,
+                &["component", "virtual"],
+            )),
+        }
     }
 }
 
@@ -132,6 +323,11 @@ impl ConnectionEntry {
         self.transport_type.eq_ignore_ascii_case("http")
     }
 
+    /// Returns true if this is a kafka connection.
+    pub fn is_kafka(&self) -> bool {
+        self.transport_type.eq_ignore_ascii_case("kafka")
+    }
+
     /// Returns true if this connection involves any of the given node ids.
     pub fn is_related_to_any_of_nodes(&self, node_ids: &[String]) -> bool {
         if let Some(from) = &self.from {
@@ -153,7 +349,7 @@ impl ConnectionEntry {
                 format!("Connection to='{}' is missing required field 'type'.", self.to),
             ));
         }
-        if !self.is_direct() {
+        if !self.is_direct() && !self.is_kafka() {
             if self.port.is_none() || self.port == Some(0) {
                 return Err(ConfigError::Invalid(format!(
                     "Connection to='{}' of type '{}' is missing required field 'port'.",
@@ -161,9 +357,6 @@ impl ConnectionEntry {
                 )));
             }
         }
-        // host is not validated here — whether host is required depends on
-        // whether this process is the caller or the callee, which is determined
-        // by the agent after lib scanning, not by the config loader.
         Ok(())
     }
 }
@@ -176,7 +369,7 @@ impl ConnectionEntry {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct WiringConfig {
     #[serde(default)]
-    pub nodes: Vec<NodeEntry>,
+    pub nodes: Vec<Node>,
 
     #[serde(default)]
     pub connections: Vec<ConnectionEntry>,
@@ -198,22 +391,42 @@ impl WiringConfig {
         Ok(())
     }
 
-    /// Returns the component id for a given node id.
+    /// Returns component nodes only.
+    pub fn component_nodes(&self) -> Vec<&ComponentNode> {
+        self.nodes.iter().filter_map(|n| n.as_component()).collect()
+    }
+
+    /// Returns virtual nodes only.
+    pub fn virtual_nodes(&self) -> Vec<&VirtualNode> {
+        self.nodes.iter().filter_map(|n| n.as_virtual()).collect()
+    }
+
+    /// Finds any node by id.
+    pub fn find_node(&self, id: &str) -> Option<&Node> {
+        self.nodes.iter().find(|n| n.id() == id)
+    }
+
+    /// Returns the component id for a given component node id.
     pub fn component_of_node(&self, node_id: &str) -> Option<&str> {
         self.nodes.iter()
-            .find(|n| n.id == node_id)
+            .find(|n| n.id() == node_id)
+            .and_then(|n| n.as_component())
             .map(|n| n.component.as_str())
     }
 
-    /// Returns true if the given node is local to this process.
+    pub fn is_virtual_node(&self, node_id: &str) -> bool {
+        self.find_node(node_id)
+            .map(|n| n.is_virtual())
+            .unwrap_or(false)
+    }
+
     pub fn is_node_local(&self, node_id: &str) -> bool {
         self.local_node_ids.contains(&node_id.to_string())
     }
 
-    /// Returns the local nodes for this process.
-    pub fn local_nodes(&self) -> Vec<&NodeEntry> {
+    pub fn local_nodes(&self) -> Vec<&Node> {
         self.nodes.iter()
-            .filter(|n| self.is_node_local(&n.id))
+            .filter(|n| self.is_node_local(n.id()))
             .collect()
     }
 }
@@ -329,8 +542,10 @@ pub fn relevant_part_of(
     relevant_node_ids.sort();
     relevant_node_ids.dedup();
 
-    let nodes: Vec<NodeEntry> = full_config.nodes.into_iter()
-        .filter(|n| relevant_node_ids.contains(&n.id))
+    // Both component and virtual nodes are in the same list —
+    // filter by id, same as before.
+    let nodes: Vec<Node> = full_config.nodes.into_iter()
+        .filter(|n| relevant_node_ids.contains(&n.id().to_string()))
         .collect();
 
     let config = WiringConfig {
@@ -411,10 +626,10 @@ connections:
     fn parses_nodes() {
         let config = parse_string(HTTP_CONFIG).unwrap();
         assert_eq!(config.nodes.len(), 2);
-        assert_eq!(config.nodes[0].id, "gatewayNode");
-        assert_eq!(config.nodes[0].component, "gateway");
-        assert_eq!(config.nodes[1].id, "calculatorNode");
-        assert_eq!(config.nodes[1].component, "calculator");
+        assert_eq!(config.nodes[0].id(), "gatewayNode");
+        assert_eq!(config.nodes[0].as_component().unwrap().component, "gateway");
+        assert_eq!(config.nodes[1].id(), "calculatorNode");
+        assert_eq!(config.nodes[1].as_component().unwrap().component, "calculator");
     }
 
     #[test]
@@ -450,7 +665,7 @@ connections:
         // both connections involve gatewayNode
         assert_eq!(filtered.connections.len(), 2);
         // calculatorNode is included because it appears in a connection
-        assert!(filtered.nodes.iter().any(|n| n.id == "calculatorNode"));
+        assert!(filtered.nodes.iter().any(|n| n.id() == "calculatorNode"));
     }
 
     #[test]
@@ -473,4 +688,79 @@ connections:
         assert_eq!(config.component_of_node("gatewayNode"), Some("gateway"));
         assert_eq!(config.component_of_node("unknown"), None);
     }
+
+    const EVENTS_CONFIG: &str = r#"
+nodes:
+  - id: "orderServiceNode"
+    component: "order-service"
+  - id: "orderPlacedChannel"
+    kind: virtual
+    contract: "order-events/order-placed"
+    address: "demo.events.order-placed"
+
+connections:
+  - from: "orderServiceNode"
+    to: "orderPlacedChannel"
+    type: kafka
+    serializer: "json"
+  - from: "orderPlacedChannel"
+    to: "orderServiceNode"
+    type: kafka
+    serializer: "json"
+    consumerGroup: "order-consumer-group"
+"#;
+
+#[test]
+fn parses_virtual_node() {
+    let config = parse_string(EVENTS_CONFIG).unwrap();
+    assert_eq!(config.virtual_nodes().len(), 1);
+    let vn = config.virtual_nodes()[0];
+    assert_eq!(vn.id, "orderPlacedChannel");
+    assert_eq!(vn.contract, "order-events/order-placed");
+    assert_eq!(vn.address, "demo.events.order-placed");
+}
+
+#[test]
+fn node_without_kind_defaults_to_component() {
+    let yaml = r#"
+nodes:
+  - id: "orderServiceNode"
+    component: "order-service"
+"#;
+    let config = parse_string(yaml).unwrap();
+    assert!(matches!(config.nodes[0], Node::Component(_)));
+}
+
+#[test]
+fn component_nodes_excludes_virtual() {
+    let config = parse_string(EVENTS_CONFIG).unwrap();
+    assert_eq!(config.component_nodes().len(), 1);
+    assert_eq!(config.component_nodes()[0].id, "orderServiceNode");
+}
+
+#[test]
+fn is_virtual_node_returns_correct_value() {
+    let config = parse_string(EVENTS_CONFIG).unwrap();
+    assert!(config.is_virtual_node("orderPlacedChannel"));
+    assert!(!config.is_virtual_node("orderServiceNode"));
+}
+
+#[test]
+fn kafka_connection_valid_without_port() {
+    let yaml = r#"
+nodes:
+  - id: "a"
+    component: "comp-a"
+  - id: "b"
+    kind: virtual
+    contract: "events/placed"
+    address: "topic.placed"
+connections:
+  - from: "a"
+    to: "b"
+    type: kafka
+    serializer: "json"
+"#;
+    assert!(parse_string(yaml).is_ok());
+}
 }

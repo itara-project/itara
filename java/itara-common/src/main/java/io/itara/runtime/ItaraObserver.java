@@ -60,6 +60,7 @@ public interface ItaraObserver {
                             String componentId,
                             String methodName,
                             String transport,
+                            ExchangePattern exchangePattern,
                             long timestamp) {}
 
     /**
@@ -73,6 +74,7 @@ public interface ItaraObserver {
                                 String componentId,
                                 String methodName,
                                 String transport,
+                                ExchangePattern exchangePattern,
                                 long timestamp) {}
 
     /**
@@ -128,7 +130,7 @@ public interface ItaraObserver {
      *
      * @param headers the full inbound header map, never null
      */
-    default void restoreContext(Map<String, String> headers) {}
+    default void restoreContext(Map<String, String> headers, ExchangePattern exchangePattern) {}
 
     /**
      * Fired on the callee side when the inbound transport scope is fully

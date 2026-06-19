@@ -6,6 +6,7 @@ import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
@@ -68,7 +69,7 @@ class HttpTransportIntegrationTest {
 
         // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
         ItaraDispatcher dispatcher = new ItaraDispatcher(
-                COMPONENT_ID, HttpTransport.TYPE, serializer, registry
+                COMPONENT_ID, HttpTransport.TYPE, serializer, registry, ExchangePattern.REQUEST_REPLY
         );
         server = new ItaraHttpServer(port, dispatcher);
         server.start();
@@ -79,7 +80,8 @@ class HttpTransportIntegrationTest {
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
                         COMPONENT_ID, serializer, transport,
-                        Map.of("host", "localhost", "port", String.valueOf(port))
+                        Map.of("host", "localhost", "port", String.valueOf(port)),
+                        ExchangePattern.REQUEST_REPLY
                 )
         );
     }
@@ -151,7 +153,8 @@ class HttpTransportIntegrationTest {
                         "nonexistent-component",
                         new JsonItaraSerializer(),
                         new HttpTransport(),
-                        Map.of("host", "localhost", "port", String.valueOf(port))
+                        Map.of("host", "localhost", "port", String.valueOf(port)),
+                        ExchangePattern.REQUEST_REPLY
                 )
         );
         ItaraRemoteException ex = assertThrows(
@@ -173,7 +176,8 @@ class HttpTransportIntegrationTest {
                         COMPONENT_ID,
                         new JsonItaraSerializer(),
                         new HttpTransport(),
-                        Map.of("host", "localhost", "port", String.valueOf(deadPort))
+                        Map.of("host", "localhost", "port", String.valueOf(deadPort)),
+                        ExchangePattern.REQUEST_REPLY
                 )
         );
         ItaraRemoteException ex = assertThrows(

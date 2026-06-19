@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  * Constructs the DatabaseManager and returns the implementation instance.
  * No dependencies on other components — inventory is self-contained.
  */
-public class InventoryActivator implements ItaraActivator<InventoryService> {
+public class InventoryActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(InventoryActivator.class.getName());
 

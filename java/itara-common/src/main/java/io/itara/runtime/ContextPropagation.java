@@ -75,7 +75,7 @@ public final class ContextPropagation {
      * dispatcher can always call restoreInboundContext() regardless of
      * whether the inbound call originated from another Itara node.
      */
-    public static ItaraContext fromHeaders(Map<String, String> headers) {
+    public static ItaraContext fromHeaders(Map<String, String> headers, ExchangePattern exchangePattern) {
         String itaraTraceId = headers.get(HEADER_TRACE_ID);
         String itaraSpanId  = headers.get(HEADER_SPAN_ID);
 
@@ -84,8 +84,7 @@ public final class ContextPropagation {
             return ItaraContext.newRoot("external");
         }
 
-        String requestId     = headers.getOrDefault(HEADER_REQUEST_ID,
-                ItaraContext.generateRequestId());
+        String requestId     = headers.getOrDefault(HEADER_REQUEST_ID, ItaraContext.generateRequestId());
         String correlationId = headers.get(HEADER_CORRELATION);
         String sourceNode    = headers.get(HEADER_SOURCE_NODE);
         String edgePathRaw   = headers.get(HEADER_EDGE_PATH);
@@ -93,6 +92,21 @@ public final class ContextPropagation {
                 ? Collections.emptyList()
                 : List.of(edgePathRaw.split(EDGE_SEP, -1));
 
+        if (exchangePattern == ExchangePattern.FIRE_AND_FORGET) {
+            // Same trace, fresh span, no parent relationship.
+            // The producer's spanId is not carried forward — the consumer
+            // is a new root within the trace, not a child of the producer.
+            return ItaraContext.restore(
+                    itaraTraceId,
+                    null,  // no parent relationship
+                    null,
+                    requestId,
+                    correlationId,
+                    sourceNode,
+                    edgePath);
+        }
+
+        // REQUEST_REPLY — existing behaviour unchanged
         return ItaraContext.restore(itaraTraceId, itaraSpanId, null,
                 requestId, correlationId, sourceNode, edgePath);
     }

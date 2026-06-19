@@ -55,7 +55,7 @@ public class SerializerLoader {
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
            log.info("[Itara] Found serializer descriptor: " + url);
-            loadFromDescriptor(url, classLoader);
+           loadFromDescriptor(url, classLoader);
         }
     }
 

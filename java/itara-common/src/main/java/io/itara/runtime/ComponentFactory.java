@@ -25,7 +25,7 @@ public interface ComponentFactory {
      * @param contractClass   the @ComponentInterface interface
      * @return                the instance to store in the registry
      */
-    Object create(Class<? extends ItaraActivator<?>> activatorClass,
+    Object create(Class<? extends ItaraActivator> activatorClass,
                   String componentId,
                   Class<?> contractClass);
 }
