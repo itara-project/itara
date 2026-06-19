@@ -10,7 +10,7 @@ import io.itara.runtime.ItaraRegistry;
 
 import java.util.logging.Logger;
 
-public class OrderActivator implements ItaraActivator<OrderService> {
+public class OrderActivator implements ItaraActivator {
 
     private static final Logger log = Logger.getLogger(OrderActivator.class.getName());
 
