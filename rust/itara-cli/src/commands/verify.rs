@@ -6,7 +6,7 @@ use crate::output::{Issue, TICK, CROSS, blank};
 
 /// Transport types the CLI recognises as valid.
 /// Extend this list as new transport libs are added to the runtime.
-const KNOWN_TRANSPORTS: &[&str] = &["http", "direct"];
+const KNOWN_TRANSPORTS: &[&str] = &["http", "direct", "kafka"];
 
 const VALID_CHECKS: &[&str] = &[
     "orphaned-nodes",
@@ -14,6 +14,9 @@ const VALID_CHECKS: &[&str] = &[
     "duplicate-ids",
     "self-connections",
     "unknown-transport",
+    "virtual-no-producers",
+    "virtual-no-consumers",
+    "virtual-transport-mismatch",
 ];
 
 enum CheckFilter {
@@ -38,12 +41,14 @@ pub struct Args {
     pub config: String,
     /// Skip a specific check by name. Can be repeated. Mutually exclusive with --only.
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
-    ///               self-connections, unknown-transport
+    ///               self-connections, unknown-transport, virtual-no-producers,
+    ///               virtual-no-consumers, virtual-transport-mismatch
     #[arg(long, value_name = "check", conflicts_with = "only")]
     pub skip: Vec<String>,
     /// Run only the specified check. Can be repeated. Mutually exclusive with --skip.
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
-    ///               self-connections, unknown-transport
+    ///               self-connections, unknown-transport, virtual-no-producers,
+    ///               virtual-no-consumers, virtual-transport-mismatch
     #[arg(long, value_name = "check", conflicts_with = "skip")]
     pub only: Vec<String>,
 }
@@ -106,6 +111,9 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter) -> Vec<Issue> {
     if filter.should_run("orphaned-nodes")        { check_orphaned_nodes(config, &mut issues); }
     if filter.should_run("orphaned-connections")  { check_orphaned_connections(config, &mut issues); }
     if filter.should_run("unknown-transport")     { check_unknown_transports(config, &mut issues); }
+    if filter.should_run("virtual-no-producers")      { check_virtual_no_producers(config, &mut issues); }
+    if filter.should_run("virtual-no-consumers")      { check_virtual_no_consumers(config, &mut issues); }
+    if filter.should_run("virtual-transport-mismatch"){ check_virtual_transport_mismatch(config, &mut issues); }
 
     issues
 }
@@ -115,7 +123,7 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter) -> Vec<Issue> {
 fn check_duplicate_ids(config: &WiringConfig, issues: &mut Vec<Issue>) {
     let mut seen: HashMap<&str, usize> = HashMap::new();
     for node in &config.nodes {
-        *seen.entry(node.id.as_str()).or_default() += 1;
+        *seen.entry(node.id()).or_default() += 1;
     }
     // Sort for deterministic output order.
     let mut duplicates: Vec<(&str, usize)> = seen.into_iter()
@@ -157,10 +165,10 @@ fn check_orphaned_nodes(config: &WiringConfig, issues: &mut Vec<Issue>) {
         .collect();
  
     for node in &config.nodes {
-        if !referenced.contains(node.id.as_str()) {
+        if !referenced.contains(node.id()) {
             issues.push(Issue::error(format!(
                 "node '{}' is declared but not referenced in any connection",
-                node.id
+                node.id()
             )));
         }
     }
@@ -168,7 +176,7 @@ fn check_orphaned_nodes(config: &WiringConfig, issues: &mut Vec<Issue>) {
  
 fn check_orphaned_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
     let declared: HashSet<&str> = config.nodes.iter()
-        .map(|n| n.id.as_str())
+        .map(|n| n.id())
         .collect();
  
     for conn in &config.connections {
@@ -198,6 +206,54 @@ fn check_unknown_transports(config: &WiringConfig, issues: &mut Vec<Issue>) {
                 conn.to,
                 conn.transport_type,
                 KNOWN_TRANSPORTS.join(", "),
+            )));
+        }
+    }
+}
+
+fn check_virtual_no_producers(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    for vn in config.virtual_nodes() {
+        let has_producer = config.connections.iter()
+            .any(|c| c.to == vn.id);
+        if !has_producer {
+            issues.push(Issue::warning(format!(
+                "virtual node '{}' ({}) has no inbound connections — \
+                 nothing will publish to this channel",
+                vn.id, vn.contract
+            )));
+        }
+    }
+}
+
+fn check_virtual_no_consumers(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    for vn in config.virtual_nodes() {
+        let has_consumer = config.connections.iter()
+            .any(|c| c.from.as_deref() == Some(vn.id.as_str()));
+        if !has_consumer {
+            issues.push(Issue::warning(format!(
+                "virtual node '{}' ({}) has no outbound connections — \
+                 nothing will consume from this channel",
+                vn.id, vn.contract
+            )));
+        }
+    }
+}
+
+fn check_virtual_transport_mismatch(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    for vn in config.virtual_nodes() {
+        let transports: std::collections::HashSet<String> = config.connections.iter()
+            .filter(|c| c.to == vn.id
+                    || c.from.as_deref() == Some(vn.id.as_str()))
+            .map(|c| c.transport_type.to_ascii_lowercase())
+            .collect();
+
+        if transports.len() > 1 {
+            let mut sorted: Vec<String> = transports.into_iter().collect();
+            sorted.sort();
+            issues.push(Issue::warning(format!(
+                "virtual node '{}' ({}) has connections with mixed transport types: {} — \
+                 all connections to a virtual node should use the same transport",
+                vn.id, vn.contract, sorted.join(", ")
             )));
         }
     }
@@ -258,12 +314,20 @@ fn plural<'a>(n: usize, singular: &'a str, plural: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itara_config::{WiringConfig, NodeEntry, ConnectionEntry};
+    use itara_config::{WiringConfig, Node, ComponentNode, VirtualNode, ConnectionEntry};
  
     // ── Test helpers ──────────────────────────────────────────────────────────
  
-    fn node(id: &str, component: &str) -> NodeEntry {
-        NodeEntry { id: id.into(), component: component.into() }
+    fn node(id: &str, component: &str) -> Node {
+        Node::Component(ComponentNode { id: id.into(), component: component.into() })
+    }
+
+    fn virtual_node(id: &str, contract: &str, address: &str) -> Node {
+        Node::Virtual(VirtualNode {
+            id: id.into(),
+            contract: contract.into(),
+            address: address.into(),
+        })
     }
  
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
@@ -287,6 +351,17 @@ mod tests {
             serializer: "".into(),
         }
     }
+
+    fn kafka(from: Option<&str>, to: &str) -> ConnectionEntry {
+        ConnectionEntry {
+            from: from.map(Into::into),
+            to: to.into(),
+            transport_type: "kafka".into(),
+            host: None,
+            port: None,
+            serializer: "json".into(),
+        }
+    }
  
     fn conn_with_transport(from: Option<&str>, to: &str, transport: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
@@ -299,7 +374,7 @@ mod tests {
         }
     }
  
-    fn config(nodes: Vec<NodeEntry>, connections: Vec<ConnectionEntry>) -> WiringConfig {
+    fn config(nodes: Vec<Node>, connections: Vec<ConnectionEntry>) -> WiringConfig {
         WiringConfig { nodes, connections, local_node_ids: vec![] }
     }
  
@@ -503,6 +578,119 @@ mod tests {
             ],
         );
         let transport_issues: Vec<_> = collect_issues(&cfg, &CheckFilter::All).into_iter()
+            .filter(|i| i.message.contains("unknown transport"))
+            .collect();
+        assert!(transport_issues.is_empty());
+    }
+
+    // ── virtual node checks ───────────────────────────────────────────────────
+
+    #[test]
+    fn virtual_no_producers_warned() {
+        let cfg = config(
+            vec![
+                node("consumerNode", "consumer"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+            ],
+            vec![
+                kafka(Some("channel"), "consumerNode"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All);
+        assert!(issues.iter().any(|i|
+            !i.is_error() && i.message.contains("no inbound connections")
+        ));
+    }
+
+    #[test]
+    fn virtual_no_consumers_warned() {
+        let cfg = config(
+            vec![
+                node("producerNode", "producer"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+            ],
+            vec![
+                kafka(Some("producerNode"), "channel"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All);
+        assert!(issues.iter().any(|i|
+            !i.is_error() && i.message.contains("no outbound connections")
+        ));
+    }
+
+    #[test]
+    fn virtual_with_both_producer_and_consumer_no_warning() {
+        let cfg = config(
+            vec![
+                node("producerNode", "producer"),
+                node("consumerNode", "consumer"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+            ],
+            vec![
+                kafka(Some("producerNode"), "channel"),
+                kafka(Some("channel"), "consumerNode"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All);
+        assert!(issues.iter().all(|i| i.is_error()
+            || (!i.message.contains("no inbound") 
+                && !i.message.contains("no outbound"))));
+    }
+
+    #[test]
+    fn virtual_transport_mismatch_warned() {
+        let cfg = config(
+            vec![
+                node("producerNode", "producer"),
+                node("consumerNode", "consumer"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+            ],
+            vec![
+                kafka(Some("producerNode"), "channel"),
+                ConnectionEntry {
+                    from: Some("channel".into()),
+                    to: "consumerNode".into(),
+                    transport_type: "http".into(),
+                    host: None,
+                    port: Some(8081),
+                    serializer: "json".into(),
+                },
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All);
+        assert!(issues.iter().any(|i|
+            !i.is_error() && i.message.contains("mixed transport types")
+        ));
+    }
+
+    #[test]
+    fn virtual_consistent_transport_no_mismatch_warning() {
+        let cfg = config(
+            vec![
+                node("producerNode", "producer"),
+                node("consumerNode", "consumer"),
+                virtual_node("channel", "events/placed", "topic.placed"),
+            ],
+            vec![
+                kafka(Some("producerNode"), "channel"),
+                kafka(Some("channel"), "consumerNode"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All);
+        assert!(issues.iter().all(|i|
+            !i.message.contains("mixed transport types")
+        ));
+    }
+
+    #[test]
+    fn kafka_transport_not_flagged_as_unknown() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![kafka(Some("a"), "b")],
+        );
+        let transport_issues: Vec<_> = collect_issues(&cfg, &CheckFilter::All)
+            .into_iter()
             .filter(|i| i.message.contains("unknown transport"))
             .collect();
         assert!(transport_issues.is_empty());

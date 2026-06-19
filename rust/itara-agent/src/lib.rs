@@ -172,7 +172,7 @@ fn wire(
     // wire_direct guards against duplicate loading and duplicate queueing,
     // so it is safe to call for every local node unconditionally.
     for node in config.local_nodes() {
-        wire_direct(config, index, &node.id, facade_ptr, handler_ptr, registry, deferred_direct, &transport_handled);
+        wire_direct(config, index, &node.id(), facade_ptr, handler_ptr, registry, deferred_direct, &transport_handled);
     }
 }
 
