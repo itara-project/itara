@@ -57,8 +57,10 @@ The corollary: running two components colocated in Itara costs nothing compared 
 Topology is not hidden — it is explicitly declared in the wiring config, where it is visible, auditable, and validated before deployment. What is absent from component code is the responsibility for encoding how failures travel, not the awareness that failures can happen.
 
 Failure semantics — retries, timeouts, circuit breaking — are connection-level configuration, not component-level code. They belong in the wiring config alongside the transport declaration. The component code never sees infrastructure boilerplate, but the failure contracts are explicit and declared.
-
-This is on the roadmap and not yet implemented. The current implementation surfaces failures as typed error contracts at the call site — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. Pluggable retry and circuit breaking semantics are a pre-1.0 milestone.
+ 
+The failure semantics SPI is pluggable. A single implementation owns the complete strategy for a connection — retry logic, timeout enforcement, circuit breaking — as a cohesive unit of behaviour declared in configuration. A built-in implementation ships with the platform covering the common cases. Teams with specific requirements can provide their own. The wiring config carries enough information for the tooling to catch misconfigurations — such as a timeout declared against a transport that cannot enforce it — before deployment.
+ 
+The current implementation surfaces failures as typed error contracts at the call site — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. The failure semantics SPI is part of the v0.2 milestone.
 
 ---
 
@@ -138,11 +140,15 @@ In the meantime, colocation is a decision made by someone who controls the build
 
 ### What is the current state? Is it production-ready?
 
-Not yet. The current milestone is Show HN — a public demonstration of the core concepts working end-to-end.
+Not yet. The current milestone is v0.2, targeting a public Show HN release.
 
 What works today: direct and HTTP topologies in Java and Rust, cross-language calls, pluggable serializers, self-describing artifacts via `.itara` metadata files, Spring Boot integration, distributed traces via OTel, and `itara-cli` with `inspect` and `verify` commands. The specification is at v0.1.
 
+What works today: direct, HTTP, and Kafka topologies in Java, cross-language calls with Rust over HTTP, pluggable serializers, pluggable observers, the four-event observability model with OTel and Kibana integration, self-describing artifacts via `.itara` metadata files, Spring Boot integration, event-driven topology with virtual nodes, and `itara-cli` with `inspect` and `verify` commands. The specification is at v0.1 with v0.2 in progress.
+
 What is still in progress: Kafka transport, full observability SPI in Rust, and the Java reference implementation reaching full v0.1 spec conformance. Use it for experimentation and architecture exploration. Production use requires the missing pieces.
+
+What is in progress for v0.2: failure semantics SPI (retry, timeout, circuit breaking as pluggable connection-level config), checked exception reconstruction, transport SPI lifecycle rework and transport type field, API and event contract version compatibility checking in the CLI, and YAML anchor and merge key support for the wiring config. Use it for experimentation and architecture exploration. Production use requires the v0.2 milestone to close.
 
 ---
 
