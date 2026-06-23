@@ -84,7 +84,8 @@ public class KafkaTransport implements ItaraTransport {
                        String methodName,
                        byte[] payload,
                        Map<String, String> headers,
-                       Map<String, String> properties) throws Exception {
+                       Map<String, String> properties,
+                       Duration timeout) throws Exception {
 
         String topic            = required(properties, "topic",            componentId);
         String bootstrapServers = required(properties, "bootstrapServers", componentId);

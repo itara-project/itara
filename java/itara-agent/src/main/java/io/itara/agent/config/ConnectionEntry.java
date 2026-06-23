@@ -3,6 +3,7 @@ package io.itara.agent.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
+import io.itara.spi.failuresemantics.FailureSemanticsConfig;
 
 import java.util.List;
 
@@ -87,6 +88,12 @@ public class ConnectionEntry {
      */
     private String consumerGroup;
 
+    /**
+     * Optional failure semantics configuration for this connection.
+     * Absent means the noop implementation is used — current behaviour.
+     */
+    private FailureSemanticsEntry failureSemantics;
+
     public String getFrom() { return from; }
     public void setFrom(String from) { this.from = from; }
 
@@ -113,6 +120,29 @@ public class ConnectionEntry {
 
     public String getBootstrapServers()                      { return bootstrapServers; }
     public void setBootstrapServers(String bootstrapServers) { this.bootstrapServers = bootstrapServers; }
+
+    public FailureSemanticsEntry getFailureSemantics() { return failureSemantics; }
+    public void setFailureSemantics(FailureSemanticsEntry failureSemantics) {
+        this.failureSemantics = failureSemantics;
+    }
+
+    /**
+     * Returns the failure semantics type id for this connection.
+     * Defaults to "noop" if no failureSemantics block is declared.
+     */
+    public String getFailureSemanticsType() {
+        return failureSemantics != null ? failureSemantics.getId() : "noop";
+    }
+
+    /**
+     * Translates the failureSemantics block into the SPI config.
+     * Returns an empty config if no block is declared.
+     */
+    public FailureSemanticsConfig getFailureSemanticsConfig() {
+        return failureSemantics != null
+                ? failureSemantics.toSpiConfig()
+                : FailureSemanticsConfig.builder().build();
+    }
 
     /**
      * Returns true if the caller is external to the Itara topology.

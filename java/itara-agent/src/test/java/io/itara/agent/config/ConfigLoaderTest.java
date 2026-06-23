@@ -997,4 +997,229 @@ class ConfigLoaderTest {
                     .noneMatch(n -> n.getId().equals("orderServiceNode")));
         }
     }
+
+    @Nested
+    @DisplayName("failureSemantics block")
+    class FailureSemantics {
+
+        @Test
+        @DisplayName("absent failureSemantics block defaults to noop")
+        void absentDefaultsToNoop() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("noop", conn.getFailureSemanticsType());
+        }
+
+        @Test
+        @DisplayName("parses id field")
+        void parsesId() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("built-in", conn.getFailureSemanticsType());
+        }
+
+        @Test
+        @DisplayName("parses maxRetry and translates to maxAttempts + 1")
+        void parsesMaxRetryAsMaxAttempts() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          maxRetry: 3
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+        }
+
+        @Test
+        @DisplayName("parses timeout as Duration")
+        void parsesTimeout() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          timeout: 2s
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals(java.time.Duration.ofSeconds(2),
+                    conn.getFailureSemanticsConfig().getTimeout());
+        }
+
+        @Test
+        @DisplayName("parses absoluteTimeout as Duration")
+        void parsesAbsoluteTimeout() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          absoluteTimeout: 10s
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals(java.time.Duration.ofSeconds(10),
+                    conn.getFailureSemanticsConfig().getAbsoluteTimeout());
+        }
+
+        @Test
+        @DisplayName("parses handleTimeout flag")
+        void parsesHandleTimeout() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          handleTimeout: true
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertTrue(conn.getFailureSemanticsConfig().isHandleTimeout());
+        }
+
+        @Test
+        @DisplayName("parses flat params map")
+        void parsesFlatParams() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          params:
+                            waitDuration: 500ms
+                            retryNonIdempotent: "true"
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            var params = conn.getFailureSemanticsConfig().getParams();
+
+            assertEquals("500ms", params.get("waitDuration"));
+            assertEquals("true",  params.get("retryNonIdempotent"));
+        }
+
+        @Test
+        @DisplayName("absent params block yields empty map")
+        void absentParamsYieldsEmptyMap() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertTrue(conn.getFailureSemanticsConfig().getParams().isEmpty());
+        }
+
+        @Test
+        @DisplayName("absent maxRetry yields null maxAttempts")
+        void absentMaxRetryYieldsNullMaxAttempts() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertNull(conn.getFailureSemanticsConfig().getMaxAttempts());
+        }
+
+        @Test
+        @DisplayName("full block parses correctly")
+        void fullBlockParsesCorrectly() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          maxRetry: 3
+                          timeout: 2s
+                          handleTimeout: true
+                          absoluteTimeout: 10s
+                          params:
+                            waitDuration: 500ms
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            var config = conn.getFailureSemanticsConfig();
+
+            assertAll(
+                    () -> assertEquals("built-in", conn.getFailureSemanticsType()),
+                    () -> assertEquals(4, config.getMaxAttempts()),
+                    () -> assertEquals(java.time.Duration.ofSeconds(2), config.getTimeout()),
+                    () -> assertTrue(config.isHandleTimeout()),
+                    () -> assertEquals(java.time.Duration.ofSeconds(10), config.getAbsoluteTimeout()),
+                    () -> assertEquals("500ms", config.getParams().get("waitDuration"))
+            );
+        }
+
+        @Test
+        @DisplayName("unknown fields in failureSemantics block are ignored")
+        void unknownFieldsIgnored() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        type: http
+                        host: localhost
+                        port: 8081
+                        failureSemantics:
+                          id: built-in
+                          unknownFutureField: somevalue
+                    """;
+            assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+    }
 }

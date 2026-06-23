@@ -1,0 +1,13 @@
+[artifact]
+kind        = "failure-semantics"
+id          = "built-in"
+version     = "1.0-SNAPSHOT"
+api-version = "0.x"
+
+[runtime]
+language = "java"
+compiler = "21"
+
+[itara]
+spec-version = "0.2"
+core-version = "0.2+"

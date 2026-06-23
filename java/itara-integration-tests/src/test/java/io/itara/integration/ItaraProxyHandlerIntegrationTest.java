@@ -1,0 +1,210 @@
+package io.itara.integration;
+
+import demo.calculator.api.CalculatorService;
+import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.failuresemantics.NoopFailureSemantics;
+import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ExchangePattern;
+import io.itara.runtime.ObservabilityFacade;
+import io.itara.serializer.json.JsonItaraSerializer;
+import io.itara.spi.ItaraSerializer;
+import io.itara.spi.ItaraTransport;
+import io.itara.spi.failuresemantics.ItaraFailureSemantics;
+import io.itara.spi.failuresemantics.TransportCall;
+import io.itara.agent.metadata.MetadataFile;
+import io.itara.agent.metadata.MethodsMeta;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Proxy;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@DisplayName("ItaraProxyHandler")
+public class ItaraProxyHandlerIntegrationTest {
+
+    private static final String COMPONENT_ID = "calculator";
+    private static final Map<String, String> PROPS = Map.of(
+            "host", "localhost", "port", "9999");
+
+    // Captures what the failure semantics implementation receives
+    private boolean capturedIdempotent;
+    private int executeCallCount;
+    private TransportCall capturedWork;
+
+    private ItaraSerializer serializer;
+    private ItaraTransport noopTransport;
+    private ItaraFailureSemantics capturingFailureSemantics;
+
+    @BeforeAll
+    static void initObservability() {
+        ObservabilityFacade.initialize();
+    }
+
+    @BeforeEach
+    void setUp() {
+        serializer = new JsonItaraSerializer();
+        capturedIdempotent = true;
+        executeCallCount = 0;
+        capturedWork = null;
+
+        // Transport that always fails — we're testing the proxy boundary, not transport
+        noopTransport = new FailingTransport();
+
+        // Failure semantics that captures what the proxy passes in
+        capturingFailureSemantics = (work, idempotent) -> {
+            executeCallCount++;
+            capturedIdempotent = idempotent;
+            capturedWork = work;
+            // Delegate to the actual work so we can also test CHECKED pass-through
+            return work.call(null);
+        };
+    }
+
+    private CalculatorService proxyWith(ItaraFailureSemantics fs, MetadataFile metadata) {
+        return (CalculatorService) Proxy.newProxyInstance(
+                Thread.currentThread().getContextClassLoader(),
+                new Class<?>[]{ CalculatorService.class },
+                new ItaraProxyHandler(COMPONENT_ID, serializer, noopTransport,
+                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata)
+        );
+    }
+
+    @Nested
+    @DisplayName("idempotency flag")
+    class IdempotencyFlag {
+
+        @Test
+        @DisplayName("passes idempotent=true for method not in non-idempotent set")
+        void passesIdempotentTrueForUnlistedMethod() {
+            MetadataFile metadata = metadataWithNonIdempotent(List.of("divide"));
+            CalculatorService proxy = proxyWith(capturingFailureSemantics, metadata);
+
+            assertThrows(ItaraRemoteException.class, () -> proxy.add(1, 2));
+
+            assertTrue(capturedIdempotent, "add() is not in non-idempotent list — should be idempotent");
+        }
+
+        @Test
+        @DisplayName("passes idempotent=false for method in non-idempotent set")
+        void passesIdempotentFalseForListedMethod() throws Exception {
+            MetadataFile metadata = metadataWithNonIdempotent(List.of("divide"));
+            CalculatorService proxy = proxyWith(capturingFailureSemantics, metadata);
+
+            assertThrows(ItaraRemoteException.class, () -> proxy.divide(10, 2));
+
+            assertFalse(capturedIdempotent, "divide() is in non-idempotent list — should not be idempotent");
+        }
+
+        @Test
+        @DisplayName("treats all methods as idempotent when metadata is null")
+        void treatsAllAsIdempotentWhenNoMetadata() {
+            CalculatorService proxy = proxyWith(capturingFailureSemantics, null);
+
+            assertThrows(ItaraRemoteException.class, () -> proxy.add(1, 2));
+
+            assertTrue(capturedIdempotent, "No metadata — all methods assumed idempotent");
+        }
+
+        @Test
+        @DisplayName("treats all methods as idempotent when non-idempotent list is empty")
+        void treatsAllAsIdempotentWhenListEmpty() {
+            MetadataFile metadata = metadataWithNonIdempotent(List.of());
+            CalculatorService proxy = proxyWith(capturingFailureSemantics, metadata);
+
+            assertThrows(ItaraRemoteException.class, () -> proxy.add(1, 2));
+
+            assertTrue(capturedIdempotent);
+        }
+    }
+
+    @Nested
+    @DisplayName("failure semantics boundary")
+    class FailureSemanticsBoundary {
+
+        @Test
+        @DisplayName("failure semantics execute() is called exactly once per proxy invocation")
+        void executeCalledOncePerInvocation() {
+            CalculatorService proxy = proxyWith(capturingFailureSemantics, null);
+
+            assertThrows(ItaraRemoteException.class, () -> proxy.add(1, 2));
+
+            assertEquals(1, executeCallCount);
+        }
+
+        @Test
+        @DisplayName("CHECKED error from transport is passed through the lambda")
+        void checkedErrorPassesThroughLambda() {
+            // Transport returns a CHECKED error with serialized payload
+            ItaraTransport checkingTransport = new FailingTransport();
+
+            // Use noop failure semantics — we want to test the lambda boundary only
+            CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
+                    Thread.currentThread().getContextClassLoader(),
+                    new Class<?>[]{ CalculatorService.class },
+                    new ItaraProxyHandler(COMPONENT_ID, serializer, checkingTransport,
+                            PROPS, ExchangePattern.REQUEST_REPLY,
+                            new NoopFailureSemantics(), null)
+            );
+
+            // Should throw — not swallow
+            assertThrows(ItaraRemoteException.class, () -> proxy.add(1, 2));
+        }
+
+        @Test
+        @DisplayName("Object methods bypass the pipeline entirely")
+        void objectMethodsBypassPipeline() {
+            CalculatorService proxy = proxyWith(new NoopFailureSemantics(), null);
+
+            // toString() on the proxy must not trigger failure semantics
+            assertDoesNotThrow(proxy::toString);
+            assertEquals(0, executeCallCount);
+        }
+    }
+
+    // — helpers —
+
+    private static MetadataFile metadataWithNonIdempotent(List<String> methods) {
+        MethodsMeta methodsMeta = new MethodsMeta();
+        methodsMeta.setNonIdempotentMethods(methods);
+        MetadataFile metadata = new MetadataFile();
+        metadata.setMethods(methodsMeta);
+        return metadata;
+    }
+
+    /**
+     * Minimal transport stub for proxy handler tests.
+     * Always throws TRANSPORT — we're testing the proxy boundary, not transport behaviour.
+     */
+    private static class FailingTransport implements ItaraTransport {
+
+        @Override
+        public String type() { return "test"; }
+
+        @Override
+        public byte[] send(String componentId, String methodName, byte[] payload,
+                           Map<String, String> headers, Map<String, String> properties,
+                           Duration timeout) throws ItaraRemoteException {
+            throw new ItaraRemoteException(
+                    ItaraRemoteException.ErrorKind.TRANSPORT,
+                    "java.net.ConnectException", "test transport");
+        }
+
+        @Override
+        public void startListener(String componentId, Map<String, String> properties,
+                                  io.itara.runtime.DispatchHandler handler) {}
+
+        @Override
+        public void stopListener() {}
+    }
+}

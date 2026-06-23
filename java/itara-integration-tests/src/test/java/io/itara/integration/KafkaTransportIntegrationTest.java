@@ -1,6 +1,7 @@
 package io.itara.integration;
 
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.DispatchHandler;
@@ -101,7 +102,9 @@ public class KafkaTransportIntegrationTest {
                 new Class<?>[]{ OrderPlacedContractProxy.class },
                 new ItaraProxyHandler(
                         COMPONENT_ID, serializer, producerTransport,
-                        props, ExchangePattern.FIRE_AND_FORGET
+                        props, ExchangePattern.FIRE_AND_FORGET,
+                        new NoopFailureSemantics(),
+                        null
                 )
         );
 
