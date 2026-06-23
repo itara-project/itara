@@ -1,6 +1,6 @@
 # Failure Semantics SPI — Design Notes
 
-**Status:** Thinking in progress. Not yet part of the specification.
+**Status:** Resolved. Incorporated into spec §14.  
 **Date:** June 2026
 
 ---
@@ -33,30 +33,6 @@ A single SPI that receives the call as a lambda and owns the complete
 execution strategy: retry loops, waits, timeouts, circuit breaking,
 idempotency checks, fallback logic.
 
-```java
-public interface ItaraFailureSemantics {
-
-    /**
-     * Execute the call with whatever failure strategy this implementation
-     * applies. The call is provided as a lambda — the implementation decides
-     * how many times to invoke it, when to wait, when to give up.
-     *
-     * @param call            the component call to execute
-     * @param methodName      name of the method being called, for logging
-     * @param idempotent      whether this method is declared idempotent
-     *                        in the .itara metadata — safe to retry if true
-     * @param config          connection-level configuration from the wiring
-     *                        config (timeout, max retries, backoff, etc.)
-     * @return                the result of the call
-     * @throws ItaraRemoteException if the strategy gives up
-     */
-    Object execute(Callable<Object> call,
-                   String methodName,
-                   boolean idempotent,
-                   FailureSemanticsConfig config) throws ItaraRemoteException;
-}
-```
-
 The implementation owns the strategy entirely. A Resilience4j-backed
 implementation, a service-mesh-aware implementation, a business-specific
 implementation that accounts for domain rules — all are possible without
@@ -64,8 +40,7 @@ Itara anticipating them.
 
 The idempotency flag comes from the `.itara` metadata file, where API
 artifacts declare which methods are not idempotent. Methods not listed
-are assumed idempotent and safe to retry. This was always load-bearing
-for this reason.
+are assumed idempotent and safe to retry.
 
 ### Option B — Separate SPIs per concern
 
@@ -97,83 +72,88 @@ The problems with this approach:
 The pattern is consistent with how Itara handles every other pluggable
 concern. The transport SPI owns byte movement. The serializer SPI owns
 encoding. The observer SPI owns event handling. None of them are split into
-sub-SPIs. Failure semantics should follow the same principle: define the
-contract, let the implementation own the strategy.
+sub-SPIs. Failure semantics follows the same principle: define the contract,
+let the implementation own the strategy.
 
 The lambda approach is what makes this work. The proxy doesn't retry — it
 hands the call to the failure semantics implementation and asks for a result.
 The implementation decides everything: how many attempts, what backoff,
-what circuit state, when to give up. Itara provides the inputs it has
-(the call, the method name, the idempotency flag, the connection config)
-and steps aside.
+what circuit state, when to give up.
 
 ---
 
-## Wiring config integration
+## Timeout enforcement model
 
-Failure semantics are declared per connection in the wiring config, alongside
-the transport and serializer:
+Timeout enforcement is split across two sides — the transport and the failure
+semantics implementation — and each side declares its capability and
+configuration independently. This keeps them decoupled.
 
-```yaml
-connections:
-  - from: orderNode
-    to: inventoryNode
-    type: http
-    serializer: json
-    failure-semantics: resilience4j
-    failure-semantics-config:
-      max-attempts: 3
-      backoff-ms: 100
-      timeout-ms: 2000
-      circuit-breaker: true
-```
+**Why two independent flags, not a strategy enum**
 
-The `failure-semantics` field references the identifier declared in the
-implementation's `.itara` metadata file. The `failure-semantics-config`
-block is passed as-is to the implementation — Itara does not interpret it.
+An earlier design considered a `timeoutHandling: native | external | both`
+enum on the failure semantics block. This was rejected because it would require
+the failure semantics block to describe the transport's behaviour, creating
+coupling between the two sides. The failure semantics implementation would need
+to know that the transport is configured to handle timeout natively in order to
+avoid doing it itself, or the wiring config author would need to understand both
+sides simultaneously to pick the right enum value.
+
+Two independent boolean flags — one on the transport connection, one on the
+failure semantics block — mean each side declares itself without reference to
+the other. The tooling validates the combination. Neither side needs to know
+what the other declared.
+
+**Per-attempt timeout vs absolute timeout**
+
+A per-attempt timeout constrains a single call attempt. It is passed to the
+transport on every call regardless of who enforces it. Either the transport
+enforces it natively, the failure semantics implementation enforces it by
+external interruption, or both — independently declared.
+
+An absolute timeout is a hard ceiling on total execution time across all
+attempts. It is always enforced externally by the failure semantics
+implementation if it supports it. It is exempt from the transport's
+safe-to-interrupt declaration by design: its purpose is to catch infinite
+loops and total hangs where no per-attempt mechanism would fire. It is an
+escape hatch, not a primary timeout mechanism.
+
+**Transport interrupt safety**
+
+Not all transports are safe to interrupt externally. A transport that may
+leave connections in an inconsistent state when interrupted must declare this.
+The failure semantics implementation must not apply external interruption of
+the per-attempt timeout to such transports. The absolute timeout may still
+interrupt — that is its purpose.
+
+**Tooling as the safety net**
+
+The combination of capability declarations and configuration flags gives the
+tooling enough information to catch mismatches statically. A timeout configured
+with no enforcement mechanism is a warning. A timeout configured against a
+declared incapability is an error. This is the Itara pattern: make the
+configuration explicit enough that violations are detectable before deployment.
 
 ---
 
-## The idempotency contract
+## Resolved open questions
 
-The failure semantics implementation receives the `idempotent` flag for every
-call. The flag comes from the `.itara` metadata file of the API artifact,
-where the `[methods]` section lists which methods are not idempotent.
+**Timeout scope** — the per-attempt timeout and the absolute timeout are
+separate fields with unambiguous scope. The implementation is free to define
+additional semantics in its `params` block.
 
-A conforming failure semantics implementation MUST NOT retry a non-idempotent
-call without explicit configuration permitting it. The default behaviour for
-non-idempotent methods on failure MUST be to surface the error immediately,
-not to retry.
+**Fallback** — deferred. Not required for v0.2. The single-lambda approach
+does not preclude adding a second lambda for fallback in a future version.
 
-This is not enforced by Itara — it is a contract requirement on the
-implementation. A failure semantics implementation that retries non-idempotent
-calls silently is non-conforming.
+**Observability** — the four-event model is not affected by failure semantics.
+`CALL_SENT` and `RETURN_RECEIVED` fire once per logical call. Retry attempts
+are observable via custom spans (§9.7). See ADR 0017 for full reasoning.
 
----
+**Direct connections** — failure semantics do not apply to direct (colocated)
+connections. A direct call that throws is a real failure with no transport
+involved; the overhead and indirection of a failure semantics wrapper is
+inconsistent with the zero-overhead colocation guarantee.
 
-## Open questions
-
-**Timeout scope** — should the timeout in the wiring config apply per attempt
-or to the total execution including retries? Both are valid. The implementation
-should be free to define this, but the wiring config field name should make
-the scope unambiguous.
-
-**Fallback** — should the SPI support a fallback call if all attempts fail?
-This would require the proxy to pass two lambdas rather than one. Worth
-considering but not required for an initial implementation.
-
-**Observability** — retry attempts should be visible in traces. Each retry
-attempt is a separate span. How the failure semantics implementation
-participates in Itara's observability model — whether it fires events itself
-or delegates to the proxy — needs to be decided. The proxy currently owns
-all observability events, which argues for the proxy wrapping each attempt
-rather than the failure semantics implementation doing it internally.
-
-**Direct connections** — failure semantics for direct (colocated) connections
-are different in nature. A direct call that throws is a real failure with no
-transport involved. Whether the failure semantics SPI applies to direct
-connections at all, or only to transport connections, needs to be decided.
-
-**Default implementation** — a built-in no-op implementation that surfaces
-errors immediately (current behaviour) should ship as the default, requiring
-zero configuration for teams that handle failures in their own code.
+**Default implementation** — the built-in `noop` implementation ships as the
+default, requiring zero configuration. The built-in standard implementation
+(`built-in`) ships alongside it, covering retry, timeout, and basic circuit
+breaking for teams that want it out of the box.
