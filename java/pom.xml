@@ -23,6 +23,7 @@
         <module>itara-observability-logging</module>
         <module>itara-observability-otel</module>
         <module>itara-transport-kafka</module>
+        <module>itara-failure-semantics-builtin</module>
     </modules>
 
     <properties>
@@ -67,6 +68,16 @@
                 <groupId>org.apache.kafka</groupId>
                 <artifactId>kafka-clients</artifactId>
                 <version>3.7.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-retry</artifactId>
+                <version>2.2.0</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-timelimiter</artifactId>
+                <version>2.2.0</version>
             </dependency>
 
             <!-- Test dependencies — OTel SDK with in-memory exporters -->

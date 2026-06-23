@@ -383,7 +383,7 @@ recovery strategies:
 
 ```toml
 [methods]
-non_idempotent = ["divide", "transfer", "placeOrder"]
+non-idempotent = ["divide", "transfer", "placeOrder"]
 ```
 
 #### Component Artifacts

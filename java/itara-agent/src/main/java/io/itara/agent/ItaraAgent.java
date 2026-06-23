@@ -5,17 +5,19 @@ import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.Node;
 import io.itara.agent.config.NodeKind;
-import io.itara.agent.config.VirtualNode;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
+import io.itara.agent.metadata.MetadataFile;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
+import io.itara.runtime.FailureSemanticsRegistry;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
 import io.itara.spi.ItaraTransport;
+import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
@@ -38,6 +40,7 @@ import java.util.logging.Logger;
  *   5. Load META-INF/itara/serializer — discover available serializer impls
  *   6. Load META-INF/itara/transport — discover available transport impls
  *   7. Load META-INF/itara/observer — discover available observer impls
+ *   7b. Load META-INF/itara/failure-semantics — discover available failure
  *   8. Initialize ObservabilityFacade
  *   9. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
@@ -116,6 +119,10 @@ public class ItaraAgent {
         // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
         log.info("[Itara] Loading observer implementations...");
         ObserverLoader.load(itaraClassLoader);
+
+        // ── Step 7b: Load failure semantics (META-INF/itara/failure-semantics)
+        log.info("[Itara] Loading failure semantics implementations...");
+        FailureSemanticsLoader.load(itaraClassLoader);
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
@@ -222,11 +229,24 @@ public class ItaraAgent {
                                         + "Is the API or events jar on the classpath?");
                     }
 
+                    ItaraFailureSemantics failureSemantics =
+                            FailureSemanticsRegistry.instance().create(
+                                    conn.getFailureSemanticsType(),
+                                    conn.getFailureSemanticsConfig());
+
+                    MetadataFile apiMetadata = ItaraMetadataIndex.instance()
+                            .lookup(contractId)
+                            .orElse(null);
+                    if (apiMetadata == null) {
+                        log.warning("[Itara] No .itara metadata found for API artifact '"
+                                + contractId + "' — all methods will be treated as idempotent.");
+                    }
+
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             itaraClassLoader,
                             new Class<?>[]{ contractClass },
                             new ItaraProxyHandler(contractId, serializer, transport,
-                                    props, pattern)
+                                    props, pattern, failureSemantics, apiMetadata)
                     );
                     registry.preRegister(contractId, proxy);
 

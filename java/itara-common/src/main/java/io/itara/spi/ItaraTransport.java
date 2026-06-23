@@ -3,6 +3,7 @@ package io.itara.spi;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ItaraContext;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -42,11 +43,16 @@ public interface ItaraTransport {
      * raw response bytes. The transport injects W3C trace headers from
      * the provided context but does not own context lifecycle.
      *
+     * The timeout parameter is always passed by the proxy regardless of whether
+     * the transport acts on it. Transports that do not support timeout enforcement
+     * MUST silently ignore it. Null means no per-attempt timeout is configured (§14.10)
+     *
      * @param componentId  The id of the remote component
      * @param methodName   The method being called
      * @param payload      Pre-serialized argument bytes
      * @param headers      The headers collected for propagation
      * @param properties   Connection properties from the wiring config
+     * @param timeout      The timeout value of the transport
      * @return             Raw response bytes
      * @throws Exception   On any transport-level failure
      */
@@ -54,7 +60,8 @@ public interface ItaraTransport {
                 String methodName,
                 byte[] payload,
                 Map<String, String> headers,
-                Map<String, String> properties) throws Exception;
+                Map<String, String> properties,
+                Duration timeout) throws Exception;
 
     /**
      * Start a listener that receives inbound calls for the given component.

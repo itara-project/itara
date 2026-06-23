@@ -5,6 +5,7 @@ import demo.calculator.api.CalculatorService;
 import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
@@ -81,7 +82,9 @@ class HttpTransportIntegrationTest {
                 new ItaraProxyHandler(
                         COMPONENT_ID, serializer, transport,
                         Map.of("host", "localhost", "port", String.valueOf(port)),
-                        ExchangePattern.REQUEST_REPLY
+                        ExchangePattern.REQUEST_REPLY,
+                        new NoopFailureSemantics(),
+                        null
                 )
         );
     }
@@ -154,7 +157,9 @@ class HttpTransportIntegrationTest {
                         new JsonItaraSerializer(),
                         new HttpTransport(),
                         Map.of("host", "localhost", "port", String.valueOf(port)),
-                        ExchangePattern.REQUEST_REPLY
+                        ExchangePattern.REQUEST_REPLY,
+                        new NoopFailureSemantics(),
+                        null
                 )
         );
         ItaraRemoteException ex = assertThrows(
@@ -177,7 +182,9 @@ class HttpTransportIntegrationTest {
                         new JsonItaraSerializer(),
                         new HttpTransport(),
                         Map.of("host", "localhost", "port", String.valueOf(deadPort)),
-                        ExchangePattern.REQUEST_REPLY
+                        ExchangePattern.REQUEST_REPLY,
+                        new NoopFailureSemantics(),
+                        null
                 )
         );
         ItaraRemoteException ex = assertThrows(
