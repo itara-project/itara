@@ -14,13 +14,13 @@ connections:
   - from:
     to: "orderNode"
     type: http
-    host: "order_and_inventory"
+    host: "order"
     port: 8081
     serializer: "json"
   - from:
     to: "inventoryNode"
     type: http
-    host: "order_and_inventory"
+    host: "inventory"
     port: 8082
     serializer: "json"
   - from: "orderNode"
@@ -38,10 +38,20 @@ connections:
         retryRuntime: "true"
   - from: "orderNode"
     to: "inventoryNode"
-    type: direct
+    type: flaky-http
+    host: "inventory"
+    port: 8087
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
   - from: "orderNode"
     to: "fulfilmentNode"
-    type: http
+    type: flaky-http
     host: "fulfilment"
     port: 8085
     serializer: "json"
@@ -52,17 +62,16 @@ connections:
       params:
         waitDuration: 500ms
         retryRuntime: "true"
-# order -> notification connection left out to show CLI capabilities
-#  - from: "orderNode"
-#    to: "notificationNode"
-#    type: http
-#    host: "notification"
-#    port: 8086
-#    serializer: "json"
-#    failureSemantics:
-#      id: built-in
-#      maxRetry: 3
-#      timeout: 5s
-#      params:
-#        waitDuration: 500ms
-#        retryRuntime: "true"
+  - from: "orderNode"
+    to: "notificationNode"
+    type: flaky-http
+    host: "notification"
+    port: 8086
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"

@@ -14,3 +14,6 @@ core-version = "0.1+"
 
 [serializers]
 supported = ["json"]
+
+[methods]
+non-idempotent = ["placeOrder", "cancelOrder"]

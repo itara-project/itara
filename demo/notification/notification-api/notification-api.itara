@@ -11,3 +11,7 @@ compiler = "21"
 [itara]
 spec-version = "0.1"
 core-version = "0.1+"
+
+# All notification methods are idempotent — sending the same notification
+# twice is harmless. No [methods] block needed; absent means all idempotent.
+

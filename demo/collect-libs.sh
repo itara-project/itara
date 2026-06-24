@@ -17,23 +17,27 @@ cd "$SCRIPT_DIR"
 
 echo "Collecting Java SPI libraries and .itara metadata files..."
 mkdir -p libs
-cp ../java/itara-observability-logging/target/itara-observability-logging-1.0-SNAPSHOT.jar libs/
-cp ../java/itara-serializer-json/target/itara-serializer-json-1.0-SNAPSHOT.jar             libs/
-cp ../java/itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar               libs/
+cp ../java/itara-observability-logging/target/itara-observability-logging-1.0-SNAPSHOT.jar         libs/
+cp ../java/itara-serializer-json/target/itara-serializer-json-1.0-SNAPSHOT.jar                     libs/
+cp ../java/itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar                       libs/
+cp ../java/itara-failure-semantics-builtin/target/itara-failure-semantics-builtin-1.0-SNAPSHOT.jar libs/
+cp flaky-transport/target/flaky-transport-1.0-SNAPSHOT.jar                                         libs/
 mkdir -p metafiles
-cp ../java/itara-observability-logging/itara-observability-logging.itara metafiles/
-cp ../java/itara-observability-otel/itara-observability-otel.itara       metafiles/
-cp ../java/itara-serializer-json/itara-serializer-json.itara             metafiles/
-cp ../java/itara-transport-http/itara-transport-http.itara               metafiles/
-cp inventory/inventory-api/inventory-api.itara                           metafiles/
-cp inventory/inventory-component/inventory-component.itara               metafiles/
-cp fulfilment/fulfilment-api/fulfilment-api.itara                        metafiles/
-cp fulfilment/fulfilment-component/fulfilment-component.itara            metafiles/
-cp notification/notification-api/notification-api.itara                  metafiles/
-cp notification/notification-component/notification-component.itara      metafiles/
-cp order/order-api/order-api.itara                                       metafiles/
-cp order/order-component/order-component.itara                           metafiles/
-cp payment/java/payment-api/payment-api.itara                            metafiles/
+cp ../java/itara-observability-logging/itara-observability-logging.itara         metafiles/
+cp ../java/itara-observability-otel/itara-observability-otel.itara               metafiles/
+cp ../java/itara-serializer-json/itara-serializer-json.itara                     metafiles/
+cp ../java/itara-transport-http/itara-transport-http.itara                       metafiles/
+cp ../java/itara-failure-semantics-builtin/itara-failure-semantics-builtin.itara metafiles/
+cp inventory/inventory-api/inventory-api.itara                                   metafiles/
+cp inventory/inventory-component/inventory-component.itara                       metafiles/
+cp fulfilment/fulfilment-api/fulfilment-api.itara                                metafiles/
+cp fulfilment/fulfilment-component/fulfilment-component.itara                    metafiles/
+cp notification/notification-api/notification-api.itara                          metafiles/
+cp notification/notification-component/notification-component.itara              metafiles/
+cp order/order-api/order-api.itara                                               metafiles/
+cp order/order-component/order-component.itara                                   metafiles/
+cp payment/java/payment-api/payment-api.itara                                    metafiles/
+cp flaky-transport/flaky-transport.itara                                         metafiles/
 echo "  Java libraries collected in demo/libs/ and .itara metadata files in demo/metafiles/"
 
 echo "Collecting Rust SPI libraries and .itara metadata files..."

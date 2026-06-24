@@ -114,14 +114,15 @@ class BuiltInFailureSemantics implements ItaraFailureSemantics {
         RetryConfig retryConfig = RetryConfig.custom()
                 .maxAttempts(config.maxAttempts)
                 .waitDuration(config.waitDuration)
-                // Only retry on locally-originated TRANSPORT errors —
-                // remote-side errors (CHECKED, RUNTIME) have null serializedPayload
-                // and have already been reconstructed before reaching here,
-                // so we check kind directly
-                .retryOnException(e ->
-                        e instanceof ItaraRemoteException ire
-                                && ire.getErrorKind() == ItaraRemoteException.ErrorKind.TRANSPORT
-                                && ire.getSerializedPayload() == null)
+                .retryOnException(e -> {
+                    if (!(e instanceof ItaraRemoteException)) return false;
+                    ItaraRemoteException ire = (ItaraRemoteException) e;
+                    if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.CHECKED) return false;
+                    if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.TRANSPORT) return true;
+                    if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.RUNTIME
+                            && config.retryRuntime) return true;
+                    return false;
+                })
                 .build();
 
         return Retry.of("itara-built-in", retryConfig);

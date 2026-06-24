@@ -38,3 +38,10 @@ connections:
     host: payment
     port: 8083
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"

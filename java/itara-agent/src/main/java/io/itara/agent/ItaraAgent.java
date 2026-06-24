@@ -235,7 +235,7 @@ public class ItaraAgent {
                                     conn.getFailureSemanticsConfig());
 
                     MetadataFile apiMetadata = ItaraMetadataIndex.instance()
-                            .lookup(contractId)
+                            .lookupByContractId(contractId)
                             .orElse(null);
                     if (apiMetadata == null) {
                         log.warning("[Itara] No .itara metadata found for API artifact '"

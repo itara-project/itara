@@ -57,7 +57,8 @@ public class BuiltInFailureSemanticsObservabilityTest {
                 null,
                 false,
                 null,
-                retryNonIdempotent
+                retryNonIdempotent,
+                false
         ));
     }
 

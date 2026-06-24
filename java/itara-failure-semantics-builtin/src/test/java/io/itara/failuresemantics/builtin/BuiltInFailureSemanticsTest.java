@@ -32,7 +32,8 @@ public class BuiltInFailureSemanticsTest {
                 timeout,
                 false,
                 absoluteTimeout,
-                retryNonIdempotent
+                retryNonIdempotent,
+                false
         ));
     }
 
@@ -171,22 +172,6 @@ public class BuiltInFailureSemanticsTest {
     class ErrorPassThrough {
 
         @Test
-        @DisplayName("remote-side error is not retried — passes through immediately")
-        void remoteSideErrorPassesThroughImmediately() {
-            AtomicInteger attempts = new AtomicInteger(0);
-            BuiltInFailureSemantics fs = build(3, false, null, null);
-
-            // Remote error — has non-null serialized payload
-            TransportCall work = timeout -> {
-                attempts.incrementAndGet();
-                throw new ItaraRemoteException(new byte[]{1, 2, 3});
-            };
-
-            assertThrows(ItaraRemoteException.class, () -> fs.execute(work, true));
-            assertEquals(1, attempts.get(), "Remote-side error must not be retried");
-        }
-
-        @Test
         @DisplayName("passes timeout to the transport on every attempt")
         void passesTimeoutOnEveryAttempt() throws ItaraRemoteException {
             Duration expected = Duration.ofSeconds(2);
@@ -230,6 +215,68 @@ public class BuiltInFailureSemanticsTest {
                     ItaraRemoteException.class, () -> fs.execute(work, true));
 
             assertEquals(ItaraRemoteException.ErrorKind.TRANSPORT, ex.getErrorKind());
+        }
+    }
+
+    @Nested
+    @DisplayName("runtime error retry")
+    class RuntimeErrorRetry {
+
+        @Test
+        @DisplayName("does not retry RUNTIME error by default")
+        void doesNotRetryRuntimeByDefault() {
+            AtomicInteger attempts = new AtomicInteger(0);
+            BuiltInFailureSemantics fs = build(3, false, null, null);
+
+            assertThrows(ItaraRemoteException.class,
+                    () -> fs.execute(timeout -> {
+                        attempts.incrementAndGet();
+                        throw new ItaraRemoteException(
+                                ItaraRemoteException.ErrorKind.RUNTIME,
+                                "java.lang.RuntimeException",
+                                "transient failure");
+                    }, true));
+
+            assertEquals(1, attempts.get(), "RUNTIME error must not be retried by default");
+        }
+
+        @Test
+        @DisplayName("retries RUNTIME error when retryRuntime=true")
+        void retriesRuntimeWhenConfigured() {
+            AtomicInteger attempts = new AtomicInteger(0);
+            BuiltInFailureSemantics fs = new BuiltInFailureSemantics(new BuiltInConfig(
+                    3, Duration.ofMillis(1), null, false, null, false, true));
+
+            assertThrows(ItaraRemoteException.class,
+                    () -> fs.execute(timeout -> {
+                        attempts.incrementAndGet();
+                        throw new ItaraRemoteException(
+                                ItaraRemoteException.ErrorKind.RUNTIME,
+                                "java.lang.RuntimeException",
+                                "transient failure");
+                    }, true));
+
+            assertEquals(3, attempts.get(), "RUNTIME error must be retried when retryRuntime=true");
+        }
+
+        @Test
+        @DisplayName("remote-side CHECKED error is never retried even with retryRuntime=true")
+        void checkedErrorNeverRetried() {
+            AtomicInteger attempts = new AtomicInteger(0);
+            BuiltInFailureSemantics fs = new BuiltInFailureSemantics(new BuiltInConfig(
+                    3, Duration.ofMillis(1), null, false, null, false, true));
+
+            assertThrows(ItaraRemoteException.class,
+                    () -> fs.execute(timeout -> {
+                        attempts.incrementAndGet();
+                        throw new ItaraRemoteException(
+                                ItaraRemoteException.ErrorKind.CHECKED,
+                                "com.example.SomeException",
+                                "business rule violation");
+                    }, true));
+
+            assertEquals(1, attempts.get(),
+                    "CHECKED error must never be retried regardless of configuration");
         }
     }
 }
