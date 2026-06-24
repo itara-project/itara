@@ -45,13 +45,17 @@ public class BuiltInFailureSemanticsFactory implements ItaraFailureSemanticsFact
         boolean retryNonIdempotent = Boolean.parseBoolean(
                 params.getOrDefault("retryNonIdempotent", "false"));
 
+        boolean retryRuntime = Boolean.parseBoolean(
+                params.getOrDefault("retryRuntime", "false"));
+
         BuiltInConfig builtInConfig = new BuiltInConfig(
                 maxAttempts,
                 waitDuration,
                 config.getTimeout(),
                 config.isHandleTimeout(),
                 config.getAbsoluteTimeout(),
-                retryNonIdempotent
+                retryNonIdempotent,
+                retryRuntime
         );
 
         return new BuiltInFailureSemantics(builtInConfig);

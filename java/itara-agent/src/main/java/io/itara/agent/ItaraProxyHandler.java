@@ -123,12 +123,11 @@ public class ItaraProxyHandler implements InvocationHandler {
                 try {
                     return transport.send(componentId, method.getName(), payload, headers, properties, timeout);
                 } catch (ItaraRemoteException e) {
-                    // If there is a serialized payload, this exception came from the remote
-                    // side — deserialize it to recover the real ErrorKind and message.
-                    // CHECKED errors must not be retried and are rethrown immediately.
-                    // RUNTIME errors are also rethrown — they are not infrastructure failures.
-                    // Only locally-originated exceptions (null payload, kind TRANSPORT)
-                    // should surface to the failure semantics layer for retry decisions.
+                    // Deserialize and reconstruct any exception that carries a serialized
+                    // payload — this recovers the real ErrorKind from the remote side.
+                    // CHECKED errors are rethrown immediately and must not be retried.
+                    // RUNTIME errors surface to the failure semantics layer, which decides
+                    // whether to retry based on retryRuntime configuration.
                     if (e.getSerializedPayload() != null) {
                         try {
                             ItaraErrorPayload errorPayload = (ItaraErrorPayload) serializer.deserializeResult(

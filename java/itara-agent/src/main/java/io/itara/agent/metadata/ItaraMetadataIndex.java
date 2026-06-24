@@ -160,6 +160,27 @@ public class ItaraMetadataIndex {
         return found;
     }
 
+    /**
+     * Looks up metadata by API artifact id — the id declared in the
+     * [artifact] section of an api-kind .itara file.
+     *
+     * Used by the agent to find the [methods] declarations for a contract
+     * when wiring outbound proxies. The contractId from the connection
+     * matches the id field of the corresponding api artifact.
+     *
+     * Returns the first match — API ids are expected to be unique within
+     * a deployment's metadata directory.
+     */
+    public Optional<MetadataFile> lookupByContractId(String apiId) {
+        ensureBuilt();
+        return entries.values().stream()
+                .filter(m -> m.getArtifact() != null
+                        && ("api".equals(m.getArtifact().getKind())
+                            || "events".equals(m.getArtifact().getKind()))
+                        && apiId.equals(m.getArtifact().getId()))
+                .findFirst();
+    }
+
     private void ensureBuilt() {
         if (!built) {
             throw new IllegalStateException(

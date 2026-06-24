@@ -27,7 +27,7 @@ for the current state and direction of the Rust implementation.
 
 ---
 
-## The three topologies
+## The four topologies
 
 ### Monolith
 Order, inventory, fulfilment, and notification run in a single JVM.
@@ -52,7 +52,17 @@ Everything else stays distributed.
 The result: the remote call overhead for inventory disappears from the traces.
 The inventory calls still happen — the cost of the transport does not.
 
-The wiring config is the only thing that changed between all three topologies.
+### Microservices — Flaky
+The microservices topology with a flaky HTTP transport on all outbound
+connections from order. Calls fail at random to simulate transient network
+failures. Idempotent methods are retried transparently; non-idempotent ones
+surface the failure immediately. Both cases are visible in the traces as
+sibling `attempt` spans — no business code was changed.
+
+The failure rate is controlled by `ITARA_FLAKY_FAIL_RATE` on the order
+container (0.0–1.0, default 0.4).
+
+The wiring config is the only thing that changed between all four topologies.
 See [SPEC §4](../spec/SPEC.md#4-wiring-model) for the full wiring model
 specification.
 
@@ -96,6 +106,9 @@ mvn install -f demo/notification/pom.xml
 mvn install -f demo/order/pom.xml
 mvn install -f demo/payment/java/payment-api/pom.xml
 
+# 3b. Build the flaky transport (for the microservices-flaky scenario)
+mvn install -f demo/flaky-transport/pom.xml
+
 
 # 4. Build the payment Rust binary for Linux (On Windows, run this in WSL):
 cd demo/payment && cargo build --release
@@ -131,6 +144,15 @@ docker compose -f demo/docker-compose-microservices.yml up
 
 # Informed
 docker compose -f demo/docker-compose-informed.yml up
+
+# Microservices — Flaky (failure semantics showcase)
+docker compose -f demo/docker-compose-microservices-flaky.yml up
+```
+
+To adjust the failure rate for the flaky scenario:
+
+```bash
+ITARA_FLAKY_FAIL_RATE=0.2 docker compose -f demo/docker-compose-microservices-flaky.yml up
 ```
 
 To switch topologies, stop the current one and start another. The
@@ -219,6 +241,12 @@ happens without any instrumentation in the component code.
 - The contrast between the two patterns is visible in the same trace
 
 ![Informed topology trace](../docs/images/trace-informed.png)
+
+### In the microservices-flaky trace
+
+Idempotent calls show sibling `attempt` spans when they fail and retry.
+Non-idempotent calls show exactly one attempt — failure surfaces immediately,
+no retry. Both visible in the same trace, nothing changed in the business code.
 
 ---
 

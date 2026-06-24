@@ -20,18 +20,21 @@ final class BuiltInConfig {
     final boolean  handleTimeout;
     final Duration absoluteTimeout;
     final boolean  retryNonIdempotent;
+    final boolean  retryRuntime;
 
     BuiltInConfig(int maxAttempts,
                   Duration waitDuration,
                   Duration timeout,
                   boolean handleTimeout,
                   Duration absoluteTimeout,
-                  boolean retryNonIdempotent) {
+                  boolean retryNonIdempotent,
+                  boolean retryRuntime) {
         this.maxAttempts        = maxAttempts;
         this.waitDuration       = waitDuration;
         this.timeout            = timeout;
         this.handleTimeout      = handleTimeout;
         this.absoluteTimeout    = absoluteTimeout;
         this.retryNonIdempotent = retryNonIdempotent;
+        this.retryRuntime       = retryRuntime;
     }
 }
