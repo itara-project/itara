@@ -102,6 +102,48 @@ public interface ItaraObserver {
                                   boolean error) {}
 
     /**
+     * Fired when a custom span is opened within an existing call scope.
+     *
+     * Custom spans are sub-spans that make internal structure visible in
+     * traces — for example, individual retry attempts within a failure
+     * semantics implementation. They are additive and opt-in; the four
+     * core events are not affected.
+     *
+     * The context pushed for this span is already current when this fires —
+     * its itaraParentSpanId points to the span that was active when
+     * openCustomSpan() was called. Observers that maintain their own span
+     * model (e.g. OTel) should open a child span here and store it keyed
+     * by ctx.getItaraSpanId() for retrieval on onCustomSpanClosed.
+     *
+     * @param ctx        the new child context for this custom span
+     * @param name       a short descriptive name, e.g. "retry-attempt"
+     * @param attributes freeform key-value pairs describing the span,
+     *                   e.g. {"attempt": "2"}. Never null, may be empty.
+     * @param timestamp  nanoseconds since epoch at the moment of opening
+     */
+    default void onCustomSpan(ItaraContext ctx,
+                              String name,
+                              Map<String, String> attributes,
+                              long timestamp) {}
+
+    /**
+     * Fired when a custom span is closed.
+     *
+     * Always fires — even if the work inside the span threw. Observers
+     * should end whatever span they opened in onCustomSpan, keyed by
+     * ctx.getItaraSpanId().
+     *
+     * @param ctx       the same context that was passed to onCustomSpan
+     * @param name      the same name that was passed to onCustomSpan
+     * @param timestamp nanoseconds since epoch at the moment of closing
+     * @param error     true if the span closed with an error
+     */
+    default void onCustomSpanClosed(ItaraContext ctx,
+                                    String name,
+                                    long timestamp,
+                                    boolean error) {}
+
+    /**
      * Fired on the caller side immediately after onCallSent, but only when
      * the call crosses a transport boundary (transport is not "direct").
      *

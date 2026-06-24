@@ -1,7 +1,12 @@
 package io.itara.failuresemantics.builtin;
 
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ItaraContext;
+import io.itara.runtime.ObservabilityFacade;
+import io.itara.runtime.ObserverRegistry;
 import io.itara.spi.failuresemantics.TransportCall;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -43,10 +48,17 @@ public class BuiltInFailureSemanticsTest {
                 "Connection refused");
     }
 
-    // Remote-side error with serialized payload — must not be retried
-    private static ItaraRemoteException remoteError(ItaraRemoteException.ErrorKind kind) {
-        ItaraRemoteException ex = new ItaraRemoteException(new byte[]{1});
-        return ex; // kind is always TRANSPORT in this constructor but payload is non-null
+    @BeforeAll
+    static void initObservability() {
+        ObservabilityFacade.initialize();
+        ItaraContext.push(ItaraContext.newRoot("test"));
+    }
+
+    @AfterAll
+    static void tearDownObservability() {
+        ItaraContext.clear();
+        ObserverRegistry.instance().resetForTest();
+        ObservabilityFacade.resetForTest();
     }
 
     @Nested

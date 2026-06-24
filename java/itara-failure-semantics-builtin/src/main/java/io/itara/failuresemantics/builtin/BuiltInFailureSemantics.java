@@ -3,16 +3,13 @@ package io.itara.failuresemantics.builtin;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ItaraScope;
+import io.itara.runtime.ObservabilityFacade;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.failuresemantics.TransportCall;
 
-import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -25,6 +22,8 @@ import java.util.concurrent.TimeoutException;
  *   - Absolute timeout across all attempts
  *   - Idempotency guard — non-idempotent methods are not retried unless
  *     explicitly configured with retryNonIdempotent=true
+ *   - Custom span per attempt via ObservabilityFacade.openCustomSpan(),
+ *     making individual retry attempts visible as sibling spans in traces
  *
  * CHECKED and RUNTIME errors from the remote side are never retried —
  * they are passed through immediately. Only locally-originated TRANSPORT
@@ -47,27 +46,28 @@ class BuiltInFailureSemantics implements ItaraFailureSemantics {
     public byte[] execute(TransportCall work, boolean idempotent)
             throws ItaraRemoteException {
 
-        // Non-idempotent methods bypass retry entirely unless explicitly permitted
+        // Non-idempotent methods bypass retry entirely unless explicitly permitted.
+        // A single attempt is still wrapped in a custom span for trace visibility.
         if (!idempotent && !config.retryNonIdempotent) {
-            return work.call(config.timeout);
+            return executeAttempt(work, 1);
         }
 
         long absoluteDeadline = config.absoluteTimeout != null
                 ? System.currentTimeMillis() + config.absoluteTimeout.toMillis()
                 : Long.MAX_VALUE;
 
+        int[] attemptNumber = {0};
+
         Callable<byte[]> retryable = Retry.decorateCallable(retry, () -> {
+            int attempt = ++attemptNumber[0];
+
             if (System.currentTimeMillis() > absoluteDeadline) {
                 throw new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         TimeoutException.class.getName(),
                         "[Itara/built-in] Absolute timeout exceeded across all attempts");
             }
-            // Timeout is passed to the transport on every attempt — the transport
-            // enforces it natively (e.g. socket read timeout). External enforcement
-            // via a separate thread is intentionally omitted: ItaraContext is
-            // ThreadLocal and would not propagate across thread boundaries correctly.
-            return work.call(config.timeout);
+            return executeAttempt(work, attempt);
         });
 
         try {
@@ -76,13 +76,37 @@ class BuiltInFailureSemantics implements ItaraFailureSemantics {
             throw e;
         } catch (Exception e) {
             Throwable cause = e.getCause();
-            if (cause instanceof ItaraRemoteException ire) {
-                throw ire;
+            if (cause instanceof ItaraRemoteException) {
+                throw (ItaraRemoteException) cause;
             }
             throw new ItaraRemoteException(
                     ItaraRemoteException.ErrorKind.TRANSPORT,
                     e.getClass().getName(),
                     "[Itara/built-in] Unexpected failure: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Executes a single attempt wrapped in a custom observability span.
+     *
+     * The span is opened before the transport call and closed after,
+     * regardless of outcome. Because headers are built inside the
+     * TransportCall lambda by the proxy, they are captured after this
+     * span becomes the active context — so the callee's spans are
+     * correctly parented under this retry attempt span (§14.7).
+     */
+    private byte[] executeAttempt(TransportCall work, int attempt)
+            throws ItaraRemoteException {
+        ObservabilityFacade facade = ObservabilityFacade.instance();
+        try (ItaraScope span = facade.openCustomSpan(
+                "attempt",
+                Map.of("attempt", String.valueOf(attempt)))) {
+            try {
+                return work.call(config.timeout);
+            } catch (ItaraRemoteException e) {
+                span.setError(true);
+                throw e;
+            }
         }
     }
 
