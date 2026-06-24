@@ -47,4 +47,9 @@ public final class ObserverRegistry {
     public int size() {
         return observers.size();
     }
+
+    /** For testing only. Clears all registered observers. */
+    public void resetForTest() {
+        observers.clear();
+    }
 }

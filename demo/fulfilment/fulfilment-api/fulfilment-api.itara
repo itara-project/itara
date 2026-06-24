@@ -11,3 +11,7 @@ compiler = "21"
 [itara]
 spec-version = "0.1"
 core-version = "0.1+"
+
+[methods]
+non-idempotent = ["processOrder"]
+# cancelOrder is idempotent — cancelling an already-cancelled order is safe

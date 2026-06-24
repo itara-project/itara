@@ -1,9 +1,7 @@
 package io.itara.transport.http;
 
 import io.itara.exceptions.ItaraRemoteException;
-import io.itara.runtime.ContextPropagation;
 import io.itara.runtime.DispatchHandler;
-import io.itara.runtime.ItaraContext;
 import io.itara.spi.ItaraTransport;
 
 import java.io.IOException;
@@ -11,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.time.Duration;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -50,7 +49,8 @@ public class HttpTransport implements ItaraTransport {
                        String methodName,
                        byte[] payload,
                        Map<String, String> headers,
-                       Map<String, String> properties) throws Exception {
+                       Map<String, String> properties,
+                       Duration timeout) throws Exception {
 
         String host = required(properties, "host", componentId);
         int port = requiredInt(properties, "port", componentId);

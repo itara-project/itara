@@ -1,0 +1,77 @@
+nodes:
+  - id: "fulfilmentNode"
+    component: "fulfilment"
+  - id: "inventoryNode"
+    component: "inventory"
+  - id: "notificationNode"
+    component: "notification"
+  - id: "paymentNode"
+    component: "payment"
+  - id: "orderNode"
+    component: "order"
+
+connections:
+  - from:
+    to: "orderNode"
+    type: http
+    host: "order"
+    port: 8081
+    serializer: "json"
+  - from:
+    to: "inventoryNode"
+    type: http
+    host: "inventory"
+    port: 8082
+    serializer: "json"
+  - from: "orderNode"
+    to: "paymentNode"
+    type: http
+    host: "payment"
+    port: 8083
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
+  - from: "orderNode"
+    to: "inventoryNode"
+    type: flaky-http
+    host: "inventory"
+    port: 8087
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
+  - from: "orderNode"
+    to: "fulfilmentNode"
+    type: flaky-http
+    host: "fulfilment"
+    port: 8085
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
+  - from: "orderNode"
+    to: "notificationNode"
+    type: flaky-http
+    host: "notification"
+    port: 8086
+    serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"

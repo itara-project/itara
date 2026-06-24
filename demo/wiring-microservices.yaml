@@ -29,21 +29,49 @@ connections:
     host: "payment"
     port: 8083
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
   - from: "orderNode"
     to: "inventoryNode"
     type: http
     host: "inventory"
     port: 8087
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
   - from: "orderNode"
     to: "fulfilmentNode"
     type: http
     host: "fulfilment"
     port: 8085
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
   - from: "orderNode"
     to: "notificationNode"
     type: http
     host: "notification"
     port: 8086
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"

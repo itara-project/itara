@@ -11,3 +11,7 @@ compiler = "21"
 [itara]
 spec-version = "0.1"
 core-version = "0.1+"
+
+[methods]
+non-idempotent = ["addItem", "reserveOrder", "releaseReservation"]
+# checkAvailability is idempotent — read-only, no side effects

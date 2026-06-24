@@ -3,6 +3,7 @@ package io.itara.observability.otel;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
@@ -446,6 +447,137 @@ class OtelObserverTest {
 
             assertTrue(hasTransportDimension,
                     "Transport type must be a metric dimension for topology analysis");
+        }
+    }
+
+    @Nested
+    @DisplayName("custom spans")
+    class CustomSpans {
+
+        @Test
+        @Order(21)
+        @DisplayName("custom span produces an INTERNAL span")
+        void customSpanProducesInternalSpan() {
+            ItaraContext ctx = ItaraContext.newRoot("gateway");
+            ItaraContext customCtx = ctx.newCustomSpan();
+
+            observer.onCallSent(ctx, "calculator", "add", "http",
+                    ExchangePattern.REQUEST_REPLY, now());
+            observer.onCustomSpan(customCtx, "retry-attempt",
+                    Map.of("attempt", "1"), now());
+            observer.onCustomSpanClosed(customCtx, "retry-attempt", now(), false);
+            observer.onReturnReceived(ctx, "calculator", "add", now(), false);
+
+            List<SpanData> spans = spanExporter.getFinishedSpanItems();
+            assertEquals(2, spans.size());
+
+            SpanData customSpan = spans.stream()
+                    .filter(s -> s.getName().equals("retry-attempt"))
+                    .findFirst().orElseThrow();
+            assertEquals(SpanKind.INTERNAL, customSpan.getKind());
+        }
+
+        @Test
+        @Order(22)
+        @DisplayName("custom span is a child of the enclosing CLIENT span")
+        void customSpanIsChildOfClientSpan() {
+            ItaraContext ctx = ItaraContext.newRoot("gateway");
+            ItaraContext customCtx = ctx.newCustomSpan();
+
+            observer.onCallSent(ctx, "calculator", "add", "http",
+                    ExchangePattern.REQUEST_REPLY, now());
+            observer.onCustomSpan(customCtx, "retry-attempt",
+                    Map.of("attempt", "1"), now());
+            observer.onCustomSpanClosed(customCtx, "retry-attempt", now(), false);
+            observer.onReturnReceived(ctx, "calculator", "add", now(), false);
+
+            List<SpanData> spans = spanExporter.getFinishedSpanItems();
+            SpanData clientSpan = spans.stream()
+                    .filter(s -> s.getKind() == SpanKind.CLIENT)
+                    .findFirst().orElseThrow();
+            SpanData customSpan = spans.stream()
+                    .filter(s -> s.getName().equals("retry-attempt"))
+                    .findFirst().orElseThrow();
+
+            assertEquals(clientSpan.getSpanId(),
+                    customSpan.getParentSpanContext().getSpanId(),
+                    "Custom span must be a child of the enclosing CLIENT span");
+        }
+
+        @Test
+        @Order(23)
+        @DisplayName("multiple custom spans are siblings under the CLIENT span")
+        void multipleCustomSpansAreSiblings() {
+            ItaraContext ctx = ItaraContext.newRoot("gateway");
+
+            observer.onCallSent(ctx, "calculator", "add", "http",
+                    ExchangePattern.REQUEST_REPLY, now());
+            observer.onCustomSpan(ctx.newCustomSpan(), "retry-attempt",
+                    Map.of("attempt", "1"), now());
+            observer.onCustomSpanClosed(ctx.newCustomSpan(), "retry-attempt", now(), false);
+            observer.onCustomSpan(ctx.newCustomSpan(), "retry-attempt",
+                    Map.of("attempt", "2"), now());
+            observer.onCustomSpanClosed(ctx.newCustomSpan(), "retry-attempt", now(), false);
+            observer.onReturnReceived(ctx, "calculator", "add", now(), false);
+
+            List<SpanData> spans = spanExporter.getFinishedSpanItems();
+            assertEquals(3, spans.size());
+
+            SpanData clientSpan = spans.stream()
+                    .filter(s -> s.getKind() == SpanKind.CLIENT)
+                    .findFirst().orElseThrow();
+
+            long siblingCount = spans.stream()
+                    .filter(s -> s.getKind() == SpanKind.INTERNAL)
+                    .filter(s -> s.getParentSpanContext().getSpanId()
+                            .equals(clientSpan.getSpanId()))
+                    .count();
+
+            assertEquals(2, siblingCount,
+                    "Retry attempt spans must be siblings under the CLIENT span");
+        }
+
+        @Test
+        @Order(24)
+        @DisplayName("error custom span sets span status to ERROR")
+        void errorCustomSpan() {
+            ItaraContext ctx = ItaraContext.newRoot("gateway");
+            ItaraContext customCtx = ctx.newCustomSpan();
+
+            observer.onCallSent(ctx, "calculator", "add", "http",
+                    ExchangePattern.REQUEST_REPLY, now());
+            observer.onCustomSpan(customCtx, "retry-attempt",
+                    Map.of("attempt", "1"), now());
+            observer.onCustomSpanClosed(customCtx, "retry-attempt", now(), true);
+            observer.onReturnReceived(ctx, "calculator", "add", now(), false);
+
+            SpanData customSpan = spanExporter.getFinishedSpanItems().stream()
+                    .filter(s -> s.getName().equals("retry-attempt"))
+                    .findFirst().orElseThrow();
+
+            assertEquals(StatusCode.ERROR, customSpan.getStatus().getStatusCode());
+        }
+
+        @Test
+        @Order(25)
+        @DisplayName("attributes from the custom span are set on the OTel span")
+        void customSpanAttributesSet() {
+            ItaraContext ctx = ItaraContext.newRoot("gateway");
+            ItaraContext customCtx = ctx.newCustomSpan();
+
+            observer.onCallSent(ctx, "calculator", "add", "http",
+                    ExchangePattern.REQUEST_REPLY, now());
+            observer.onCustomSpan(customCtx, "retry-attempt",
+                    Map.of("attempt", "2"), now());
+            observer.onCustomSpanClosed(customCtx, "retry-attempt", now(), false);
+            observer.onReturnReceived(ctx, "calculator", "add", now(), false);
+
+            SpanData customSpan = spanExporter.getFinishedSpanItems().stream()
+                    .filter(s -> s.getName().equals("retry-attempt"))
+                    .findFirst().orElseThrow();
+
+            assertEquals("2", customSpan.getAttributes()
+                    .get(AttributeKey.stringKey("attempt")));
         }
     }
 }

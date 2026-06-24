@@ -29,6 +29,13 @@ connections:
     host: "payment"
     port: 8083
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
   - from: "orderNode"
     to: "inventoryNode"
     type: direct
@@ -38,10 +45,24 @@ connections:
     host: "fulfilment"
     port: 8085
     serializer: "json"
+    failureSemantics:
+      id: built-in
+      maxRetry: 3
+      timeout: 5s
+      params:
+        waitDuration: 500ms
+        retryRuntime: "true"
 # order -> notification connection left out to show CLI capabilities
 #  - from: "orderNode"
 #    to: "notificationNode"
 #    type: http
-#   host: "notification"
-#   port: 8086
+#    host: "notification"
+#    port: 8086
 #    serializer: "json"
+#    failureSemantics:
+#      id: built-in
+#      maxRetry: 3
+#      timeout: 5s
+#      params:
+#        waitDuration: 500ms
+#        retryRuntime: "true"

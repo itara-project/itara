@@ -32,6 +32,9 @@ public class MetadataFile {
     private SerializersMeta serializers;
     @JsonProperty("implemented-event-contracts")
     private ImplementedEventContractsMeta implementedEventContracts = ImplementedEventContractsMeta.ofEmpty();
+    @JsonProperty("methods")
+    private MethodsMeta methods = MethodsMeta.ofEmpty();
+
 
     public ArtifactMeta getArtifact() { return artifact; }
     public void setArtifact(ArtifactMeta artifact) { this.artifact = artifact; }
@@ -50,6 +53,11 @@ public class MetadataFile {
     }
     public void setImplementedEventContracts(ImplementedEventContractsMeta m) {
         this.implementedEventContracts = m;
+    }
+
+    public MethodsMeta getMethods() { return methods; }
+    public void setMethods(MethodsMeta methods) {
+        this.methods = methods != null ? methods : MethodsMeta.ofEmpty();
     }
 
     @Override

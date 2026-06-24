@@ -40,6 +40,7 @@ Feedback, objections, and proposals are welcome as GitHub issues on the Itara re
 11. Tooling
 12. Conformance
 13. Event-Driven Topology
+14. Failure Semantics SPI
 
 ---
 
@@ -382,7 +383,7 @@ recovery strategies:
 
 ```toml
 [methods]
-non_idempotent = ["divide", "transfer", "placeOrder"]
+non-idempotent = ["divide", "transfer", "placeOrder"]
 ```
 
 #### Component Artifacts
@@ -561,6 +562,9 @@ A transport MUST be capable of:
 - Sending a byte payload to a remote callee identified by component identifier and method name
 - Propagating the current `ItaraContext` as part of the call (via `ItaraHeaders` or equivalent)
 - Returning the response byte payload to the caller
+- Accepting a per-attempt timeout value on the outbound call interface
+
+Whether native timeout enforcement is supported, and whether the transport is safe to interrupt externally, MUST be declared in the transport's metadata file. See §14.10.
 
 The transport receives serialized bytes from the serializer. It does not perform serialization itself.
 
@@ -701,6 +705,23 @@ A conforming implementation MUST support registering multiple observer implement
 ### 9.6 Observer Independence
 
 Observer implementations MUST NOT affect the outcome of component interactions or significantly delay the call path.
+
+### 9.7 Custom Spans
+ 
+The observer SPI supports custom span emission beyond the four key events. Custom spans represent events within a call that are worth making observable without modifying the four-event model.
+ 
+A custom span is a child of the active `ItaraContext` at the time it fires and becomes part of the observable span tree for the current request. What observers do with custom spans — whether they represent them as child spans, linked traces, log entries, or otherwise — is not prescribed by this specification.
+ 
+A custom span MUST carry at minimum:
+ 
+- A name identifying the event type
+- The active `ItaraContext` at the time of the event
+- A timestamp
+- Any implementation-defined attributes relevant to the event
+
+Custom spans MUST NOT replace or modify the four key events. They are additive. An observer that does not implement custom span handling MUST ignore custom span events without error.
+ 
+A conforming agent MUST make the observer facade available for custom span emission. The exact interface shape is defined by each language implementation.
 
 ---
 
@@ -1154,6 +1175,312 @@ consumer group offset management.
 delivery guarantees are covered by the failure semantics SPI, specified
 separately.
 
+---
+
+## 14. Failure Semantics SPI
+ 
+### 14.1 Summary
+ 
+The failure semantics SPI allows a deployment to declare how the infrastructure
+should behave when a remote component call does not succeed on the first
+attempt. A single implementation handles the full strategy — retry, timeout,
+circuit breaking, or any combination — as a cohesive unit of behaviour.
+The strategy is expressed in configuration and applied by the proxy at call
+time. Component code is unaware of it.
+ 
+A conforming Itara implementation MUST provide a built-in no-op failure
+semantics implementation. In the absence of failure semantics configuration on
+a connection, the proxy MUST surface errors to the caller immediately, without
+retry or timeout enforcement. This is the default behaviour.
+ 
+### 14.2 Failure Semantics Type Identifier
+ 
+Every failure semantics implementation MUST declare a type identifier — a
+non-empty, case-insensitive string — by which it is referenced in the wiring
+configuration. The following identifiers are reserved:
+ 
+| Identifier | Meaning |
+|------------|---------|
+| `noop`     | No failure handling. Errors are surfaced immediately. This is the default. |
+| `built-in` | Standard implementation provided by the Itara core for each supported language. Covers retry, timeout, and basic circuit breaking. |
+ 
+Implementations MAY define additional type identifiers.
+ 
+The backing library used by the `built-in` implementation is not prescribed by
+this specification — it is an internal detail of each language implementation.
+Third parties MAY provide their own failure semantics implementations under any
+non-reserved identifier.
+ 
+### 14.3 Plugin Discovery
+ 
+Failure semantics implementations are discovered via their companion metadata
+file, which MUST declare the artifact kind as `failure-semantics`. The agent
+reads this file before loading the artifact.
+ 
+The metadata file MUST also declare the capabilities of the implementation
+relevant to timeout enforcement. See §14.10.
+ 
+*Reference implementation note: the Java reference implementation uses a TOML
+`.itara` file with `kind = "failure-semantics"` and a `[capabilities]` section.*
+ 
+### 14.4 Wiring Configuration
+ 
+A failure semantics implementation is selected per connection by referencing
+its type identifier in the wiring configuration. The wiring configuration for
+a connection MUST support declaring the following for failure semantics:
+ 
+- Which failure semantics implementation to use
+- A per-attempt timeout duration (optional)
+- Whether the failure semantics implementation should enforce the per-attempt
+  timeout by external interruption (optional)
+- An absolute timeout duration covering total execution across all attempts
+  (optional)
+- A maximum number of retry attempts (optional)
+- Implementation-specific parameters as a freeform value (optional)
+The transport side of the connection MUST separately support declaring whether
+the transport should enforce the per-attempt timeout natively. See §7.4.
+ 
+A failure semantics reference without a type identifier is a configuration
+error. The agent MUST NOT start in this state.
+ 
+*Reference implementation note: the Java reference implementation expresses
+these as YAML fields on the connection's `failureSemantics` block (`id`,
+`timeout`, `handleTimeout`, `absoluteTimeout`, `maxRetry`, `params`) and a
+`handleTimeout` field at the connection level for the transport side.*
+ 
+### 14.5 SPI Contract
+ 
+A failure semantics implementation is given a unit of work — the transport
+call, together with its context propagation — and is responsible for executing
+it according to its configured strategy. The implementation MAY execute the
+unit of work more than once. All decisions about retry, timeout, and circuit
+breaking are internal to the implementation.
+ 
+The scope of the unit of work is defined by the proxy. Whatever is included in
+that scope does not become the failure semantics implementation's responsibility
+— the implementation executes the unit of work as an opaque callable. It does
+not need to understand its contents.
+ 
+The unit of work returns the same type as the transport send method. The
+failure semantics implementation MUST return that value to the proxy unchanged
+on success, or signal failure if all attempts are exhausted. This return type
+contract is what allows the failure semantics SPI to wrap the transport call
+without receiving the transport object directly.
+ 
+Context propagation is within the scope of the unit of work. The context active
+at the time the unit of work executes is what gets propagated to the callee.
+If the failure semantics implementation emits a custom span before executing
+a retry attempt, that span becomes the active context for that attempt, and
+consequently what is propagated. See §14.7.
+ 
+The implementation receives:
+ 
+- The unit of work to execute
+- A parsed representation of its own configuration
+- A flag indicating whether the method being called is idempotent
+A conforming implementation MUST NOT retry a call for which the idempotency
+flag is false, unless the implementation's configuration explicitly permits it.
+This is a normative requirement — retrying a non-idempotent call without
+explicit opt-in can cause duplicate side effects and violates the contract
+declared in the API artifact.
+ 
+A conforming implementation MUST NOT perform serialization or deserialization.
+These are proxy responsibilities.
+ 
+A conforming implementation MAY emit custom observability events via the
+observer SPI custom span extension (§9.7). It MUST NOT emit the four key
+events (`CALL_SENT`, `CALL_RECEIVED`, `RETURN_SENT`, `RETURN_RECEIVED`).
+Those events are the exclusive responsibility of the proxy and dispatcher.
+ 
+### 14.6 Idempotency
+ 
+The idempotency of a method is declared in the API artifact's metadata file.
+Methods not declared as non-idempotent are assumed idempotent. See §5.4.
+ 
+The agent MUST read the non-idempotent method list from the API artifact at
+startup and MUST make it available to the proxy at construction time. The proxy
+MUST pass the correct idempotency flag for the method being invoked to the
+failure semantics implementation on every call.
+ 
+### 14.7 Observability
+ 
+The four-event model is not affected by failure semantics.
+ 
+`CALL_SENT` fires once, before the failure semantics implementation is invoked.
+`RETURN_RECEIVED` fires once, after the failure semantics implementation
+returns — whether on the first attempt or after retries. The four key events
+record what the business layer observed: a call was issued and a result was
+received (or not). The mechanics of how the topology layer achieved that result
+are an infrastructure concern, not a business-layer concern.
+ 
+A failure semantics implementation MAY emit custom spans (§9.7) to make
+individual retry attempts or other internal events observable. Each custom span
+becomes part of the active context. How observers choose to represent custom
+spans — as child spans, linked traces, or otherwise — is not prescribed by
+this specification.
+ 
+### 14.8 Failure Semantics Independence
+ 
+A failure semantics implementation MUST NOT:
+ 
+- Require modification of any component contract or implementation
+- Perform serialization or deserialization
+- Directly propagate or modify `ItaraContext`
+- Emit the four key observability events
+- Apply to direct (colocated) connections
+Note on context propagation: a failure semantics implementation that emits
+custom spans does so via the observer SPI, not by manipulating the context
+directly. Indirect involvement in context propagation through the observer SPI
+is expected and permitted.
+ 
+### 14.9 Scope
+ 
+The failure semantics SPI applies to outbound remote calls only. It wraps the
+transport call on the caller side. It has no callee-side presence.
+ 
+Failure semantics do not apply to direct connections. Direct connections are
+colocated calls within the same process. The overhead and indirection of a
+failure semantics wrapper on a direct call would be inconsistent with the
+zero-overhead colocation guarantee in §1.2.
+ 
+### 14.10 Timeout Enforcement
+ 
+Timeout enforcement is a cooperative responsibility between the transport and
+the failure semantics implementation. Each side independently declares its
+capability and independently declares whether it is configured to enforce the
+timeout on a given connection. This keeps the two sides decoupled — neither
+needs to know what the other is doing.
+ 
+**Per-attempt timeout**
+ 
+A per-attempt timeout constrains the duration of a single call attempt. Its
+value is always passed to the transport on the outbound call interface. The
+transport receives it regardless of whether it acts on it.
+ 
+Whether each side enforces the per-attempt timeout is declared independently:
+ 
+- The transport declares whether it should enforce the timeout natively for
+  this connection
+- The failure semantics implementation declares whether it should enforce the
+  timeout by external interruption for this connection
+Both are independent, optional declarations.
+ 
+**Absolute timeout**
+ 
+The wiring configuration MUST support declaring an absolute timeout per
+connection — a hard ceiling on the total execution time across all attempts,
+retries, and waits. The platform MUST make this value available to the failure
+semantics implementation. Whether a given failure semantics implementation
+enforces it depends on its declared capabilities; implementations are not
+mandated to support it.
+ 
+Configuring an absolute timeout is optional and at the discretion of the
+operator. When not configured, no absolute timeout is in effect. The absolute
+timeout is explicitly exempt from the transport's safe-to-interrupt declaration
+— its purpose is to break infinite loops and hung calls where no other
+mechanism would fire.
+ 
+**Transport capability declarations**
+ 
+A transport MUST declare the following capabilities in its metadata file:
+ 
+- Whether it supports native per-call timeout enforcement
+- Whether it is safe to interrupt externally on timeout
+A transport that does not declare these capabilities is assumed to support
+both. A transport that may leave connections in an inconsistent state when
+interrupted externally MUST declare that it is not safe to interrupt.
+ 
+**Failure semantics capability declarations**
+ 
+A failure semantics implementation MUST declare in its metadata file whether
+it supports external timeout enforcement. A failure semantics implementation
+that does not declare this capability is assumed not to support it.
+ 
+External timeout enforcement capability is required to configure the failure
+semantics implementation to enforce the per-attempt timeout externally.
+ 
+**Tooling validation**
+ 
+Errors — guaranteed to cause incorrect or unsafe runtime behaviour, MUST block
+deployment:
+ 
+- A connection configures the transport to enforce the per-attempt timeout
+  natively, but the transport has declared it does not support this
+- A connection configures the failure semantics implementation to enforce the
+  per-attempt timeout externally, but the implementation has not declared
+  support for external timeout enforcement
+- A connection configures the failure semantics implementation to enforce the
+  per-attempt timeout externally, but the transport has declared it is not
+  safe to interrupt externally
+- An absolute timeout is configured but the failure semantics implementation
+  has not declared support for external timeout enforcement
+Warnings — technically permitted but warrant deliberate reconsideration, MUST
+be visible to the operator and MUST NOT block deployment:
+ 
+- A per-attempt timeout is configured and both sides are configured to enforce
+  it — both will independently attempt enforcement; behaviour depends on which
+  fires first
+- A per-attempt timeout is configured and neither side is configured to enforce
+  it — the value will be passed to the transport but nothing is configured to
+  act on it
+### 14.11 Runtime Behaviour
+ 
+At startup, the agent MUST:
+ 
+1. Read the failure semantics configuration for each connection from the wiring
+   configuration
+2. Locate the failure semantics implementation identified by the type identifier
+3. Pass the implementation-specific parameters to the implementation for
+   parsing and validation at startup time — not at call time
+4. Make the parsed configuration available to the proxy for the lifetime of
+   the connection
+If a connection references a failure semantics type identifier for which no
+implementation is loaded, the agent MUST fail at startup with a clear error.
+The agent MUST NOT start a connection with an unresolvable failure semantics
+reference.
+ 
+At call time, the proxy MUST:
+ 
+1. Emit `CALL_SENT`
+2. Invoke the failure semantics implementation, passing the transport call as
+   the unit of work, the parsed configuration, and the idempotency flag for
+   the method
+3. Receive the result or error from the failure semantics implementation
+4. Emit `RETURN_RECEIVED`
+5. Return the result or surface the error to the caller
+### 14.12 Error Handling
+ 
+Not all errors are candidates for retry. The failure semantics implementation
+MUST treat errors differently based on their kind (§6.6.1):
+ 
+| Error Kind  | Retry behaviour |
+|-------------|-----------------|
+| `CHECKED`   | MUST NOT be retried. A checked error signals that the callee executed and rejected the request through its declared error path — a business condition, not an infrastructure failure. The error MUST pass through to the caller immediately. |
+| `RUNTIME`   | MAY be retried, subject to the idempotency flag and the implementation's configuration. |
+| `TRANSPORT` | MAY be retried, subject to the idempotency flag and the implementation's configuration. |
+ 
+A failure semantics implementation that exhausts all retry attempts or exceeds
+a configured timeout MUST signal failure to the proxy. The proxy MUST surface
+this as a `TRANSPORT` error — the infrastructure failed to deliver the call,
+regardless of how many attempts were made.
+ 
+The error surfaced to the caller MUST be the platform's `ItaraRemoteException`
+equivalent. Transport-library-specific or failure-semantics-library-specific
+exceptions MUST NOT be exposed to calling code.
+ 
+### 14.13 Tooling Implications
+ 
+Errors and warnings from this section are defined in §14.10. As a general
+principle across the Itara tooling model:
+ 
+- An **error** is a condition guaranteed to result in incorrect or unsafe
+  runtime behaviour. Errors MUST block deployment.
+- A **warning** is a condition that is technically permitted but warrants
+  deliberate reconsideration. Warnings MUST be visible to the operator and
+  MUST NOT block deployment.
+The ability to distinguish these statically — without running the system — is
+a core value of the Itara tooling model.
+ 
 ---
 
 ## Appendix A: Resolved Decisions
