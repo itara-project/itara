@@ -2,6 +2,9 @@ package io.itara.agent.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -48,6 +51,8 @@ public class ConfigLoader {
             Pattern.compile("\\$\\{([^}:]+)(?::-(.*?))?}");
 
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
+
+    private static final Yaml SNAKE_YAML = new Yaml(new SafeConstructor(new LoaderOptions()));
 
     // ── Public API ─────────────────────────────────────────────────────────
 
@@ -142,9 +147,25 @@ public class ConfigLoader {
             return new WiringConfig();
         }
 
+        // SnakeYAML's Composer resolves anchors, aliases, and merge keys (<<) before
+        // Jackson sees the document. Jackson's YAMLParser intercepts alias tokens and
+        // converts them to their anchor name as a plain string, bypassing resolution
+        // entirely — so we must resolve first, then deserialize from the resolved object.
+        Object resolved;
+        try {
+            resolved = SNAKE_YAML.load(substituted);
+        } catch (Exception e) {
+            throw new ConfigurationException(
+                    "[Itara] Failed to parse wiring config: " + e.getMessage(), e);
+        }
+
+        if (resolved == null) {
+            return new WiringConfig();
+        }
+
         WiringConfig config;
         try {
-            config = MAPPER.readValue(substituted, WiringConfig.class);
+            config = MAPPER.convertValue(resolved, WiringConfig.class);
         } catch (Exception e) {
             throw new ConfigurationException(
                     "[Itara] Failed to parse wiring config: " + e.getMessage(), e);
