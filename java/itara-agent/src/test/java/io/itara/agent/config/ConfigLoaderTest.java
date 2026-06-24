@@ -1222,4 +1222,129 @@ class ConfigLoaderTest {
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
         }
     }
+
+    // ── YAML anchors, aliases, and merge keys ──────────────────────────────
+
+    @Nested
+    @DisplayName("YAML anchors, aliases, and merge keys")
+    class YamlAnchorsAndMergeKeys {
+
+        @Test
+        @DisplayName("scalar alias — node id defined once and referenced via alias")
+        void scalarAlias() {
+            String yaml = """
+                anchors:
+                  host: &calcHost "localhost"
+                connections:
+                  - from: gateway
+                    to:   calculator
+                    type: http
+                    host: *calcHost
+                    port: 8081
+                """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("localhost", conn.getHost());
+        }
+
+        @Test
+        @DisplayName("mapping alias — full connection block reused via alias")
+        void mappingAlias() {
+            String yaml = """
+                connections:
+                  - &baseConn
+                    from: gateway
+                    to:   calculator
+                    type: http
+                    host: localhost
+                    port: 8081
+                  - *baseConn
+                """;
+            List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
+            assertEquals(2, conns.size());
+            assertEquals("gateway",   conns.get(1).getFrom());
+            assertEquals("calculator",conns.get(1).getTo());
+            assertEquals("localhost", conns.get(1).getHost());
+            assertEquals(8081,        conns.get(1).getPort());
+        }
+
+        @Test
+        @DisplayName("merge key — shared failureSemantics block merged into connection")
+        void mergeKey() {
+            String yaml = """
+                defaults:
+                  failureSemantics: &defaultFs
+                    id: built-in
+                    maxRetry: 3
+                    timeout: 2s
+                connections:
+                  - from: gateway
+                    to:   calculator
+                    type: http
+                    host: localhost
+                    port: 8081
+                    failureSemantics:
+                      <<: *defaultFs
+                """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("built-in", conn.getFailureSemanticsType());
+            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+            assertEquals(java.time.Duration.ofSeconds(2),
+                    conn.getFailureSemanticsConfig().getTimeout());
+        }
+
+        @Test
+        @DisplayName("merge key with override — local value takes precedence over merged value")
+        void mergeKeyWithOverride() {
+            String yaml = """
+                defaults:
+                  failureSemantics: &defaultFs
+                    id: built-in
+                    maxRetry: 3
+                    timeout: 2s
+                connections:
+                  - from: gateway
+                    to:   calculator
+                    type: http
+                    host: localhost
+                    port: 8081
+                    failureSemantics:
+                      <<: *defaultFs
+                      timeout: 5s
+                """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals(java.time.Duration.ofSeconds(5),
+                    conn.getFailureSemanticsConfig().getTimeout());
+            // maxRetry still inherited from the anchor
+            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+        }
+
+        @Test
+        @DisplayName("multiple anchors — two distinct anchors used in the same file")
+        void multipleAnchors() {
+            String yaml = """
+                anchors:
+                  calcConn: &calcConn
+                    host: calc-host
+                    port: 8081
+                  notifConn: &notifConn
+                    host: notif-host
+                    port: 8082
+                connections:
+                  - from: gateway
+                    to:   calculator
+                    type: http
+                    <<: *calcConn
+                  - from: gateway
+                    to:   notifier
+                    type: http
+                    <<: *notifConn
+                """;
+            List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
+            assertEquals(2, conns.size());
+            assertEquals("calc-host",  conns.get(0).getHost());
+            assertEquals(8081,         conns.get(0).getPort());
+            assertEquals("notif-host", conns.get(1).getHost());
+            assertEquals(8082,         conns.get(1).getPort());
+        }
+    }
 }

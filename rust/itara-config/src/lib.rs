@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use regex::Regex;
 use serde::Deserialize;
+use yaml_merge_keys::merge_keys_serde;
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -511,7 +512,18 @@ pub fn parse_string(yaml: &str) -> Result<WiringConfig, ConfigError> {
         return Ok(WiringConfig::default());
     }
 
-    let config: WiringConfig = serde_yaml::from_str(&substituted).map_err(|e| {
+    // serde_yaml operates at the event stream level and does not resolve
+    // YAML merge keys (<<) or aliases into the final value graph.
+    // Parse to a raw Value first, resolve merge keys, then deserialize.
+    let raw: serde_yaml::Value = serde_yaml::from_str(&substituted).map_err(|e| {
+        ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
+    })?;
+
+    let resolved = merge_keys_serde(raw).map_err(|e| {
+        ConfigError::Invalid(format!("Failed to resolve YAML merge keys: {}", e))
+    })?;
+
+    let config: WiringConfig = serde_yaml::from_value(resolved).map_err(|e| {
         ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
     })?;
 
@@ -710,44 +722,44 @@ connections:
     consumerGroup: "order-consumer-group"
 "#;
 
-#[test]
-fn parses_virtual_node() {
-    let config = parse_string(EVENTS_CONFIG).unwrap();
-    assert_eq!(config.virtual_nodes().len(), 1);
-    let vn = config.virtual_nodes()[0];
-    assert_eq!(vn.id, "orderPlacedChannel");
-    assert_eq!(vn.contract, "order-events/order-placed");
-    assert_eq!(vn.address, "demo.events.order-placed");
-}
+    #[test]
+    fn parses_virtual_node() {
+        let config = parse_string(EVENTS_CONFIG).unwrap();
+        assert_eq!(config.virtual_nodes().len(), 1);
+        let vn = config.virtual_nodes()[0];
+        assert_eq!(vn.id, "orderPlacedChannel");
+        assert_eq!(vn.contract, "order-events/order-placed");
+        assert_eq!(vn.address, "demo.events.order-placed");
+    }
 
-#[test]
-fn node_without_kind_defaults_to_component() {
-    let yaml = r#"
+    #[test]
+    fn node_without_kind_defaults_to_component() {
+        let yaml = r#"
 nodes:
   - id: "orderServiceNode"
     component: "order-service"
 "#;
-    let config = parse_string(yaml).unwrap();
-    assert!(matches!(config.nodes[0], Node::Component(_)));
-}
+        let config = parse_string(yaml).unwrap();
+        assert!(matches!(config.nodes[0], Node::Component(_)));
+    }
 
-#[test]
-fn component_nodes_excludes_virtual() {
-    let config = parse_string(EVENTS_CONFIG).unwrap();
-    assert_eq!(config.component_nodes().len(), 1);
-    assert_eq!(config.component_nodes()[0].id, "orderServiceNode");
-}
+    #[test]
+    fn component_nodes_excludes_virtual() {
+        let config = parse_string(EVENTS_CONFIG).unwrap();
+        assert_eq!(config.component_nodes().len(), 1);
+        assert_eq!(config.component_nodes()[0].id, "orderServiceNode");
+    }
 
-#[test]
-fn is_virtual_node_returns_correct_value() {
-    let config = parse_string(EVENTS_CONFIG).unwrap();
-    assert!(config.is_virtual_node("orderPlacedChannel"));
-    assert!(!config.is_virtual_node("orderServiceNode"));
-}
+    #[test]
+    fn is_virtual_node_returns_correct_value() {
+        let config = parse_string(EVENTS_CONFIG).unwrap();
+        assert!(config.is_virtual_node("orderPlacedChannel"));
+        assert!(!config.is_virtual_node("orderServiceNode"));
+    }
 
-#[test]
-fn kafka_connection_valid_without_port() {
-    let yaml = r#"
+    #[test]
+    fn kafka_connection_valid_without_port() {
+        let yaml = r#"
 nodes:
   - id: "a"
     component: "comp-a"
@@ -761,6 +773,124 @@ connections:
     type: kafka
     serializer: "json"
 "#;
-    assert!(parse_string(yaml).is_ok());
-}
+        assert!(parse_string(yaml).is_ok());
+    }
+
+    // ── YAML anchors, aliases, and merge keys ─────────────────────────────
+
+    #[test]
+    fn scalar_alias_resolves_correctly() {
+        let yaml = r#"
+anchors:
+  host: &calcHost "localhost"
+connections:
+  - from: gateway
+    to: calculator
+    type: http
+    host: *calcHost
+    port: 8081
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections[0].host.as_deref(), Some("localhost"));
+    }
+
+    #[test]
+    fn mapping_alias_resolves_correctly() {
+        let yaml = r#"
+connections:
+  - &baseConn
+    from: gateway
+    to: calculator
+    type: http
+    host: localhost
+    port: 8081
+  - *baseConn
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections.len(), 2);
+        assert_eq!(config.connections[1].host.as_deref(), Some("localhost"));
+        assert_eq!(config.connections[1].port, Some(8081));
+        assert_eq!(config.connections[1].to, "calculator");
+    }
+
+    #[test]
+    fn merge_key_populates_fields() {
+        let yaml = r#"
+defaults: &httpDefaults
+  type: http
+  host: localhost
+  port: 8081
+connections:
+  - from: gateway
+    to: calculator
+    <<: *httpDefaults
+"#;
+        let config = parse_string(yaml).unwrap();
+        let conn = &config.connections[0];
+        // fields present on the mapping itself
+        assert_eq!(conn.from.as_deref(), Some("gateway"));
+        assert_eq!(conn.to, "calculator");
+        // fields populated from the anchor
+        assert!(conn.is_http());
+        assert_eq!(conn.host.as_deref(), Some("localhost"));
+        assert_eq!(conn.port, Some(8081));
+    }
+
+    #[test]
+    fn merge_key_local_value_overrides_anchor() {
+        let yaml = r#"
+defaults: &httpDefaults
+  type: http
+  host: localhost
+  port: 8081
+connections:
+  - from: gateway
+    to: calculator
+    <<: *httpDefaults
+    port: 9090
+"#;
+        let config = parse_string(yaml).unwrap();
+        let conn = &config.connections[0];
+        // fields present on the mapping itself
+        assert_eq!(conn.from.as_deref(), Some("gateway"));
+        assert_eq!(conn.to, "calculator");
+        // local value overrides the anchor
+        assert_eq!(conn.port, Some(9090));
+        // remaining fields still come from the anchor
+        assert!(conn.is_http());
+        assert_eq!(conn.host.as_deref(), Some("localhost"));
+    }
+
+    #[test]
+    fn multiple_anchors_resolve_independently() {
+        let yaml = r#"
+anchors:
+  calc: &calcDefaults
+    host: calc-host
+    port: 8081
+  notif: &notifDefaults
+    host: notif-host
+    port: 8082
+connections:
+  - from: gateway
+    to: calculator
+    type: http
+    <<: *calcDefaults
+  - from: gateway
+    to: notifier
+    type: http
+    <<: *notifDefaults
+"#;
+        let config = parse_string(yaml).unwrap();
+        let calc = &config.connections[0];
+        assert_eq!(calc.from.as_deref(), Some("gateway"));
+        assert_eq!(calc.to, "calculator");
+        assert_eq!(calc.host.as_deref(), Some("calc-host"));
+        assert_eq!(calc.port, Some(8081));
+        let notif = &config.connections[1];
+        assert_eq!(notif.from.as_deref(), Some("gateway"));
+        assert_eq!(notif.to, "notifier");
+        assert_eq!(notif.host.as_deref(), Some("notif-host"));
+        assert_eq!(notif.port, Some(8082));
+    }
 }
