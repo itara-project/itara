@@ -4,6 +4,7 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraObserver;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -32,6 +33,8 @@ public class LoggingObserver implements ItaraObserver {
     private final ConcurrentHashMap<String, Long> callSentTimes
             = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> callReceivedTimes
+            = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> customSpanOpenedTimes
             = new ConcurrentHashMap<>();
 
     @Override
@@ -85,6 +88,31 @@ public class LoggingObserver implements ItaraObserver {
                 + componentId + "." + methodName
                 + trace(ctx)
                 + latency
+                + (error ? " ERROR" : ""));
+    }
+
+    @Override
+    public void onCustomSpan(ItaraContext ctx, String name,
+                             Map<String, String> attributes, long timestamp) {
+        if (ctx != null) customSpanOpenedTimes.put(ctx.getItaraSpanId(), timestamp);
+        log.info("[Itara/obs] CUSTOM_SPAN   " + name
+                + (attributes.isEmpty() ? "" : " " + attributes)
+                + trace(ctx));
+    }
+
+    @Override
+    public void onCustomSpanClosed(ItaraContext ctx, String name,
+                                   long timestamp, boolean error) {
+        String duration = "";
+        if (ctx != null) {
+            Long start = customSpanOpenedTimes.remove(ctx.getItaraSpanId());
+            if (start != null) {
+                duration = " duration=" + (timestamp - start) + "ns";
+            }
+        }
+        log.info("[Itara/obs] CUSTOM_SPAN_CLOSED " + name
+                + trace(ctx)
+                + duration
                 + (error ? " ERROR" : ""));
     }
 

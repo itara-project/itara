@@ -241,6 +241,49 @@ public class OtelObserver implements ItaraObserver {
         if (pending != null) closeSpan(pending, timestamp, error);
     }
 
+    /**
+     * Opens an INTERNAL span as a child of whatever is currently on OTel's
+     * context stack — typically a CLIENT span opened by onCallSent.
+     *
+     * Custom spans are sub-spans within an existing call, not new component
+     * boundaries. SpanKind.INTERNAL reflects this correctly.
+     *
+     * The span is pushed onto SPAN_STACK and popped by onCustomSpanClosed,
+     * maintaining the same LIFO discipline as the four core events.
+     */
+    @Override
+    public void onCustomSpan(ItaraContext ctx, String name,
+                             Map<String, String> attributes, long timestamp) {
+        Span span = tracer
+                .spanBuilder(name)
+                .setSpanKind(SpanKind.INTERNAL)
+                .setParent(Context.current())
+                .setStartTimestamp(timestamp, TimeUnit.NANOSECONDS)
+                .startSpan();
+
+        attributes.forEach((k, v) -> span.setAttribute(k, v));
+
+        if (ctx != null) {
+            span.setAttribute(ATTR_ITARA_TRACE, ctx.getItaraTraceId());
+            span.setAttribute(ATTR_ITARA_SPAN,  ctx.getItaraSpanId());
+        }
+
+        Scope scope = span.makeCurrent();
+        SPAN_STACK.get().push(new PendingSpan(
+                span, scope, timestamp, name, "", "", SpanKind.INTERNAL));
+    }
+
+    @Override
+    public void onCustomSpanClosed(ItaraContext ctx, String name,
+                                   long timestamp, boolean error) {
+        PendingSpan pending = SPAN_STACK.get().poll();
+        if (pending == null) return;
+        if (error) pending.span.setStatus(StatusCode.ERROR);
+        pending.scope.close();
+        pending.span.end(timestamp, TimeUnit.NANOSECONDS);
+        // No metric recorded — custom spans are structural, not call metrics
+    }
+
     @Override
     public Map<String, String> serializeContext() {
         Map<String, String> headers = new HashMap<>();

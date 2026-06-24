@@ -219,6 +219,47 @@ public final class ObservabilityFacade {
         return new CalleeScope(componentId, methodName);
     }
 
+    // ── Custom events ────────────────────────────────────────────────────────
+
+    /**
+     * Opens a custom span as a child of the currently active context.
+     *
+     * Creates a new child ItaraContext (inheriting trace and request ids,
+     * not extending edgePath), pushes it, fires onCustomSpan on all
+     * observers, and returns a scope that fires onCustomSpanClosed and
+     * pops the context when closed.
+     *
+     * Always use in a try-with-resources block. setError(true) should be
+     * called on the scope before it closes if the work inside threw.
+     *
+     * If no context is currently active — which should not happen in normal
+     * call paths — a new root context is created. This is a safety fallback,
+     * not an expected path.
+     *
+     * @param name       a short descriptive name for the span, e.g. "retry-attempt"
+     * @param attributes freeform key-value pairs to attach to the span,
+     *                   e.g. {"attempt": "2"}. Must not be null.
+     * @return a scope that closes the span and pops the context on close
+     */
+    public ItaraScope openCustomSpan(String name, Map<String, String> attributes) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newCustomSpan()
+                : ItaraContext.newRoot(name);
+        ItaraContext.push(ctx);
+
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.onCustomSpan(ctx, name, attributes, timestamp);
+            } catch (Exception e) {
+                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                        + " threw on onCustomSpan: " + e.getMessage());
+            }
+        }
+        return new CustomSpanScope(name);
+    }
+
     // ── Scope implementations ──────────────────────────────────────────────
 
     /** Scope returned by restoreInboundContext — pops on close, no event. */
@@ -291,6 +332,33 @@ public final class ObservabilityFacade {
                 } catch (Exception e) {
                     log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
                             + " threw on onReturnSent: " + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by openCustomSpan — fires onCustomSpanClosed and pops. */
+    private final class CustomSpanScope implements ItaraScope {
+        private final String name;
+        private boolean error = false;
+
+        CustomSpanScope(String name) {
+            this.name = name;
+        }
+
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onCustomSpanClosed(ctx, name, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
+                            + " threw on onCustomSpanClosed: " + e.getMessage());
                 }
             }
             ItaraContext.pop();

@@ -151,6 +151,27 @@ public final class ItaraContext {
     }
 
     /**
+     * Creates a child context for a custom span within the current call.
+     *
+     * Inherits all fields from the parent unchanged — custom spans are
+     * sub-spans within an existing component boundary, not topology hops.
+     * edgePath is not extended, sourceNode is not changed.
+     *
+     * Used by ObservabilityFacade.openCustomSpan().
+     */
+    public ItaraContext newCustomSpan() {
+        return new ItaraContext(
+                this.itaraTraceId,
+                generateItaraSpanId(),
+                this.itaraSpanId,
+                this.requestId,
+                this.correlationId,
+                this.sourceNode,
+                this.edgePath
+        );
+    }
+
+    /**
      * Restores a context received from a remote caller.
      * Used by ContextPropagation when an incoming request carries Itara
      * propagation headers.
