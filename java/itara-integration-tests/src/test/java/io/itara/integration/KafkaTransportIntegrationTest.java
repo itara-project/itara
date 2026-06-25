@@ -104,6 +104,7 @@ public class KafkaTransportIntegrationTest {
                         COMPONENT_ID, serializer, producerTransport,
                         props, ExchangePattern.FIRE_AND_FORGET,
                         new NoopFailureSemantics(),
+                        null,
                         null
                 )
         );

@@ -76,7 +76,7 @@ public class ItaraProxyHandlerIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(COMPONENT_ID, serializer, noopTransport,
-                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata)
+                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null)
         );
     }
 
@@ -154,7 +154,7 @@ public class ItaraProxyHandlerIntegrationTest {
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(COMPONENT_ID, serializer, checkingTransport,
                             PROPS, ExchangePattern.REQUEST_REPLY,
-                            new NoopFailureSemantics(), null)
+                            new NoopFailureSemantics(), null, null)
             );
 
             // Should throw — not swallow

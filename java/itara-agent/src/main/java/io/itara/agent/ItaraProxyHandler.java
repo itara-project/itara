@@ -2,6 +2,8 @@ package io.itara.agent;
 
 import io.itara.agent.metadata.MetadataFile;
 import io.itara.exceptions.ItaraErrorPayload;
+import io.itara.exceptions.ItaraReconstructibleException;
+import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
@@ -16,7 +18,9 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Generic InvocationHandler for all remote component calls, regardless of transport.
@@ -48,6 +52,8 @@ import java.util.Set;
  */
 public class ItaraProxyHandler implements InvocationHandler {
 
+    private static final Logger log = Logger.getLogger(ItaraProxyHandler.class.getName());
+
     private final String componentId;
     private final String transportType;
     private final ItaraSerializer serializer;
@@ -57,6 +63,7 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final ExchangePattern exchangePattern;
     private final ItaraFailureSemantics failureSemantics;
     private final Set<String> nonIdempotentMethods;
+    private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registere
 
     public ItaraProxyHandler(String componentId,
                              ItaraSerializer serializer,
@@ -64,18 +71,20 @@ public class ItaraProxyHandler implements InvocationHandler {
                              Map<String, String> properties,
                              ExchangePattern exchangePattern,
                              ItaraFailureSemantics failureSemantics,
-                             MetadataFile apiMetadata) {
-        this.componentId     = componentId;
-        this.transportType   = transport.type();
-        this.serializer      = serializer;
-        this.transport       = transport;
-        this.properties      = properties;
-        this.facade          = ObservabilityFacade.instance();
-        this.exchangePattern = exchangePattern;
-        this.failureSemantics   = failureSemantics;
+                             MetadataFile apiMetadata,
+                             ItaraReconstructibleExceptionFactory exceptionFactory) {
+        this.componentId          = componentId;
+        this.transportType        = transport.type();
+        this.serializer           = serializer;
+        this.transport            = transport;
+        this.properties           = properties;
+        this.facade               = ObservabilityFacade.instance();
+        this.exchangePattern      = exchangePattern;
+        this.failureSemantics     = failureSemantics;
         this.nonIdempotentMethods = apiMetadata != null
                 ? apiMetadata.getMethods().nonIdempotentSet()
                 : Collections.emptySet();
+        this.exceptionFactory = exceptionFactory;
     }
 
     @Override
@@ -160,6 +169,28 @@ public class ItaraProxyHandler implements InvocationHandler {
                 responseBytes = failureSemantics.execute(work, idempotent);
             } catch (ItaraRemoteException e) {
                 scope.setError(true);
+                if (e.getErrorKind() == ItaraRemoteException.ErrorKind.CHECKED
+                        && exceptionFactory != null) {
+                    Optional<ItaraReconstructibleException> reconstructed =
+                            exceptionFactory.reconstruct(e.getRemoteExceptionClass(), e.getMessage());
+                    if (reconstructed.isPresent()) {
+                        if (reconstructed.get() instanceof Throwable
+                                && isDeclaredOn(method, (Throwable) reconstructed.get())) {
+                            throw (Throwable) reconstructed.get();
+                        }
+                        // Reconstruction produced a type not declared on this method, or a
+                        // non-Throwable. Both are factory contract violations — log and fall back.
+                        // Note: non-Throwable implementations of ItaraReconstructibleException
+                        // will also be caught here; the Java compiler prevents throwing
+                        // non-Throwables so this can only happen via a careless factory.
+                        log.warning("[Itara] Exception factory for contract '" + componentId
+                                + "' returned '"
+                                + reconstructed.get().getClass().getName()
+                                + "' for error '" + e.getRemoteExceptionClass()
+                                + "' but it is not declared on method '" + method.getName()
+                                + "' — falling back to ItaraRemoteException.");
+                    }
+                }
                 throw e;
             }
 
@@ -176,5 +207,22 @@ public class ItaraProxyHandler implements InvocationHandler {
             }
 
         } // 6. scope.close() → RETURN_RECEIVED, context popped
+    }
+
+    /**
+     * Returns true if the given throwable is assignment-compatible with any
+     * checked exception declared on the method. Subtype relationships are
+     * handled correctly — a reconstructed subclass of a declared exception
+     * type passes this check.
+     *
+     * Used to guard reconstruction: if the factory returns a type the method
+     * doesn't declare, throwing it would cause the JDK proxy to wrap it in
+     * UndeclaredThrowableException. We detect this and fall back instead.
+     */
+    private static boolean isDeclaredOn(Method method, Throwable t) {
+        for (Class<?> declared : method.getExceptionTypes()) {
+            if (declared.isAssignableFrom(t.getClass())) return true;
+        }
+        return false;
     }
 }

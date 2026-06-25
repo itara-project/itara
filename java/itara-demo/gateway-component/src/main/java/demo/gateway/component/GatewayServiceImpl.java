@@ -1,5 +1,6 @@
 package demo.gateway.component;
 
+import demo.calculator.api.ArithmeticOperationException;
 import demo.calculator.api.CalculatorService;
 import demo.gateway.api.GatewayService;
 
@@ -27,6 +28,22 @@ public class GatewayServiceImpl implements GatewayService {
         log.info("[Gateway] Received request: add(" + a + ", " + b + ")");
         int result = calculator.add(a, b);
         String message = "The result of " + a + " + " + b + " = " + result;
+        log.info("[Gateway] Returning: " + message);
+        return message;
+    }
+
+    @Override
+    public String divide(int a, int b) {
+        log.info("[Gateway] Received request: divide(" + a + ", " + b + ")");
+        int result = 0;
+        try {
+            result = calculator.divide(a, b);
+        } catch (ArithmeticOperationException e) {
+            String errorMessage = "calculator threw an exception: " + e.getMessage();
+            log.info(errorMessage);
+            return errorMessage;
+        }
+        String message = "The result of " + a + " / " + b + " = " + result;
         log.info("[Gateway] Returning: " + message);
         return message;
     }
