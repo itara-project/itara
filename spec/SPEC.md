@@ -486,15 +486,15 @@ Classification is the responsibility of the agent's dispatcher layer, not the tr
  
 #### 6.6.2 Error Payload
  
-When an error occurs on the callee side, the agent MUST produce an `ItaraErrorPayload` before the error reaches the transport. `ItaraErrorPayload` is a plain structured object carrying:
+When an error occurs on the callee side, the agent MUST produce a structured error payload before the error reaches the transport. The payload MUST carry:
  
-| Field | Type | Description |
-|-------|------|-------------|
-| `errorKind` | ErrorKind | One of `CHECKED`, `RUNTIME`, `TRANSPORT` |
-| `remoteExceptionClass` | String | Fully qualified class name of the original exception |
-| `message` | String | Message from the original exception |
+- The error kind — one of `CHECKED`, `RUNTIME`, `TRANSPORT`
+- A platform-specific identifier for the original error type, sufficient to identify it on the caller side. The format of this identifier is defined by each language implementation.
+- The message from the original error
+
+The payload MUST NOT include stack traces, cause chains, or any implementation-specific detail that would create a security concern or couple the caller to the callee's runtime environment. The serializer treats the error payload as a plain object — it has no special knowledge of error semantics.
  
-The payload MUST NOT include stack traces, cause chains, or any implementation-specific detail that would create a security concern or couple the caller to the callee's runtime environment. The serializer treats `ItaraErrorPayload` as a plain object — it has no special knowledge of error semantics.
+*Reference implementation note: the Java reference implementation uses an `ItaraErrorPayload` object with fields for error kind, error type identifier (fully qualified class name), and message.*
  
 #### 6.6.3 Dispatcher Responsibilities
  
@@ -514,7 +514,8 @@ The proxy MUST:
 - Deserialize the payload as `ItaraErrorPayload` using the connection's configured serializer
 - Reconstruct the caller-side error representation from the payload
 - If deserialization of the error payload fails for any reason, treat the failure as a `TRANSPORT` error
-A conforming proxy MUST NOT allow undeclared checked exceptions to propagate to calling code. All errors crossing a component boundary MUST be surfaced as the implementation's `ItaraRemoteException` equivalent.
+
+For `RUNTIME` and `TRANSPORT` errors, the proxy MUST surface the error as the platform's `ItaraRemoteException` equivalent. For `CHECKED` errors, the proxy MUST attempt reconstruction into the original error type if the error type supports it (§6.6.6). If reconstruction is not supported or fails, the proxy MUST fall back to the platform's `ItaraRemoteException` equivalent. The proxy MUST NOT silently discard any error.
  
 #### 6.6.5 Transport Responsibilities
  
@@ -529,6 +530,37 @@ The transport MAY map error kinds to transport-level status signals. For HTTP tr
 | `TRANSPORT` | 503 Service Unavailable |
  
 Protocol-level failures that prevent payload delivery — such as HTTP 400 or 405 — carry no error payload and MUST be treated as `TRANSPORT` errors by the proxy.
+
+#### 6.6.6 Checked Error Reconstruction
+ 
+When a `CHECKED` error crosses a topology boundary, the caller should not need to know whether the call was direct or remote. If the original error type is available on the caller side and has declared support for reconstruction, the proxy reconstructs and rethrows it as the original type. The topology boundary is invisible to the caller's error handling code.
+ 
+**Opt-in**
+ 
+Reconstruction is opt-in at the error type level. An error type that does not declare support for reconstruction is never reconstructed — the proxy falls back to the platform's `ItaraRemoteException` equivalent. This ensures that reconstruction never occurs on an error type whose author did not intend it.
+ 
+How an error type declares support for reconstruction is defined by each language implementation.
+ 
+**What reconstruction must preserve**
+ 
+A reconstructed error MUST carry at minimum:
+ 
+- The original error type
+- The original error message
+
+A reconstructed error MUST NOT carry stack traces or cause chains from the callee's runtime environment. These are security-sensitive and create coupling between caller and callee runtimes.
+ 
+**Fallback**
+ 
+If the error type does not declare support for reconstruction, or if reconstruction fails for any reason, the proxy MUST surface the error as the platform's `ItaraRemoteException` equivalent carrying the `errorType` and `message` from the payload. The proxy MUST NOT silently discard the error or lose the error kind.
+ 
+**Scope**
+ 
+Reconstruction applies to `CHECKED` errors only. `RUNTIME` and `TRANSPORT` errors are always surfaced as the platform's `ItaraRemoteException` equivalent. These are not declared on the contract and the caller is not expected to handle them as typed errors.
+ 
+**Language neutrality**
+ 
+The reconstruction mechanism is language-specific. Conforming implementations MUST document how error types declare support for reconstruction in their language. The normative requirement is the behaviour — opt-in, preserve type and message, carry remote origin context, fall back safely — not the mechanism.
 
 ---
 

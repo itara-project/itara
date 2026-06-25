@@ -8,11 +8,13 @@ import io.itara.agent.config.NodeKind;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.agent.metadata.MetadataFile;
+import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.FailureSemanticsRegistry;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
+import io.itara.runtime.ReconstructibleExceptionRegistry;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
@@ -41,6 +43,9 @@ import java.util.logging.Logger;
  *   6. Load META-INF/itara/transport — discover available transport impls
  *   7. Load META-INF/itara/observer — discover available observer impls
  *   7b. Load META-INF/itara/failure-semantics — discover available failure
+ *       semantics implementations
+ *   7c. Load META-INF/itara/exception-factory — discover reconstructible
+ *       exception factories from API artifact jars
  *   8. Initialize ObservabilityFacade
  *   9. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
@@ -123,6 +128,10 @@ public class ItaraAgent {
         // ── Step 7b: Load failure semantics (META-INF/itara/failure-semantics)
         log.info("[Itara] Loading failure semantics implementations...");
         FailureSemanticsLoader.load(itaraClassLoader);
+
+        // ── Step 7c: Load exception factories (META-INF/itara/exception-factory)
+        log.info("[Itara] Loading reconstructible exception factories...");
+        ReconstructibleExceptionFactoryLoader.load(itaraClassLoader);
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
@@ -242,11 +251,16 @@ public class ItaraAgent {
                                 + contractId + "' — all methods will be treated as idempotent.");
                     }
 
+                    ItaraReconstructibleExceptionFactory exceptionFactory =
+                            ReconstructibleExceptionRegistry.instance()
+                                    .get(contractId)
+                                    .orElse(null);
+
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             itaraClassLoader,
                             new Class<?>[]{ contractClass },
                             new ItaraProxyHandler(contractId, serializer, transport,
-                                    props, pattern, failureSemantics, apiMetadata)
+                                    props, pattern, failureSemantics, apiMetadata, exceptionFactory)
                     );
                     registry.preRegister(contractId, proxy);
 

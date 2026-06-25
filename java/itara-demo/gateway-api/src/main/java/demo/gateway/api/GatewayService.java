@@ -13,4 +13,7 @@ public interface GatewayService {
 
     @ContractMethod
     String calculate(int a, int b);
+
+    @ContractMethod
+    String divide(int a, int b);
 }

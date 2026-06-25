@@ -37,19 +37,10 @@ public class OrderServiceImpl implements OrderService {
         try {
             inventory.reserveOrder(orderId, productId, quantity);
         } catch (InsufficientStockException e) {
-            // Direct call (collocated topology) — original typed exception is preserved
+            // In remote calls, checked exceptions can get reconstructed if opted in
+            // In direct calls, exceptions simply surface as expected
             log.warning("[Order] Insufficient stock for order=" + orderId + ": " + e.getMessage());
             return false;
-        } catch (ItaraRemoteException e) {
-            // Remote call — Itara preserves the original exception class name across the wire,
-            // but does not reconstruct the original type. We inspect the class name to identify it.
-            // In the future, checked exception declared on the API might be reconstructed and thrown,
-            // so the caller doesn't need to know about how Itara handles the errors. It is under discussion
-            if (InsufficientStockException.class.getName().equals(e.getRemoteExceptionClass())) {
-                log.warning("[Order] Insufficient stock (remote) for order=" + orderId + ": " + e.getMessage());
-                return false;
-            }
-            throw e;
         }
 
         boolean paid = payment.process_payment(orderId, amountCents, currency);

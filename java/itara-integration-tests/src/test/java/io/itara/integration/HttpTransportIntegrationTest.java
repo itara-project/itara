@@ -6,6 +6,8 @@ import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
+import io.itara.exceptions.ItaraReconstructibleException;
+import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
@@ -20,6 +22,7 @@ import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -84,6 +87,7 @@ class HttpTransportIntegrationTest {
                         Map.of("host", "localhost", "port", String.valueOf(port)),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        null,
                         null
                 )
         );
@@ -159,6 +163,7 @@ class HttpTransportIntegrationTest {
                         Map.of("host", "localhost", "port", String.valueOf(port)),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        null,
                         null
                 )
         );
@@ -184,6 +189,7 @@ class HttpTransportIntegrationTest {
                         Map.of("host", "localhost", "port", String.valueOf(deadPort)),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        null,
                         null
                 )
         );
@@ -216,6 +222,197 @@ class HttpTransportIntegrationTest {
         String str = ex.toString();
         assertTrue(str.contains("CHECKED"));
         assertTrue(str.contains("ArithmeticOperationException"));
+    }
+
+    @Nested
+    @DisplayName("checked error reconstruction")
+    class CheckedErrorReconstruction {
+
+        private CalculatorService proxyWithFactory() {
+            return (CalculatorService) Proxy.newProxyInstance(
+                    Thread.currentThread().getContextClassLoader(),
+                    new Class<?>[]{ CalculatorService.class },
+                    new ItaraProxyHandler(
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
+                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            ExchangePattern.REQUEST_REPLY,
+                            new NoopFailureSemantics(),
+                            null,
+                            new CalculatorExceptionFactory()
+                    )
+            );
+        }
+
+        private CalculatorService proxyWithNoFactory() {
+            return (CalculatorService) Proxy.newProxyInstance(
+                    Thread.currentThread().getContextClassLoader(),
+                    new Class<?>[]{ CalculatorService.class },
+                    new ItaraProxyHandler(
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
+                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            ExchangePattern.REQUEST_REPLY,
+                            new NoopFailureSemantics(),
+                            null,
+                            null
+                    )
+            );
+        }
+
+        @Test
+        @DisplayName("CHECKED error is reconstructed as the original exception type when factory is registered")
+        void reconstructsCheckedError() {
+            assertThrows(
+                    ArithmeticOperationException.class,
+                    () -> proxyWithFactory().divide(10, 0)
+            );
+        }
+
+        @Test
+        @DisplayName("reconstructed exception preserves the original message")
+        void preservesMessage() throws Exception {
+            ArithmeticOperationException ex = assertThrows(
+                    ArithmeticOperationException.class,
+                    () -> proxyWithFactory().divide(10, 0)
+            );
+            assertEquals("Division by zero is not allowed", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("falls back to ItaraRemoteException when no factory is registered")
+        void fallsBackWhenNoFactory() {
+            ItaraRemoteException ex = assertThrows(
+                    ItaraRemoteException.class,
+                    () -> proxyWithNoFactory().divide(10, 0)
+            );
+            assertEquals(ItaraRemoteException.ErrorKind.CHECKED, ex.getErrorKind());
+        }
+
+        @Test
+        @DisplayName("falls back to ItaraRemoteException when factory returns empty")
+        void fallsBackWhenFactoryReturnsEmpty() {
+            // Factory that always returns empty — simulates opt-out for a specific type
+            ItaraReconstructibleExceptionFactory emptyFactory =
+                    new ItaraReconstructibleExceptionFactory() {
+                        @Override
+                        public String contractId() { return COMPONENT_ID; }
+
+                        @Override
+                        public Optional<ItaraReconstructibleException> reconstruct(
+                                String errorTypeId, String message) {
+                            return Optional.empty();
+                        }
+                    };
+
+            CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
+                    Thread.currentThread().getContextClassLoader(),
+                    new Class<?>[]{ CalculatorService.class },
+                    new ItaraProxyHandler(
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
+                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            ExchangePattern.REQUEST_REPLY,
+                            new NoopFailureSemantics(),
+                            null,
+                            emptyFactory
+                    )
+            );
+
+            ItaraRemoteException ex = assertThrows(
+                    ItaraRemoteException.class,
+                    () -> proxy.divide(10, 0)
+            );
+            assertEquals(ItaraRemoteException.ErrorKind.CHECKED, ex.getErrorKind());
+        }
+
+        @Test
+        @DisplayName("RUNTIME error is not reconstructed even when factory is registered")
+        void runtimeErrorNotReconstructed() {
+            ItaraRemoteException ex = assertThrows(
+                    ItaraRemoteException.class,
+                    () -> proxyWithFactory().divide(Integer.MIN_VALUE, -1)
+            );
+            assertEquals(ItaraRemoteException.ErrorKind.RUNTIME, ex.getErrorKind());
+        }
+
+        @Test
+        @DisplayName("falls back to ItaraRemoteException when factory returns a type not declared on the method")
+        void fallsBackWhenReconstructedTypeNotDeclaredOnMethod() {
+            // Factory returns a type that is not declared on CalculatorService.divide()
+            ItaraReconstructibleExceptionFactory wrongTypeFactory =
+                    new ItaraReconstructibleExceptionFactory() {
+
+                        // A reconstructible exception that is NOT declared on divide()
+                        class UndeclaredReconstructibleException
+                                extends Exception implements ItaraReconstructibleException {
+                            UndeclaredReconstructibleException(String message) { super(message); }
+                        }
+
+                        @Override
+                        public String contractId() { return COMPONENT_ID; }
+
+                        @Override
+                        public Optional<ItaraReconstructibleException> reconstruct(
+                                String errorTypeId, String message) {
+                            return Optional.of(new UndeclaredReconstructibleException(message));
+                        }
+                    };
+
+            CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
+                    Thread.currentThread().getContextClassLoader(),
+                    new Class<?>[]{ CalculatorService.class },
+                    new ItaraProxyHandler(
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
+                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            ExchangePattern.REQUEST_REPLY,
+                            new NoopFailureSemantics(),
+                            null,
+                            wrongTypeFactory
+                    )
+            );
+
+            // Must not throw UndeclaredThrowableException — falls back cleanly
+            ItaraRemoteException ex = assertThrows(
+                    ItaraRemoteException.class,
+                    () -> proxy.divide(10, 0)
+            );
+            assertEquals(ItaraRemoteException.ErrorKind.CHECKED, ex.getErrorKind());
+        }
+
+        @Test
+        @DisplayName("fallback preserves error kind and remote exception class from the payload")
+        void fallbackPreservesPayloadDetails() {
+            ItaraRemoteException ex = assertThrows(
+                    ItaraRemoteException.class,
+                    () -> proxyWithNoFactory().divide(10, 0)
+            );
+            assertAll(
+                    () -> assertEquals(ItaraRemoteException.ErrorKind.CHECKED, ex.getErrorKind()),
+                    () -> assertEquals("demo.calculator.api.ArithmeticOperationException",
+                            ex.getRemoteExceptionClass()),
+                    () -> assertEquals("Division by zero is not allowed", ex.getMessage())
+            );
+        }
+    }
+
+    // ── Reconstruction fixtures ───────────────────────────────────────────
+
+    /**
+     * Factory that reconstructs ReconstructibleArithmeticException.
+     * Returns empty for any other error type id.
+     */
+    static class CalculatorExceptionFactory
+            implements ItaraReconstructibleExceptionFactory {
+
+        @Override
+        public String contractId() { return COMPONENT_ID; }
+
+        @Override
+        public Optional<ItaraReconstructibleException> reconstruct(
+                String errorTypeId, String message) {
+            if ("demo.calculator.api.ArithmeticOperationException".equals(errorTypeId)) {
+                return Optional.of(new ArithmeticOperationException(message));
+            }
+            return Optional.empty();
+        }
     }
 
     // — helpers —
