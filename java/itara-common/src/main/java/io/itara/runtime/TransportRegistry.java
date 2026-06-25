@@ -35,7 +35,8 @@ public class TransportRegistry {
      */
     public void register(ItaraTransport transport) {
         transports.put(transport.type().toLowerCase(), transport);
-        log.info("[Itara] Registered transport: " + transport.type() + " -> " + transport.getClass().getName());
+        log.fine("[Itara] registered transport type=" + transport.type()
+                + " class=" + transport.getClass().getName());
     }
 
     /**

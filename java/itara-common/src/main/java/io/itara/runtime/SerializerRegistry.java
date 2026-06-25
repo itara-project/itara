@@ -35,7 +35,8 @@ public class SerializerRegistry {
      */
     public void register(ItaraSerializer serializer) {
         serializers.put(serializer.type().toLowerCase(), serializer);
-        log.info("[Itara] Registered serializer: " + serializer.type() + " -> " + serializer.getClass().getName());
+        log.fine("[Itara] registered serializer type=" + serializer.type()
+                + " class=" + serializer.getClass().getName());
     }
 
     /**

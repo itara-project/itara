@@ -67,7 +67,7 @@ public class ActivatorScanner {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            log.info("[Itara] Found activator descriptor: " + url);
+            log.fine("[Itara] found activator descriptor url=" + url);
 
             String activatorClassName = readActivatorClassName(url);
 
@@ -84,7 +84,7 @@ public class ActivatorScanner {
             ActivatedComponent component = new ActivatedComponent(activatorClass, metadata);
 
             result.put(component.getComponentId(), component);
-            log.info("[Itara] Registered activator: " + component);
+            log.fine("[Itara] registered activator component=" + component);
         }
 
         verify(result, wiringConfig);
@@ -152,7 +152,7 @@ public class ActivatorScanner {
         for (String component : components) {
             if (!activators.containsKey(component)) {
                 hasMissing = true;
-                log.severe("[Itara] FATAL: Activator not found for component " + component + ". Application cannot start.");
+                log.severe("[Itara] no activator found component=" + component);
             }
         }
         if (hasMissing) {

@@ -47,7 +47,7 @@ public class ReconstructibleExceptionFactoryLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            log.info("[Itara] Found exception factory descriptor: " + url);
+            log.fine("[Itara] found exception factory descriptor url=" + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -63,19 +63,18 @@ public class ReconstructibleExceptionFactoryLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraReconstructibleExceptionFactory.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] WARNING: " + line
-                                + " does not implement ItaraReconstructibleExceptionFactory — skipping.");
+                        log.warning("[Itara] skipping reconstructible exception factory class=" + line
+                                + " reason=does not implement ItaraReconstructibleExceptionFactory");
                         continue;
                     }
                     ItaraReconstructibleExceptionFactory factory =
                             (ItaraReconstructibleExceptionFactory) cls.getDeclaredConstructor().newInstance();
                     ReconstructibleExceptionRegistry.instance().register(factory);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] WARNING: Exception factory class not found: "
-                            + line + ". Is the jar on the classpath?");
+                    log.warning("[Itara] exception factory class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] WARNING: Failed to instantiate exception factory "
-                            + line + ": " + e.getMessage());
+                    log.warning("[Itara] failed to instantiate exception factory class="
+                            + line + " error=" + e.getMessage());
                 }
             }
         }

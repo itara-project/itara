@@ -44,13 +44,13 @@ public class ItaraClassLoader extends URLClassLoader {
     public static ClassLoader build(ClassLoader parent) {
         String libDir = System.getProperty(LIB_DIR_PROPERTY);
         if (libDir == null || libDir.isBlank()) {
-            log.info("[Itara] No itara.lib.dir set — " + "transports and plugins must be on the classpath.");
+            log.fine("[Itara] itara.lib.dir not set — plugins must be on the application classpath");
             return parent;
         }
 
         File dir = new File(libDir);
         if (!dir.exists() || !dir.isDirectory()) {
-            log.warning("[Itara] WARNING: itara.lib.dir does not exist " + "or is not a directory: " + libDir);
+            log.warning("[Itara] lib dir does not exist or is not a directory path=" + libDir);
             return parent;
         }
 
@@ -58,7 +58,7 @@ public class ItaraClassLoader extends URLClassLoader {
                 f.isFile() && f.getName().endsWith(".jar"));
 
         if (jars == null || jars.length == 0) {
-            log.warning("[Itara] WARNING: itara.lib.dir is empty: " + libDir);
+            log.warning("[Itara] lib dir contains no jars path=" + libDir);
             return parent;
         }
 
@@ -66,14 +66,14 @@ public class ItaraClassLoader extends URLClassLoader {
         for (int i = 0; i < jars.length; i++) {
             try {
                 urls[i] = jars[i].toURI().toURL();
-                log.info("[Itara] Loading lib: " + jars[i].getName());
+                log.fine("[Itara] loading lib jar=" + jars[i].getName());
             } catch (Exception e) {
                 throw new RuntimeException(
                         "[Itara] Failed to resolve jar URL: " + jars[i], e);
             }
         }
 
-        log.info("[Itara] Loaded " + jars.length + " lib(s) from: " + libDir);
+        log.fine("[Itara] lib dir loaded count=" + jars.length + " path=" + libDir);
         return new ItaraClassLoader(urls, parent);
     }
 

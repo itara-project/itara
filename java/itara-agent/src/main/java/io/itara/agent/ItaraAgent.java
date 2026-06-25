@@ -65,18 +65,17 @@ public class ItaraAgent {
     private static final Logger log = Logger.getLogger(ItaraAgent.class.getName());
 
     public static void premain(String agentArgs, Instrumentation instrumentation) {
-        log.info("[Itara] Agent starting...");
+        log.info("[Itara] agent starting");
 
         try {
             setup(instrumentation);
         } catch (Exception e) {
-            log.severe("[Itara] FATAL: Agent failed to initialize: "
-                    + e.getMessage());
+            log.severe("[Itara] agent startup failed: " + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
 
-        log.info("[Itara] Agent ready. Handing control to application.");
+        log.info("[Itara] agent ready");
     }
 
     private static void setup(Instrumentation instrumentation) throws Exception {
@@ -89,48 +88,47 @@ public class ItaraAgent {
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
-        log.info("[Itara] Loading wiring config from: " + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
+        log.fine("[Itara] loading wiring config path=" + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
         WiringConfig config = ConfigLoader.load();
 
         // ── Step 2: Build metadata index from .itara files ──────────────────
-        log.info("[Itara] Building metadata index from: " + System.getProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY));
+        log.fine("[Itara] building metadata index dir=" + System.getProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY));
         ItaraMetadataIndex.instance().build();
 
         // ── Step 3: Scan for contracts (@ComponentInterface and @EventContractInterface) ───────────────
-        log.info("[Itara] Scanning classpath for component contracts...");
+        log.fine("[Itara] scanning classpath for component contracts");
         Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
         if (contracts.isEmpty()) {
-            log.warning("[Itara] WARNING: No @ComponentInterface classes found. "
-                    + "Check that API jars are on the classpath.");
+            log.warning("[Itara] no component contracts found — check that API jars are on the classpath");
         }
         Map<String, Class<?>> eventContracts = EventContractScanner.scan(itaraClassLoader);
         if (!eventContracts.isEmpty()) {
-            log.info("[Itara] Found " + eventContracts.size() + " event contract(s).");
+            log.fine("[Itara] found event-contracts count=" + eventContracts.size());
             contracts.putAll(eventContracts);
         }
 
         // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
-        log.info("[Itara] Scanning for activator descriptors...");
+        log.fine("[Itara] scanning for activator descriptors");
         Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config);
 
         // ── Step 5: Load serializers (META-INF/itara/serializer) ─────────────
-        log.info("[Itara] Loading serializer implementations...");
+        log.fine("[Itara] loading serializer implementations");
         SerializerLoader.load(itaraClassLoader);
 
         // ── Step 6: Load transports (META-INF/itara/transport) ─────────────
-        log.info("[Itara] Loading transport implementations...");
+        log.fine("[Itara] loading transport implementations");
         TransportLoader.load(itaraClassLoader);
 
         // ── Step 7: Load observers (META-INF/itara/observer) ───────────────
-        log.info("[Itara] Loading observer implementations...");
+        log.fine("[Itara] loading observer implementations");
         ObserverLoader.load(itaraClassLoader);
 
         // ── Step 7b: Load failure semantics (META-INF/itara/failure-semantics)
-        log.info("[Itara] Loading failure semantics implementations...");
+        log.fine("[Itara] loading failure semantics implementations");
         FailureSemanticsLoader.load(itaraClassLoader);
 
         // ── Step 7c: Load exception factories (META-INF/itara/exception-factory)
-        log.info("[Itara] Loading reconstructible exception factories...");
+        log.fine("[Itara] loading reconstructible exception factories");
         ReconstructibleExceptionFactoryLoader.load(itaraClassLoader);
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
@@ -159,9 +157,9 @@ public class ItaraAgent {
                                 for (var contract : metadata.getImplementedEventContracts().getContracts()) {
                                     registry.registerAlias(
                                             contract.getId(), node.getComponent());
-                                    log.info("[Itara] Registered event contract alias: "
+                                    log.fine("[Itara] registered event-contract-alias id="
                                             + contract.getId()
-                                            + " -> " + node.getComponent());
+                                            + " component=" + node.getComponent());
                                 }
                             });
                 }
@@ -175,9 +173,8 @@ public class ItaraAgent {
 
                 if (conn.isDirect()) {
                     // Colocated — factory handles decoration on first get()
-                    log.info("[Itara] Connection: "
-                            + conn.getFrom() + " -> " + conn.getTo()
-                            + " [direct]");
+                    log.fine("[Itara] connection wired type=direct from=" + conn.getFrom()
+                            + " to=" + conn.getTo());
                     continue;
                 }
 
@@ -217,15 +214,16 @@ public class ItaraAgent {
                     transport.startListener(componentId, props, dispatcher);
 
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        log.info("[Itara] Stopping " + conn.getType()
-                                + " listener for " + componentId + "...");
+                        log.info("[Itara] stopping listener type=" + conn.getType()
+                                + " component=" + componentId);
                         transport.stopListener();
                     }));
 
-                    log.info("[Itara] Connection: "
-                            + (conn.isExternal() ? "[external]" : conn.getFrom())
-                            + " -> " + conn.getTo()
-                            + " [" + conn.getType() + " inbound, " + pattern + "]");
+                    log.info("[Itara] connection established type=" + conn.getType()
+                            + " direction=inbound"
+                            + " from=" + (conn.isExternal() ? "external" : conn.getFrom())
+                            + " to=" + conn.getTo()
+                            + " pattern=" + pattern);
 
                 } else if (fromIsLocal) {
                     // Outbound — wire a proxy regardless of node type
@@ -247,8 +245,8 @@ public class ItaraAgent {
                             .lookupByContractId(contractId)
                             .orElse(null);
                     if (apiMetadata == null) {
-                        log.warning("[Itara] No .itara metadata found for API artifact '"
-                                + contractId + "' — all methods will be treated as idempotent.");
+                        log.warning("[Itara] no metadata found for API artifact contract=" + contractId
+                                + " — all methods will be treated as idempotent");
                     }
 
                     ItaraReconstructibleExceptionFactory exceptionFactory =
@@ -264,9 +262,11 @@ public class ItaraAgent {
                     );
                     registry.preRegister(contractId, proxy);
 
-                    log.info("[Itara] Connection: " + conn.getFrom()
-                            + " -> " + conn.getTo()
-                            + " [" + conn.getType() + " outbound, " + pattern + "]");
+                    log.info("[Itara] connection established type=" + conn.getType()
+                            + " direction=outbound"
+                            + " from=" + conn.getFrom()
+                            + " to=" + conn.getTo()
+                            + " pattern=" + pattern);
                 }
             }
         }

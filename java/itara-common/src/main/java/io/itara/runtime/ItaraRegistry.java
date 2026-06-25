@@ -71,7 +71,7 @@ public class ItaraRegistry {
      */
     public void preRegister(String id, Object proxy) {
         proxies.put(id, proxy);
-        log.info("[Itara] Pre-registered remote proxy for: " + id);
+        log.fine("[Itara] registered remote proxy contract=" + id);
     }
 
     /**
@@ -85,7 +85,7 @@ public class ItaraRegistry {
                                   Class<?> contractClass) {
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
-        log.info("[Itara] Registered activator for: " + id + " -> " + activatorClass.getName());
+        log.fine("[Itara] registered activator component=" + id + " class=" + activatorClass.getName());
     }
 
     /**
@@ -95,7 +95,7 @@ public class ItaraRegistry {
      */
     public void registerAlias(String aliasId, String canonicalId) {
         aliases.put(aliasId, canonicalId);
-        log.info("[Itara] Registered alias: " + aliasId + " -> " + canonicalId);
+        log.fine("[Itara] registered alias id=" + aliasId + " canonical=" + canonicalId);
     }
 
     // ── Application API ───────────────────────────────────────────────────────
@@ -156,11 +156,10 @@ public class ItaraRegistry {
                                 + "Check your wiring config.");
             }
 
-            log.info("[Itara] Activating: " + id);
+            log.fine("[Itara] activating component=" + id);
             ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
             Object instance = activator.activate(this);
-            log.info("[Itara] Activated:  " + id
-                    + " -> " + instance.getClass().getSimpleName());
+            log.fine("[Itara] activated component=" + id + " class=" + instance.getClass().getSimpleName());
             return instance;
 
         } catch (IllegalStateException e) {

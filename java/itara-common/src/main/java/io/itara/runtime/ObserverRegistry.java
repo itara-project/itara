@@ -41,7 +41,7 @@ public final class ObserverRegistry {
 
     public void register(ItaraObserver observer) {
         observers.add(observer);
-        log.info("[Itara] Registered observer: " + observer.getClass().getName());
+        log.fine("[Itara] registered observer class=" + observer.getClass().getName());
     }
 
     public int size() {

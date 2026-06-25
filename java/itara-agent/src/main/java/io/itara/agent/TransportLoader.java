@@ -45,15 +45,13 @@ public class TransportLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
 
         if (!resources.hasMoreElements()) {
-            log.warning("[Itara] WARNING: No transport implementations found "
-                    + "on the classpath. Add at least one transport jar "
-                    + "(e.g. itara-transport-http.jar) to the classpath.");
+            log.warning("[Itara] no transport implementations found.");
             return;
         }
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            log.info("[Itara] Found transport descriptor: " + url);
+            log.fine("[Itara] found transport descriptor url=" + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -70,18 +68,18 @@ public class TransportLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraTransport.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] WARNING: " + line + " does not implement ItaraTransport — skipping.");
+                        log.warning("[Itara] skipping transport class="
+                                + line + " reason=does not implement ItaraTransport");
                         continue;
                     }
                     ItaraTransport transport =
                             (ItaraTransport) cls.getDeclaredConstructor().newInstance();
                     TransportRegistry.instance().register(transport);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] WARNING: Transport class not found: "
-                            + line + ". Is the transport jar on the classpath?");
+                    log.warning("[Itara] transport class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] WARNING: Failed to instantiate transport "
-                            + line + ": " + e.getMessage());
+                    log.warning("[Itara] failed to instantiate transport class="
+                            + line + " error=" + e.getMessage());
                 }
             }
         }

@@ -74,14 +74,14 @@ CALC_PID=$!
 echo "[CI] Calculator JVM started with pid $CALC_PID"
 
 # ── Step 2: Wait for the calculator to be ready ────────────────────────────
-# The agent prints "[Itara] Agent ready." when startup is complete.
+# The agent prints "[Itara] agent ready." when startup is complete.
 # Poll the log file for up to 30 seconds.
 
 echo "[CI] Waiting for calculator to be ready..."
 
 READY=false
 for i in $(seq 1 30); do
-  if grep -q "\[Itara\] Agent ready" "$CALC_LOG" 2>/dev/null; then
+  if grep -q "\[Itara\] agent ready" "$CALC_LOG" 2>/dev/null; then
     READY=true
     break
   fi

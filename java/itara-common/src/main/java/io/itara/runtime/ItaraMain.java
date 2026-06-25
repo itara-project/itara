@@ -27,7 +27,7 @@ public class ItaraMain {
     private static final Logger log = Logger.getLogger(ItaraMain.class.getName());
 
     public static void main(String[] args) throws InterruptedException {
-        log.info("[Itara] Component ready. Waiting for shutdown signal.");
+        log.info("[Itara] component ready");
         Thread.currentThread().join();
     }
 }

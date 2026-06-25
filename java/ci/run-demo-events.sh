@@ -95,7 +95,7 @@ echo "[CI] Consumer JVM started with pid $CONSUMER_PID"
 echo "[CI] Waiting for consumer to be ready..."
 READY=false
 for i in $(seq 1 30); do
-    if grep -q "\[Itara\] Agent ready" "$CONSUMER_LOG" 2>/dev/null; then
+    if grep -q "\[Itara\] agent ready" "$CONSUMER_LOG" 2>/dev/null; then
         READY=true
         break
     fi
@@ -136,7 +136,7 @@ echo "[CI] Producer JVM started with pid $PRODUCER_PID"
 echo "[CI] Waiting for producer to be ready..."
 READY=false
 for i in $(seq 1 30); do
-    if grep -q "\[Itara\] Agent ready" "$PRODUCER_LOG" 2>/dev/null; then
+    if grep -q "\[Itara\] agent ready" "$PRODUCER_LOG" 2>/dev/null; then
         READY=true
         break
     fi

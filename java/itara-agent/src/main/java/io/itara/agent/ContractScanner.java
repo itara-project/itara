@@ -49,7 +49,7 @@ public class ContractScanner {
             Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
             while (resources.hasMoreElements()) {
                 URL url = resources.nextElement();
-                log.info("[Itara] Found contract descriptor: " + url);
+                log.fine("[Itara] found contract descriptor url=" + url);
                 processDescriptor(url, classLoader, result);
             }
         } catch (Exception e) {
@@ -102,6 +102,6 @@ public class ContractScanner {
 
         String id = annotation.id();
         result.put(id, cls);
-        log.info("[Itara] Registered contract: " + id + " -> " + className);
+        log.fine("[Itara] registered contract id=" + id + " class=" + className);
     }
 }
