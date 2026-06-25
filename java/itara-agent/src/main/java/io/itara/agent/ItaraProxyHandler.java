@@ -183,12 +183,12 @@ public class ItaraProxyHandler implements InvocationHandler {
                         // Note: non-Throwable implementations of ItaraReconstructibleException
                         // will also be caught here; the Java compiler prevents throwing
                         // non-Throwables so this can only happen via a careless factory.
-                        log.warning("[Itara] Exception factory for contract '" + componentId
-                                + "' returned '"
-                                + reconstructed.get().getClass().getName()
-                                + "' for error '" + e.getRemoteExceptionClass()
-                                + "' but it is not declared on method '" + method.getName()
-                                + "' — falling back to ItaraRemoteException.");
+                        log.warning("[Itara] reconstructed exception not declared on method"
+                                + " contract=" + componentId
+                                + " method=" + method.getName()
+                                + " error-type=" + e.getRemoteExceptionClass()
+                                + " reconstructed-type=" + reconstructed.get().getClass().getName()
+                                + " — falling back to ItaraRemoteException");
                     }
                 }
                 throw e;

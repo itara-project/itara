@@ -45,14 +45,13 @@ public class ReconstructibleExceptionRegistry {
     public void register(ItaraReconstructibleExceptionFactory factory) {
         String contractId = factory.contractId();
         if (factories.containsKey(contractId)) {
-            log.warning("[Itara] Duplicate exception factory for contract '"
-                    + contractId + "' — replacing "
-                    + factories.get(contractId).getClass().getName()
-                    + " with " + factory.getClass().getName());
+            log.warning("[Itara] duplicate exception factory contract=" + contractId
+                    + " replacing=" + factories.get(contractId).getClass().getName()
+                    + " with=" + factory.getClass().getName());
         }
         factories.put(contractId, factory);
-        log.info("[Itara] Registered exception factory for contract '"
-                + contractId + "': " + factory.getClass().getName());
+        log.fine("[Itara] registered exception factory contract=" + contractId
+                + " class=" + factory.getClass().getName());
     }
 
     /**

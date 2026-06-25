@@ -45,14 +45,13 @@ public class ObserverLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
 
         if (!resources.hasMoreElements()) {
-            log.warning("[Itara] WARNING: No observer implementations found. "
-                    + "Events will not be recorded.");
+            log.warning("[Itara] no observer implementations found — events will not be recorded");
             return;
         }
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            log.info("[Itara] Found observer descriptor: " + url);
+            log.fine("[Itara] found observer descriptor url=" + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -69,19 +68,18 @@ public class ObserverLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraObserver.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] WARNING: " + line
-                                + " does not implement ItaraObserver — skipping.");
+                        log.warning("[Itara] skipping observer class=" + line
+                                + " reason=does not implement ItaraObserver");
                         continue;
                     }
                     ItaraObserver observer =
                             (ItaraObserver) cls.getDeclaredConstructor().newInstance();
                     ObserverRegistry.instance().register(observer);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] WARNING: Observer class not found: "
-                            + line + ". Is the observer jar on the classpath?");
+                    log.warning("[Itara] observer class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] WARNING: Failed to instantiate observer "
-                            + line + ": " + e.getMessage());
+                    log.warning("[Itara] failed to instantiate observer class=" + line
+                            + " error=" + e.getMessage());
                 }
             }
         }

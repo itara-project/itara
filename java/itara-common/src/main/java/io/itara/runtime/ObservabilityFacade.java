@@ -69,12 +69,12 @@ public final class ObservabilityFacade {
      */
     public static void initialize() {
         if (INSTANCE != null) {
-            log.warning("[Itara] ObservabilityFacade already initialized — "
+            log.warning("[Itara] observability facade already initialized — "
                     + "ignoring duplicate initialization.");
             return;
         }
         INSTANCE = new ObservabilityFacade();
-        log.info("[Itara] ObservabilityFacade initialized.");
+        log.fine("[Itara] observability facade initialized");
     }
 
     /**
@@ -120,8 +120,8 @@ public final class ObservabilityFacade {
             try {
                 observer.restoreContext(headers, exchangePattern);
             } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on restoreContext: " + e.getMessage());
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=restoreContext error=" + e.getMessage());
             }
         }
         return new InboundScope();
@@ -147,8 +147,8 @@ public final class ObservabilityFacade {
             try {
                 headers.putAll(observer.serializeContext());
             } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on serializeContext: " + e.getMessage());
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=serializeContext error=" + e.getMessage());
             }
         }
         return headers;
@@ -179,8 +179,8 @@ public final class ObservabilityFacade {
                 observer.onCallSent(ctx, componentId, methodName,
                         transport, exchangePattern, timestamp);
             } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on onCallSent: " + e.getMessage());
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCallSent error=" + e.getMessage());
             }
         }
         return new CallerScope(componentId, methodName);
@@ -212,8 +212,8 @@ public final class ObservabilityFacade {
                 observer.onCallReceived(ctx, componentId, methodName,
                         transport, exchangePattern, timestamp);
             } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on onCallReceived: " + e.getMessage());
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCallReceived error=" + e.getMessage());
             }
         }
         return new CalleeScope(componentId, methodName);
@@ -253,8 +253,8 @@ public final class ObservabilityFacade {
             try {
                 observer.onCustomSpan(ctx, name, attributes, timestamp);
             } catch (Exception e) {
-                log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                        + " threw on onCustomSpan: " + e.getMessage());
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCustomSpan error=" + e.getMessage());
             }
         }
         return new CustomSpanScope(name);
@@ -272,8 +272,8 @@ public final class ObservabilityFacade {
                 try {
                     observer.onInboundContextReleased();
                 } catch (Exception e) {
-                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                            + " threw on onInboundContextReleased: " + e.getMessage());
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onInboundContextReleased error=" + e.getMessage());
                 }
             }
             ItaraContext.pop();
@@ -301,8 +301,8 @@ public final class ObservabilityFacade {
                 try {
                     observer.onReturnReceived(ctx, componentId, methodName, timestamp, error);
                 } catch (Exception e) {
-                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                            + " threw on onReturnReceived: " + e.getMessage());
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onReturnReceived error=" + e.getMessage());
                 }
             }
             ItaraContext.pop();
@@ -330,8 +330,8 @@ public final class ObservabilityFacade {
                 try {
                     observer.onReturnSent(ctx, componentId, methodName, timestamp, error);
                 } catch (Exception e) {
-                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                            + " threw on onReturnSent: " + e.getMessage());
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onReturnSent error=" + e.getMessage());
                 }
             }
             ItaraContext.pop();
@@ -357,8 +357,8 @@ public final class ObservabilityFacade {
                 try {
                     observer.onCustomSpanClosed(ctx, name, timestamp, error);
                 } catch (Exception e) {
-                    log.warning("[Itara] Observer " + observer.getClass().getSimpleName()
-                            + " threw on onCustomSpanClosed: " + e.getMessage());
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onCustomSpanClosed error=" + e.getMessage());
                 }
             }
             ItaraContext.pop();

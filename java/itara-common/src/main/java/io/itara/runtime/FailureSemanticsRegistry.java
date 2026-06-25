@@ -40,8 +40,8 @@ public class FailureSemanticsRegistry {
      */
     public void register(ItaraFailureSemanticsFactory factory) {
         factories.put(factory.type().toLowerCase(), factory);
-        log.info("[Itara] Registered failure semantics factory: "
-                + factory.type() + " -> " + factory.getClass().getName());
+        log.fine("[Itara] registered failure-semantics factory type=" + factory.type()
+                + " class=" + factory.getClass().getName());
     }
 
     /**

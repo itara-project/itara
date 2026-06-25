@@ -46,15 +46,13 @@ public class SerializerLoader {
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
 
         if (!resources.hasMoreElements()) {
-            log.warning("[Itara] WARNING: No serializer implementations found "
-                    + "on the classpath. Add at least one serializer jar "
-                    + "(e.g. itara-serializer-json.jar) to the classpath.");
+            log.warning("[Itara] no serializer implementations found.");
             return;
         }
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-           log.info("[Itara] Found serializer descriptor: " + url);
+           log.fine("[Itara] found serializer descriptor url=" + url);
            loadFromDescriptor(url, classLoader);
         }
     }
@@ -71,19 +69,18 @@ public class SerializerLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraSerializer.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] WARNING: " + line
-                                + " does not implement ItaraSerializer — skipping.");
+                        log.warning("[Itara] skipping serializer class=" + line
+                                + " reason=does not implement ItaraSerializer");
                         continue;
                     }
                     ItaraSerializer serializer =
                             (ItaraSerializer) cls.getDeclaredConstructor().newInstance();
                     SerializerRegistry.instance().register(serializer);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] WARNING: Serializer class not found: "
-                            + line + ". Is the serializer jar on the classpath?");
+                    log.warning("[Itara] serializer class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] WARNING: Failed to instantiate serializer "
-                            + line + ": " + e.getMessage());
+                    log.warning("[Itara] failed to instantiate serializer class="
+                            + line + " error=" + e.getMessage());
                 }
             }
         }

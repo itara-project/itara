@@ -45,12 +45,12 @@ public class FailureSemanticsLoader {
         // Always register noop first — it is the default and must always
         // be present regardless of what plugins are on the classpath
         FailureSemanticsRegistry.instance().register(new NoopFailureSemantics.Factory());
-        log.info("[Itara] Registered built-in failure semantics: noop");
+        log.fine("[Itara] registered built-in failure semantics type=noop");
 
         Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-            log.info("[Itara] Found failure semantics descriptor: " + url);
+            log.fine("[Itara] found failure-semantics descriptor url=" + url);
             loadFromDescriptor(url, classLoader);
         }
     }
@@ -67,19 +67,18 @@ public class FailureSemanticsLoader {
                 try {
                     Class<?> cls = classLoader.loadClass(line);
                     if (!ItaraFailureSemanticsFactory.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] WARNING: " + line
-                                + " does not implement ItaraFailureSemanticsFactory — skipping.");
+                        log.warning("[Itara] skipping failure-semantics factory class=" + line
+                                + " reason=does not implement ItaraFailureSemanticsFactory");
                         continue;
                     }
                     ItaraFailureSemanticsFactory factory =
                             (ItaraFailureSemanticsFactory) cls.getDeclaredConstructor().newInstance();
                     FailureSemanticsRegistry.instance().register(factory);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] WARNING: Failure semantics factory class not found: "
-                            + line + ". Is the jar on the classpath?");
+                    log.warning("[Itara] failure-semantics factory class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] WARNING: Failed to instantiate failure semantics factory "
-                            + line + ": " + e.getMessage());
+                    log.warning("[Itara] failed to instantiate failure-semantics factory class=" + line
+                            + " error=" + e.getMessage());
                 }
             }
         }

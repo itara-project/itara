@@ -68,12 +68,13 @@ public class ItaraDispatcher implements DispatchHandler {
         try {
             instance = registry.getRawImplementation(componentId, Object.class);
         } catch (Exception e) {
-            log.log(Level.SEVERE, "[Itara] Failed to retrieve component '"
-                    + componentId + "' from registry.", e);
+            log.log(Level.SEVERE, "[Itara] registry lookup failed component=" + componentId
+                    + " error=" + e.getMessage(), e);
             throw serialized(new ItaraRemoteException(
                     ItaraRemoteException.ErrorKind.TRANSPORT,
                     e.getClass().getName(),
-                    "Registry failure for component '" + componentId + "': " + e.getMessage(), e));
+                    "Registry failure for component '" + componentId + "': " + e.getMessage(), e),
+                    methodName);
         }
 
         // Method resolution — outside all scopes
@@ -82,7 +83,8 @@ public class ItaraDispatcher implements DispatchHandler {
             throw serialized(new ItaraRemoteException(
                     ItaraRemoteException.ErrorKind.TRANSPORT,
                     "MethodNotFoundException",
-                    "Method '" + methodName + "' not found on component '" + componentId + "'"));
+                    "Method '" + methodName + "' not found on component '" + componentId + "'"),
+                    methodName);
         }
 
         // 1. Restore inbound context — wraps deserialization, invocation, and serialization
@@ -97,7 +99,8 @@ public class ItaraDispatcher implements DispatchHandler {
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         e.getClass().getName(),
                         "Failed to deserialize arguments for '" + methodName
-                                + "' on '" + componentId + "': " + e.getMessage(), e));
+                                + "' on '" + componentId + "': " + e.getMessage(), e),
+                        methodName);
             }
 
             // 3. CALL_RECEIVED — callee scope wraps component invocation only
@@ -116,7 +119,8 @@ public class ItaraDispatcher implements DispatchHandler {
                                     : ItaraRemoteException.ErrorKind.CHECKED,
                             cause.getClass().getName(),
                             cause.getMessage(),
-                            cause));
+                            cause),
+                            methodName);
                 } catch (Exception e) {
                     calleeScope.setError(true);
                     throw e;
@@ -131,7 +135,8 @@ public class ItaraDispatcher implements DispatchHandler {
                         ItaraRemoteException.ErrorKind.TRANSPORT,
                         e.getClass().getName(),
                         "Failed to serialize result for '" + methodName
-                                + "' on '" + componentId + "': " + e.getMessage(), e));
+                                + "' on '" + componentId + "': " + e.getMessage(), e),
+                        methodName);
             }
         }
     }
@@ -148,12 +153,12 @@ public class ItaraDispatcher implements DispatchHandler {
      * Every exception that leaves the dispatcher carries a payload — the transport
      * server writes it back as-is, and the proxy deserializes it. No empty bodies.
      */
-    private ItaraRemoteException serialized(ItaraRemoteException ex) {
+    private ItaraRemoteException serialized(ItaraRemoteException ex, String methodName) {
         try {
             ex.withSerializedPayload(serializer.serializeResult(ex.toPayload()));
         } catch (Exception e) {
-            log.log(Level.WARNING, "[Itara] Failed to serialize error payload — "
-                    + "caller will receive empty error body.", e);
+            log.log(Level.WARNING, "[Itara] failed to serialize error payload component=" + componentId
+                    + " method=" + methodName + " — caller will receive empty error body", e);
         }
         return ex;
     }

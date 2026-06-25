@@ -63,7 +63,7 @@ public class EventContractScanner {
             Enumeration<URL> resources = classLoader.getResources(RESOURCE_PATH);
             while (resources.hasMoreElements()) {
                 URL url = resources.nextElement();
-                log.info("[Itara] Found event contract descriptor: " + url);
+                log.fine("[Itara] found event-contract descriptor url=" + url);
                 processDescriptor(url, classLoader, result);
             }
         } catch (Exception e) {
@@ -121,8 +121,7 @@ public class EventContractScanner {
         String contractRef  = collectionId + "/" + annotation.id();
 
         result.put(contractRef, cls);
-        log.info("[Itara] Registered event contract: "
-                + contractRef + " -> " + className);
+        log.fine("[Itara] registered event-contract id=" + contractRef + " class=" + className);
     }
 
     /**

@@ -205,9 +205,9 @@ public class ConfigLoader {
             } else if (defaultVal != null) {
                 replacement = defaultVal;
             } else {
-                log.warning("[Itara] Environment variable '" + varName
+                log.warning("[Itara] Environment variable='" + varName
                         + "' is not set and has no default. "
-                        + "Placeholder '" + matcher.group() + "' will be used as-is.");
+                        + "Placeholder='" + matcher.group() + "' will be used as-is.");
                 replacement = matcher.group();
             }
 

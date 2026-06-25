@@ -113,19 +113,21 @@ public class ItaraMetadataIndex {
 
             String artifactName = stripExtension(file.getName());
             if (scanned.containsKey(artifactName)) {
-                log.warning("[Itara] Warning: duplicate metadata file for artifact '"
-                        + artifactName + "' — keeping first, ignoring: " + file);
+                log.warning("[Itara] duplicate metadata file artifact=" + artifactName
+                        + " ignoring=" + file);
                 continue;
             }
 
             scanned.put(artifactName, parsed);
-            log.info("[Itara] Discovered metadata for '" + artifactName + "': " + parsed.getArtifact());
+            log.fine("[Itara] discovered metadata artifact=" + artifactName
+                    + " kind=" + parsed.getArtifact().getKind()
+                    + " id=" + parsed.getArtifact().getId());
         }
 
         entries.clear();
         entries.putAll(scanned);
         built = true;
-        log.info("[Itara] Metadata index built: " + entries.size() + " artifact(s) from " + dir);
+        log.fine("[Itara] metadata index built count=" + entries.size() + " dir=" + dir);
     }
 
     /**
