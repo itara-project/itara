@@ -8,17 +8,25 @@ nodes:
 
 connections:
   - to: nodeA
-    type: http
-    port: 8080
+    transport:
+      id: http
+      params:
+        port: "8080"
   - from: nodeA
     to: nodeB
-    type: http
-    port: 8081
+    transport:
+      id: http
+      params:
+        port: "8081"
   - from: nodeA
     to: undeclaredNode
-    type: http
-    port: 8082
+    transport:
+      id: http
+      params:
+        port: "8082"
   - from: nodeB
     to: nodeB
-    type: http
-    port: 8083
+    transport:
+      id: http
+      params:
+        port: "8083"

@@ -41,19 +41,19 @@ public class ItaraDispatcher implements DispatchHandler {
     private static final Logger log = Logger.getLogger(ItaraDispatcher.class.getName());
 
     private final String componentId;
-    private final String transportType;
+    private final String transportId;
     private final ItaraSerializer serializer;
     private final ItaraRegistry registry;
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
 
     public ItaraDispatcher(String componentId,
-                           String transportType,
+                           String transportId,
                            ItaraSerializer serializer,
                            ItaraRegistry registry,
                            ExchangePattern exchangePattern) {
         this.componentId     = componentId;
-        this.transportType   = transportType;
+        this.transportId     = transportId;
         this.serializer      = serializer;
         this.registry        = registry;
         this.facade          = ObservabilityFacade.instance();
@@ -105,7 +105,7 @@ public class ItaraDispatcher implements DispatchHandler {
 
             // 3. CALL_RECEIVED — callee scope wraps component invocation only
             Object result = null;
-            try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportType, exchangePattern)) {
+            try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportId, exchangePattern)) {
                 try {
                     // 4. Component invocation
                     result = method.invoke(instance, args);

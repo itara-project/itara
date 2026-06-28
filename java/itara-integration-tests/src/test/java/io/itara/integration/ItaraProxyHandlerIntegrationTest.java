@@ -8,11 +8,13 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.spi.ItaraSerializer;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.failuresemantics.TransportCall;
 import io.itara.agent.metadata.MetadataFile;
 import io.itara.agent.metadata.MethodsMeta;
+import io.itara.spi.transport.ItaraTransportConfig;
+import io.itara.transport.http.HttpTransportConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,8 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ItaraProxyHandlerIntegrationTest {
 
     private static final String COMPONENT_ID = "calculator";
-    private static final Map<String, String> PROPS = Map.of(
-            "host", "localhost", "port", "9999");
+    private static final HttpTransportConfig PROPS =
+            new HttpTransportConfig("localhost", 9999, false);
 
     // Captures what the failure semantics implementation receives
     private boolean capturedIdempotent;
@@ -75,7 +77,7 @@ public class ItaraProxyHandlerIntegrationTest {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
-                new ItaraProxyHandler(COMPONENT_ID, serializer, noopTransport,
+                new ItaraProxyHandler(COMPONENT_ID, serializer, noopTransport, "noop",
                         PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null)
         );
     }
@@ -152,7 +154,7 @@ public class ItaraProxyHandlerIntegrationTest {
             CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
-                    new ItaraProxyHandler(COMPONENT_ID, serializer, checkingTransport,
+                    new ItaraProxyHandler(COMPONENT_ID, serializer, checkingTransport, "noop",
                             PROPS, ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(), null, null)
             );
@@ -189,11 +191,8 @@ public class ItaraProxyHandlerIntegrationTest {
     private static class FailingTransport implements ItaraTransport {
 
         @Override
-        public String type() { return "test"; }
-
-        @Override
         public byte[] send(String componentId, String methodName, byte[] payload,
-                           Map<String, String> headers, Map<String, String> properties,
+                           Map<String, String> headers, ItaraTransportConfig config,
                            Duration timeout) throws ItaraRemoteException {
             throw new ItaraRemoteException(
                     ItaraRemoteException.ErrorKind.TRANSPORT,
@@ -201,10 +200,13 @@ public class ItaraProxyHandlerIntegrationTest {
         }
 
         @Override
-        public void startListener(String componentId, Map<String, String> properties,
-                                  io.itara.runtime.DispatchHandler handler) {}
+        public void registerListener(String componentId, ItaraTransportConfig config,
+                                     io.itara.runtime.DispatchHandler handler) {}
 
         @Override
-        public void stopListener() {}
+        public void start() {}
+
+        @Override
+        public void stop() {}
     }
 }

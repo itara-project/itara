@@ -8,11 +8,15 @@ nodes:
 
 connections:
   - to: nodeA
-    type: http
-    port: 8080
+    transport:
+      id: http
+      params:
+        port: "8080"
   - from: nodeA
     to: nodeB
-    type: direct
+    transport:
+      id: direct
   - from: nodeB
     to: nodeC
-    type: direct
+    transport:
+      id: direct

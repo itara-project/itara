@@ -7,7 +7,9 @@ import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.DispatchHandler;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.spi.ItaraSerializer;
+import io.itara.transport.kafka.KafkaFailureAction;
 import io.itara.transport.kafka.KafkaTransport;
+import io.itara.transport.kafka.KafkaTransportConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,30 +81,29 @@ public class KafkaTransportIntegrationTest {
         ItaraSerializer serializer = new JsonItaraSerializer();
         String bootstrapServers = kafka.getBootstrapServers();
 
-        Map<String, String> props = Map.of(
-                "topic",            TOPIC,
-                "bootstrapServers", bootstrapServers,
-                "consumerGroup",    CONSUMER_GROUP
-        );
+        KafkaTransportConfig consumerConfig = new KafkaTransportConfig(
+                bootstrapServers, CONSUMER_GROUP, TOPIC, false, KafkaFailureAction.DROP, null);
 
-        // Consumer side — dispatcher captures received calls for assertions
-        consumerTransport = new KafkaTransport();
+        KafkaTransportConfig producerConfig = new KafkaTransportConfig(
+                bootstrapServers, null, TOPIC, false, KafkaFailureAction.DROP, null);
+
+        consumerTransport = new KafkaTransport(consumerConfig);
         DispatchHandler capturingDispatcher = (componentId, methodName, payload, headers) -> {
             receivedPayloads.add(new String(payload));
             receivedHeaders.add(Map.copyOf(headers));
             if (latch != null) latch.countDown();
             return new byte[0];
         };
-        consumerTransport.startListener(COMPONENT_ID, props, capturingDispatcher);
+        consumerTransport.registerListener(COMPONENT_ID, consumerConfig, capturingDispatcher);
+        consumerTransport.start();
 
-        // Producer side — proxy through KafkaTransport
-        producerTransport = new KafkaTransport();
+        producerTransport = new KafkaTransport(producerConfig);
         proxy = (OrderPlacedContractProxy) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ OrderPlacedContractProxy.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, producerTransport,
-                        props, ExchangePattern.FIRE_AND_FORGET,
+                        COMPONENT_ID, serializer, producerTransport, "kafka",
+                        producerConfig, ExchangePattern.FIRE_AND_FORGET,
                         new NoopFailureSemantics(),
                         null,
                         null
@@ -115,7 +116,7 @@ public class KafkaTransportIntegrationTest {
 
     @AfterAll
     static void teardown() {
-        if (consumerTransport != null) consumerTransport.stopListener();
+        if (consumerTransport != null) consumerTransport.stop();
     }
 
     @BeforeEach
@@ -176,18 +177,20 @@ public class KafkaTransportIntegrationTest {
     @Test
     @Order(5)
     @DisplayName("stopListener() stops the consumer cleanly")
-    void stopListenerStopsConsumerCleanly() throws InterruptedException {
-        KafkaTransport transport = new KafkaTransport();
-        transport.startListener(COMPONENT_ID,
-                Map.of(
-                        "topic",            TOPIC + ".stop-test",
-                        "bootstrapServers", kafka.getBootstrapServers(),
-                        "consumerGroup",    CONSUMER_GROUP + "-stop-test"
-                ),
+    void stopStopsConsumerCleanly() throws Exception {
+        KafkaTransportConfig stopTestConfig = new KafkaTransportConfig(
+                kafka.getBootstrapServers(),
+                CONSUMER_GROUP + "-stop-test",
+                TOPIC + ".stop-test",
+                false, KafkaFailureAction.DROP, null);
+
+        KafkaTransport transport = new KafkaTransport(stopTestConfig);
+        transport.registerListener(COMPONENT_ID, stopTestConfig,
                 (id, method, payload, headers) -> new byte[0]);
+        transport.start();
 
         Thread.sleep(500); // let it start
-        assertDoesNotThrow(transport::stopListener);
+        assertDoesNotThrow(transport::stop);
     }
 
     /**

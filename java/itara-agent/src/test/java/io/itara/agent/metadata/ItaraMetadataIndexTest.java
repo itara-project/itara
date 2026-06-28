@@ -134,6 +134,33 @@ class ItaraMetadataIndexTest {
             assertTrue(index.lookup("gateway").isPresent());
             assertTrue(index.lookup("README").isEmpty());
         }
+
+        @Test
+        @DisplayName("parses [transport] section including capabilities from .itara file")
+        void parsesTransportSection(@TempDir Path dir) throws IOException {
+            writeItaraFile(dir, "itara-transport-http.itara", """
+                    [artifact]
+                    kind = "transport"
+                    id = "http"
+                    version = "0.1.0"
+
+                    [transport]
+                    type = "http"
+
+                    [transport.capabilities]
+                    nativeCallTimeout = true
+                    externallyInterruptible = true
+                    """);
+
+            System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
+            index.build();
+
+            MetadataFile metadata = index.lookup("itara-transport-http").orElseThrow();
+            assertNotNull(metadata.getTransport());
+            assertEquals("http", metadata.getTransport().getType());
+            assertTrue(metadata.getTransport().getCapabilities().isNativeCallTimeout());
+            assertTrue(metadata.getTransport().getCapabilities().isExternallyInterruptible());
+        }
     }
 
     @Nested

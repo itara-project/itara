@@ -6,9 +6,13 @@ nodes:
 
 connections:
   - to: gatewayNode
-    type: http
-    port: 8080
+    transport:
+      id: http
+      params:
+        port: "8080"
   - from: gatewayNode
     to: calculatorNode
-    type: http
-    port: 8081
+    transport:
+      id: http
+      params:
+        port: "8081"

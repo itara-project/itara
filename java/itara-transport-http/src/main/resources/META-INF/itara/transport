@@ -1,2 +1,2 @@
 # Itara HTTP transport implementation
-io.itara.transport.http.HttpTransport
+io.itara.transport.http.HttpTransportFactory

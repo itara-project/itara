@@ -1,2 +1,3 @@
 # Order event contracts
 demo.events.api.OrderPlacedContract
+demo.events.api.OrderCancelledContract

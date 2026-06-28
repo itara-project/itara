@@ -11,5 +11,7 @@ spec-version = "0.2"
 
 [implemented-event-contracts]
 contracts = [
-  { id = "order-events/order-placed", version = "1.0-SNAPSHOT" }
+  { id = "order-events/order-placed", version = "1.0-SNAPSHOT" },
+  { id = "order-events/order-cancelled", version = "1.0-SNAPSHOT" },
+  { id = "payment-events/payment-made", version = "1.0-SNAPSHOT" }
 ]

@@ -1,2 +1,2 @@
 # Kafka transport for Itara
-io.itara.transport.kafka.KafkaTransport
+io.itara.transport.kafka.KafkaTransportFactory

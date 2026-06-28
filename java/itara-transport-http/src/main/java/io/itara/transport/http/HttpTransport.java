@@ -2,7 +2,8 @@ package io.itara.transport.http;
 
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.DispatchHandler;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransport;
+import io.itara.spi.transport.ItaraTransportConfig;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +12,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -27,21 +29,21 @@ import java.util.logging.Logger;
  *
  * Discovered by the agent via META-INF/itara/transport.
  *
- * Properties used:
- *   host  - remote host (outbound)
- *   port  - port number (inbound and outbound)
+ * One instance per port. Multiple components may be registered as listeners
+ * on the same port — each identified by componentId in the request path.
  */
 public class HttpTransport implements ItaraTransport {
 
-    public static String TYPE = "http";
-
     private static final Logger log = Logger.getLogger(HttpTransport.class.getName());
+
+    private final Map<String, DispatchHandler> dispatchers = new ConcurrentHashMap<>();
+
+    private final int port;
 
     private ItaraHttpServer activeServer;
 
-    @Override
-    public String type() {
-        return TYPE;
+    public HttpTransport(HttpTransportConfig config) {
+        this.port = config.getPort();
     }
 
     @Override
@@ -49,11 +51,18 @@ public class HttpTransport implements ItaraTransport {
                        String methodName,
                        byte[] payload,
                        Map<String, String> headers,
-                       Map<String, String> properties,
+                       ItaraTransportConfig config,
                        Duration timeout) throws Exception {
 
-        String host = required(properties, "host", componentId);
-        int port = requiredInt(properties, "port", componentId);
+        HttpTransportConfig httpConfig = (HttpTransportConfig) config;
+        String host = httpConfig.getHost();
+        int port    = httpConfig.getPort();
+
+        if (host == null || host.isBlank()) {
+            throw new IllegalStateException(
+                    "[Itara/HTTP] Missing 'host' param for outbound call to '"
+                            + componentId + "'");
+        }
 
         String url = String.format("http://%s:%d/itara/%s/%s", host, port, componentId, methodName);
         log.info("[Itara/HTTP] -> " + methodName + " on " + componentId + " at " + host + ":" + port);
@@ -70,6 +79,12 @@ public class HttpTransport implements ItaraTransport {
         connection.setDoOutput(true);
         connection.setDoInput(true);
         connection.setRequestProperty("Content-Type", "application/octet-stream");
+
+        if (httpConfig.isHandleTimeout() && timeout != null) {
+            int millis = (int) timeout.toMillis();
+            connection.setConnectTimeout(millis);
+            connection.setReadTimeout(millis);
+        }
 
         // Inject the headers
         headers.forEach(connection::setRequestProperty);
@@ -105,47 +120,27 @@ public class HttpTransport implements ItaraTransport {
     }
 
     @Override
-    public void startListener(String componentId,
-                              Map<String, String> properties,
-                              DispatchHandler dispatcher) {
-        int port = requiredInt(properties, "port", componentId);
-        try {
-            activeServer = new ItaraHttpServer(port, dispatcher);
-            activeServer.start();
-        } catch (Exception e) {
-            throw new RuntimeException("[Itara/HTTP] Failed to start HTTP listener on port "
-                    + port + ": " + e.getMessage(), e);
-        }
+    public void registerListener(String componentId,
+                                 ItaraTransportConfig config,
+                                 DispatchHandler dispatcher) {
+        dispatchers.put(componentId, dispatcher);
+        log.fine("[Itara/HTTP] registered listener for component '" + componentId + "'");
     }
 
     @Override
-    public void stopListener() {
+    public void start() throws Exception {
+        if (dispatchers.isEmpty()) return;
+        log.fine("[Itara/HTTP] starting server on port " + port
+                + " with " + dispatchers.size() + " registered component(s)");
+        activeServer = new ItaraHttpServer(port, dispatchers);
+        activeServer.start();
+    }
+
+    @Override
+    public void stop() {
         if (activeServer != null) {
             activeServer.stop();
             activeServer = null;
-        }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    private String required(Map<String, String> props, String key, String componentId) {
-        String value = props.get(key);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                    "[Itara/HTTP] Missing required property '" + key
-                    + "' for component '" + componentId + "'");
-        }
-        return value;
-    }
-
-    private int requiredInt(Map<String, String> props, String key, String componentId) {
-        String value = required(props, key, componentId);
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            throw new IllegalStateException(
-                    "[Itara/HTTP] Property '" + key + "' must be an integer, got: "
-                    + value);
         }
     }
 }

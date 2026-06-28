@@ -34,6 +34,7 @@ public class MetadataFile {
     private ImplementedEventContractsMeta implementedEventContracts = ImplementedEventContractsMeta.ofEmpty();
     @JsonProperty("methods")
     private MethodsMeta methods = MethodsMeta.ofEmpty();
+    private TransportMeta transport;
 
 
     public ArtifactMeta getArtifact() { return artifact; }
@@ -60,10 +61,14 @@ public class MetadataFile {
         this.methods = methods != null ? methods : MethodsMeta.ofEmpty();
     }
 
+    public TransportMeta getTransport()              { return transport; }
+    public void setTransport(TransportMeta transport){ this.transport = transport; }
+
     @Override
     public String toString() {
         return "MetadataFile{artifact=" + artifact + ", runtime=" + runtime
                 + ", itara=" + itara + ", serializers=" + serializers
+                + ", transport=" + transport
                 + ", implementedEventContracts=" + implementedEventContracts + "}";
     }
 }

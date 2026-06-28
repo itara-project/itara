@@ -19,6 +19,7 @@
         <module>order-producer-component</module>
         <module>order-consumer</module>
         <module>order-consumer-api</module>
+        <module>payment-event-api</module>
     </modules>
 
     <dependencyManagement>
@@ -26,6 +27,11 @@
             <dependency>
                 <groupId>io.itara.demo.events</groupId>
                 <artifactId>order-event-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.itara.demo.events</groupId>
+                <artifactId>payment-event-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -246,28 +246,30 @@ A connection declaration MUST include:
 
 - The identifier of the calling node (`from`)
 - The identifier of the called node (`to`)
-- The transport type
+- A `transport` block identifying the transport and its parameters
 
 The `from` field MAY be absent or empty, indicating that the caller is external to this topology — the connection defines an inbound entry point for the `to` node.
 
-A connection declaration MAY include:
-
-- Transport-specific parameters (host, port, topic name, queue name, etc.)
-- Serializer selection
+A connection declaration MAY include Serializer selection for remote connections.
 
 ```yaml
 connections:
   - from: "gatewayNode"
     to: "calculatorNode"
-    type: http
-    host: "${CALC_HOST:-localhost}"
-    port: 8081
+    transport:
+      id: http
+      handleTimeout: true
+      params:
+        host: "${CALC_HOST:-localhost}"
+        port: "8081"
     serializer: "json"
 
   - from:                     # absent = external caller
     to: "gatewayNode"
-    type: http
-    port: 8082
+    transport:
+      id: http
+      params:
+        port: "8082"
     serializer: "json"
 ```
 
@@ -399,6 +401,43 @@ id          = "calculator"
 version     = "1.2.0"
 api-version = "1.x"          # semver range of the API this component implements
 ```
+
+#### Transport Artifacts
+
+An artifact of `kind = "transport"` MUST declare a `[transport]` section
+with at minimum a `type` field identifying the transport category:
+
+```toml
+[artifact]
+kind    = "transport"
+id      = "itara-http-v1"
+version = "1.0.0"
+
+[transport]
+type = "http"
+```
+
+The `type` field identifies the transport category — the communication
+protocol or mechanism. Examples: `"http"`, `"kafka"`, `"amqp"`. Two
+transport implementations with the same `type` are considered compatible
+caller/callee pairs. The `artifact.id` is the unique identifier of a
+specific implementation and is distinct from the transport type.
+
+A transport artifact MUST declare its capabilities in a `[transport.capabilities]`
+section:
+
+```toml
+[transport.capabilities]
+nativeCallTimeout       = true   # supports native per-call timeout enforcement
+externallyInterruptible = true   # safe to interrupt externally on timeout
+```
+
+Both fields default to `true` when the `[transport.capabilities]` section
+is absent. A transport that may leave connections in an inconsistent state
+when interrupted externally MUST explicitly declare
+`externallyInterruptible = false`.
+
+See §14.10 for how these declarations are used together with the failure semantics layer.
 
 ### 5.5 Artifact Discovery
 
@@ -572,7 +611,17 @@ A transport is a plugin that carries serialized bytes between components across 
 
 ### 7.2 Transport Type Identifier
 
-Every transport implementation MUST declare a type identifier — a non-empty string — that matches the type name used in connection declarations in the wiring configuration. Type identifiers are case-insensitive. The following type identifiers are reserved:
+Every transport implementation MUST declare two identifiers:
+
+- An **artifact identifier** (`artifact.id`) — a unique identifier for the
+  specific implementation artifact. No two transport artifacts in a deployment
+  MAY share the same artifact identifier.
+- A **transport type** (`transport.type`) — a string identifying the
+  communication category. Type identifiers are case-insensitive. The transport
+  type MUST match the `id` field in the `transport` block of connection
+  declarations that target this transport.
+
+The following transport type identifiers are reserved:
 
 | Identifier | Meaning |
 |------------|---------|
@@ -585,7 +634,26 @@ Implementations MAY define additional transport types.
 
 ### 7.3 Plugin Discovery
 
-Transport implementations are discovered via their companion `.itara` metadata file, which MUST declare `kind = "transport"`. The agent reads this file before loading the artifact. The transport artifact MUST export a factory symbol (`itara_transport_factory` for native implementations, or equivalent for managed runtimes) that the agent calls to obtain a configured transport instance.
+Transport implementations are discovered via their companion `.itara` metadata
+file, which MUST declare `kind = "transport"` and a `[transport]` section as
+described in §5.4. The agent reads this file before loading the artifact.
+
+A transport artifact MUST export a factory that the agent uses to parse
+connection configurations and create transport instances. The factory MUST:
+
+- Accept the raw transport configuration from the wiring config (`params` map,
+  `handleTimeout` flag, and virtual node address where applicable) and return a
+  typed, transport-specific configuration object
+- Provide a grouping key from that configuration object that determines whether
+  two connections share a transport instance or require separate instances
+- Create a new transport instance from a parsed configuration when no existing
+  instance matches the grouping key
+
+The grouping key is transport-defined. Examples: HTTP groups by port; Kafka
+groups by bootstrap servers, consumer group, and failure action. Two connections
+that produce equal grouping keys MUST share one transport instance. Two
+connections that produce unequal grouping keys MUST each receive their own
+instance.
 
 ### 7.4 Caller Side
 
@@ -622,16 +690,41 @@ future version of this specification.
 
 ### 7.5 Callee Side (Listener)
 
-A transport MUST be capable of starting a listener that:
+A transport MUST be capable of registering one or more dispatchers and
+starting a listener that:
 
 - Receives inbound byte payloads from remote callers
 - Extracts and restores the `ItaraContext` propagated by the caller
-- Dispatches the byte payload to a registered `Dispatcher` for the component
-- Returns the response byte payload to the transport for transmission back to the caller
+- Routes each inbound call to the correct registered dispatcher by component
+  identifier
+- Returns the response byte payload to the transport for transmission back
+  to the caller
+
+A transport instance MAY serve multiple components simultaneously. The agent
+MAY register multiple dispatchers on the same transport instance before
+starting it, provided all registrations share the same grouping key.
 
 ### 7.6 Listener Lifecycle
 
-A conforming implementation MUST stop all active listeners cleanly when the process terminates.
+The transport listener lifecycle MUST follow this sequence:
+
+1. **Registration phase** — the agent registers one or more dispatchers on a
+   transport instance before starting it. Each registration associates a
+   component identifier and its parsed transport configuration with a
+   dispatcher. The transport MUST NOT start accepting connections during this
+   phase.
+
+2. **Start** — the agent signals the transport to start after all registrations
+   for that instance are complete. The transport makes all resource allocation
+   decisions at this point — one server per port, one consumer per group, etc.
+   The transport MUST be ready to accept connections before start returns.
+
+3. **Stop** — the agent signals all transport instances to stop on process
+   termination. Stop MUST be idempotent. A conforming implementation MUST
+   stop all active listeners cleanly when the process terminates.
+
+The agent MUST NOT register new dispatchers on a transport instance after
+it has been started.
 
 ### 7.7 Transport Independence
 
@@ -1278,7 +1371,7 @@ error. The agent MUST NOT start in this state.
 *Reference implementation note: the Java reference implementation expresses
 these as YAML fields on the connection's `failureSemantics` block (`id`,
 `timeout`, `handleTimeout`, `absoluteTimeout`, `maxRetry`, `params`) and a
-`handleTimeout` field at the connection level for the transport side.*
+`handleTimeout` field on the `transport` block for the transport side.*
  
 ### 14.5 SPI Contract
  

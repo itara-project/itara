@@ -22,6 +22,7 @@ AGENT=itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
 COMMON=itara-common/target/itara-common-1.0-SNAPSHOT.jar
 
 EVENTS_API=itara-demo-events/order-event-api/target/order-event-api-1.0-SNAPSHOT.jar
+PAYMENT_EVENTS_API=itara-demo-events/payment-event-api/target/payment-event-api-1.0-SNAPSHOT.jar
 PRODUCER_API=itara-demo-events/order-producer-api/target/order-producer-api-1.0-SNAPSHOT.jar
 PRODUCER_IMPL=itara-demo-events/order-producer-component/target/order-producer-component-1.0-SNAPSHOT.jar
 CONSUMER_API=itara-demo-events/order-consumer-api/target/order-consumer-api-1.0-SNAPSHOT.jar
@@ -51,6 +52,7 @@ cp itara-transport-kafka/itara-transport-kafka.itara           "$META_DIR/"
 cp itara-serializer-json/itara-serializer-json.itara           "$META_DIR/"
 cp itara-observability-logging/itara-observability-logging.itara "$META_DIR/"
 cp itara-demo-events/order-event-api/order-event-api.itara     "$META_DIR/"
+cp itara-demo-events/payment-event-api/payment-event-api.itara     "$META_DIR/"
 cp itara-demo-events/order-producer-api/order-producer-api.itara "$META_DIR/"
 cp itara-demo-events/order-producer-component/order-producer-component.itara "$META_DIR/"
 cp itara-demo-events/order-consumer-api/order-consumer-api.itara "$META_DIR/"
@@ -83,7 +85,7 @@ java \
   -Ditara.nodes="orderConsumerNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$EVENTS_API:$CONSUMER_API:$CONSUMER_IMPL" \
+  -cp "$COMMON:$EVENTS_API:$PAYMENT_EVENTS_API:$CONSUMER_API:$CONSUMER_IMPL" \
   io.itara.runtime.ItaraMain \
   > "$CONSUMER_LOG" 2>&1 &
 
@@ -124,7 +126,7 @@ java \
   -Ditara.nodes="orderProducerNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$EVENTS_API:$PRODUCER_API:$PRODUCER_IMPL" \
+  -cp "$COMMON:$EVENTS_API:$PAYMENT_EVENTS_API:$PRODUCER_API:$PRODUCER_IMPL" \
   io.itara.runtime.ItaraMain \
   > "$PRODUCER_LOG" 2>&1 &
 

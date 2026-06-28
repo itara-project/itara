@@ -8,7 +8,9 @@ nodes:
 connections:
   - from: "gatewayNode"
     to: "calculatorNode"
-    type: http
-    host: "localhost"
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: "localhost"
+        port: 8081
     serializer: "json"

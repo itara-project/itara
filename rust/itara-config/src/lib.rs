@@ -258,6 +258,69 @@ impl<'de> serde::Deserialize<'de> for Node {
     }
 }
 
+/// The transport block of a connection entry in the wiring configuration.
+///
+/// Example YAML:
+///   transport:
+///     id: http
+///     handleTimeout: true
+///     params:
+///       host: "${CALC_HOST:-localhost}"
+///       port: "8081"
+#[derive(Debug, Clone, Deserialize)]
+pub struct TransportEntry {
+    /// The transport type identifier. Required.
+    pub id: String,
+
+    /// Whether the transport should enforce the per-attempt timeout natively.
+    #[serde(default, rename = "handleTimeout")]
+    pub handle_timeout: bool,
+
+    /// Transport-specific connection parameters.
+    /// Keys and values are transport-defined.
+    #[serde(default, deserialize_with = "deserialize_params")]
+    pub params: std::collections::HashMap<String, String>,
+}
+
+fn deserialize_params<'de, D>(d: D) -> Result<std::collections::HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, Visitor};
+    use std::fmt;
+
+    struct ParamsVisitor;
+
+    impl<'de> Visitor<'de> for ParamsVisitor {
+        type Value = std::collections::HashMap<String, String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "a map of string keys to scalar values")
+        }
+
+        fn visit_map<M: MapAccess<'de>>(self, mut map: M)
+            -> Result<Self::Value, M::Error>
+        {
+            let mut result = std::collections::HashMap::new();
+            while let Some(key) = map.next_key::<String>()? {
+                let value = map.next_value::<serde_yaml::Value>()?;
+                let s = match &value {
+                    serde_yaml::Value::String(s)  => s.clone(),
+                    serde_yaml::Value::Number(n)  => n.to_string(),
+                    serde_yaml::Value::Bool(b)    => b.to_string(),
+                    other => return Err(serde::de::Error::custom(
+                        format!("params value for '{}' must be a scalar, got: {:?}", key, other)
+                    )),
+                };
+                result.insert(key, s);
+            }
+            Ok(result)
+        }
+    }
+
+    d.deserialize_map(ParamsVisitor)
+}
+
 /// A connection declared in the wiring configuration.
 ///
 /// Defines how one node calls another, including the transport type and
@@ -271,37 +334,47 @@ impl<'de> serde::Deserialize<'de> for Node {
 ///   connections:
 ///     - from: "gatewayNode"
 ///       to: "calculatorNode"
-///       type: http
-///       host: "${CALC_HOST:-localhost}"
-///       port: 8081
+///       transport:
+///         id: http
+///         params:
+///           host: "${CALC_HOST:-localhost}"
+///           port: 8081
 ///       serializer: json
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ConnectionEntry {
     /// The calling node id. None or empty = external caller.
-    #[serde(default)]
     pub from: Option<String>,
 
     /// The called node id. Required.
     pub to: String,
 
-    /// The connection type. Required.
-    /// Supported values depend on which transport libs are in the lib dir.
-    #[serde(rename = "type")]
-    pub transport_type: String,
-
-    /// The hostname of the remote node.
-    /// Required for non-direct connections where this node is the caller.
-    #[serde(default)]
-    pub host: Option<String>,
-
-    /// The port of the remote node.
-    /// Required for non-direct connections.
-    #[serde(default)]
-    pub port: Option<u16>,
+    /// Transport configuration for this connection.
+    pub transport: TransportEntry,
 
     /// The serializer type for this connection. Defaults to "json".
-    #[serde(default = "default_serializer")]
     pub serializer: String,
+}
+
+#[derive(Deserialize)]
+struct ConnectionHelper {
+    #[serde(default)]
+    from: Option<String>,
+    to: String,
+    transport: TransportEntry,
+    #[serde(default = "default_serializer")]
+    serializer: String,
+}
+
+impl<'de> serde::Deserialize<'de> for ConnectionEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let h = ConnectionHelper::deserialize(d)?;
+        Ok(ConnectionEntry {
+            from:       h.from,
+            to:         h.to,
+            transport:  h.transport,
+            serializer: h.serializer,
+        })
+    }
 }
 
 fn default_serializer() -> String {
@@ -309,24 +382,12 @@ fn default_serializer() -> String {
 }
 
 impl ConnectionEntry {
-    /// Returns true if the caller is external to the Itara topology.
     pub fn is_external(&self) -> bool {
         self.from.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true)
     }
 
-    /// Returns true if this is a direct (in-process) connection.
     pub fn is_direct(&self) -> bool {
-        self.transport_type.eq_ignore_ascii_case("direct")
-    }
-
-    /// Returns true if this is an HTTP connection.
-    pub fn is_http(&self) -> bool {
-        self.transport_type.eq_ignore_ascii_case("http")
-    }
-
-    /// Returns true if this is a kafka connection.
-    pub fn is_kafka(&self) -> bool {
-        self.transport_type.eq_ignore_ascii_case("kafka")
+        self.transport.id.eq_ignore_ascii_case("direct")
     }
 
     /// Returns true if this connection involves any of the given node ids.
@@ -345,18 +406,11 @@ impl ConnectionEntry {
                 "Connection is missing required field 'to'.".to_string(),
             ));
         }
-        if self.transport_type.trim().is_empty() {
-            return Err(ConfigError::Invalid(
-                format!("Connection to='{}' is missing required field 'type'.", self.to),
-            ));
-        }
-        if !self.is_direct() && !self.is_kafka() {
-            if self.port.is_none() || self.port == Some(0) {
-                return Err(ConfigError::Invalid(format!(
-                    "Connection to='{}' of type '{}' is missing required field 'port'.",
-                    self.to, self.transport_type
-                )));
-            }
+        if self.transport.id.trim().is_empty() {
+            return Err(ConfigError::Invalid(format!(
+                "Connection to='{}' is missing required field 'transport.id'.",
+                self.to
+            )));
         }
         Ok(())
     }
@@ -622,15 +676,19 @@ nodes:
 connections:
   - from: "gatewayNode"
     to: "calculatorNode"
-    type: http
-    host: "calculator"
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: "calculator"
+        port: "8081"
     serializer: "json"
 
   - from:
     to: "gatewayNode"
-    type: http
-    port: 8082
+    transport:
+      id: http
+      params:
+        port: "8082"
     serializer: "json"
 "#;
 
@@ -652,9 +710,9 @@ connections:
         let conn = &config.connections[0];
         assert_eq!(conn.from.as_deref(), Some("gatewayNode"));
         assert_eq!(conn.to, "calculatorNode");
-        assert!(conn.is_http());
-        assert_eq!(conn.host.as_deref(), Some("calculator"));
-        assert_eq!(conn.port, Some(8081));
+        assert_eq!(conn.transport.id, "http");
+        assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("calculator"));
+        assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
         assert_eq!(conn.serializer, "json");
     }
 
@@ -664,7 +722,7 @@ connections:
         let external = &config.connections[1];
         assert!(external.is_external());
         assert_eq!(external.to, "gatewayNode");
-        assert_eq!(external.port, Some(8082));
+        assert_eq!(external.transport.params.get("port").map(|s| s.as_str()), Some("8082"));
     }
 
     #[test]
@@ -713,13 +771,16 @@ nodes:
 connections:
   - from: "orderServiceNode"
     to: "orderPlacedChannel"
-    type: kafka
+    transport:
+      id: kafka
     serializer: "json"
   - from: "orderPlacedChannel"
     to: "orderServiceNode"
-    type: kafka
+    transport:
+      id: kafka
+      params:
+        consumerGroup: "order-consumer-group"
     serializer: "json"
-    consumerGroup: "order-consumer-group"
 "#;
 
     #[test]
@@ -770,7 +831,8 @@ nodes:
 connections:
   - from: "a"
     to: "b"
-    type: kafka
+    transport:
+      id: kafka
     serializer: "json"
 "#;
         assert!(parse_string(yaml).is_ok());
@@ -786,12 +848,17 @@ anchors:
 connections:
   - from: gateway
     to: calculator
-    type: http
-    host: *calcHost
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: *calcHost
+        port: "8081"
 "#;
         let config = parse_string(yaml).unwrap();
-        assert_eq!(config.connections[0].host.as_deref(), Some("localhost"));
+        assert_eq!(
+            config.connections[0].transport.params.get("host").map(|s| s.as_str()),
+            Some("localhost")
+        );
     }
 
     #[test]
@@ -801,15 +868,17 @@ connections:
   - &baseConn
     from: gateway
     to: calculator
-    type: http
-    host: localhost
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: localhost
+        port: "8081"
   - *baseConn
 "#;
         let config = parse_string(yaml).unwrap();
         assert_eq!(config.connections.len(), 2);
-        assert_eq!(config.connections[1].host.as_deref(), Some("localhost"));
-        assert_eq!(config.connections[1].port, Some(8081));
+        assert_eq!(config.connections[1].transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
+        assert_eq!(config.connections[1].transport.params.get("port").map(|s| s.as_str()), Some("8081"));
         assert_eq!(config.connections[1].to, "calculator");
     }
 
@@ -817,37 +886,39 @@ connections:
     fn merge_key_populates_fields() {
         let yaml = r#"
 defaults: &httpDefaults
-  type: http
-  host: localhost
-  port: 8081
+  id: http
+  params:
+    host: localhost
+    port: "8081"
 connections:
   - from: gateway
     to: calculator
-    <<: *httpDefaults
+    transport:
+      <<: *httpDefaults
 "#;
         let config = parse_string(yaml).unwrap();
         let conn = &config.connections[0];
-        // fields present on the mapping itself
-        assert_eq!(conn.from.as_deref(), Some("gateway"));
-        assert_eq!(conn.to, "calculator");
-        // fields populated from the anchor
-        assert!(conn.is_http());
-        assert_eq!(conn.host.as_deref(), Some("localhost"));
-        assert_eq!(conn.port, Some(8081));
+        assert_eq!(conn.transport.id, "http");
+        assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
+        assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
     }
 
     #[test]
     fn merge_key_local_value_overrides_anchor() {
         let yaml = r#"
 defaults: &httpDefaults
-  type: http
-  host: localhost
-  port: 8081
+  id: http
+  params:
+    host: localhost
+    port: "8081"
 connections:
   - from: gateway
     to: calculator
-    <<: *httpDefaults
-    port: 9090
+    transport:
+      <<: *httpDefaults
+      params:
+        host: localhost
+        port: "9090"
 "#;
         let config = parse_string(yaml).unwrap();
         let conn = &config.connections[0];
@@ -855,42 +926,132 @@ connections:
         assert_eq!(conn.from.as_deref(), Some("gateway"));
         assert_eq!(conn.to, "calculator");
         // local value overrides the anchor
-        assert_eq!(conn.port, Some(9090));
-        // remaining fields still come from the anchor
-        assert!(conn.is_http());
-        assert_eq!(conn.host.as_deref(), Some("localhost"));
+        assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("9090"));
+        assert_eq!(conn.transport.id, "http");
+        assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
     }
 
     #[test]
     fn multiple_anchors_resolve_independently() {
         let yaml = r#"
 anchors:
-  calc: &calcDefaults
+  calcParams: &calcParams
     host: calc-host
-    port: 8081
-  notif: &notifDefaults
+    port: "8081"
+  notifParams: &notifParams
     host: notif-host
-    port: 8082
+    port: "8082"
 connections:
   - from: gateway
     to: calculator
-    type: http
-    <<: *calcDefaults
+    transport:
+      id: http
+      params:
+        <<: *calcParams
   - from: gateway
     to: notifier
-    type: http
-    <<: *notifDefaults
+    transport:
+      id: http
+      params:
+        <<: *notifParams
 "#;
         let config = parse_string(yaml).unwrap();
         let calc = &config.connections[0];
         assert_eq!(calc.from.as_deref(), Some("gateway"));
         assert_eq!(calc.to, "calculator");
-        assert_eq!(calc.host.as_deref(), Some("calc-host"));
-        assert_eq!(calc.port, Some(8081));
+        assert_eq!(calc.transport.params.get("host").map(|s| s.as_str()), Some("calc-host"));
+        assert_eq!(calc.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
         let notif = &config.connections[1];
         assert_eq!(notif.from.as_deref(), Some("gateway"));
         assert_eq!(notif.to, "notifier");
-        assert_eq!(notif.host.as_deref(), Some("notif-host"));
-        assert_eq!(notif.port, Some(8082));
+        assert_eq!(notif.transport.params.get("host").map(|s| s.as_str()), Some("notif-host"));
+        assert_eq!(notif.transport.params.get("port").map(|s| s.as_str()), Some("8082"));
+    }
+
+    #[test]
+    fn parses_transport_block_with_params() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+      params:
+        host: localhost
+        port: "8081"
+"#;
+        let config = parse_string(yaml).unwrap();
+        let conn = &config.connections[0];
+        assert_eq!(conn.transport.id, "http");
+        assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
+        assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
+    }
+
+    #[test]
+    fn parses_handle_timeout_true() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+      handleTimeout: true
+      params:
+        host: localhost
+        port: "8081"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].transport.handle_timeout);
+    }
+
+    #[test]
+    fn handle_timeout_defaults_to_false() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(!config.connections[0].transport.handle_timeout);
+    }
+
+    #[test]
+    fn absent_params_yields_empty_map() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].transport.params.is_empty());
+    }
+
+    #[test]
+    fn transport_block_missing_fails_validation() {
+        // Missing transport block entirely — should fail
+        // Note: this would fail at deserialize time since transport is required
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+"#;
+        assert!(parse_string(yaml).is_err());
+    }
+
+    #[test]
+    fn direct_connection_is_direct() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: direct
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].is_direct());
     }
 }
