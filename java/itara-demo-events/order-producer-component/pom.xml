@@ -21,6 +21,10 @@
         </dependency>
         <dependency>
             <groupId>io.itara.demo.events</groupId>
+            <artifactId>payment-event-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.demo.events</groupId>
             <artifactId>order-producer-api</artifactId>
         </dependency>
     </dependencies>

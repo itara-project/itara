@@ -3,9 +3,7 @@ package io.itara.transport.http;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.itara.exceptions.ItaraRemoteException;
-import io.itara.runtime.ContextPropagation;
 import io.itara.runtime.DispatchHandler;
-import io.itara.runtime.ItaraContext;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -42,10 +40,10 @@ public class ItaraHttpServer {
     private static final Logger log = Logger.getLogger(ItaraHttpServer.class.getName());
 
     private final HttpServer server;
-    private final DispatchHandler dispatcher;
+    private final Map<String, DispatchHandler> dispatchers;
 
-    public ItaraHttpServer(int port, DispatchHandler dispatcher) throws IOException {
-        this.dispatcher = dispatcher;
+    public ItaraHttpServer(int port, Map<String, DispatchHandler> dispatchers) throws IOException {
+        this.dispatchers = dispatchers;
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
         this.server.createContext("/itara/", this::handle);
     }
@@ -95,6 +93,14 @@ public class ItaraHttpServer {
         } catch (IOException e) {
             log.warning("[Itara/HTTP] Failed to read request body for '"
                     + methodName + "' on '" + componentId + "'");
+            sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
+            return;
+        }
+
+        DispatchHandler dispatcher = dispatchers.get(componentId);
+        if (dispatcher == null) {
+            log.warning("[Itara/HTTP] No dispatcher registered for component '"
+                    + componentId + "' on this server");
             sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
             return;
         }

@@ -18,9 +18,11 @@ import java.util.List;
  *   connections:
  *     - from: "gateway"
  *       to:   "calculator"
- *       type: http
- *       host: "${CALC_HOST:-localhost}"
- *       port: "${CALC_PORT:-8081}"
+ *       transport:
+ *         id: http
+ *         params:
+ *           host: "${CALC_HOST:-localhost}"
+ *           port: "${CALC_PORT:-8081}"
  *       serializer: json
  *
  * The 'from' field may be absent or empty, indicating that the caller
@@ -43,26 +45,8 @@ public class ConnectionEntry {
     /** The called node id. Required. */
     private String to;
 
-    /**
-     * The connection type. Required.
-     * Supported values depend on which transport jars are in itara.lib.dir.
-     * Built-in: "direct", "http", "kafka".
-     */
-    private String type;
 
-    /**
-     * The hostname of the remote JVM.
-     * Required for non-direct connections.
-     * Supports environment variable substitution: ${HOST:-localhost}
-     */
-    private String host;
-
-    /**
-     * The port of the remote JVM.
-     * Required for non-direct connections.
-     * Supports environment variable substitution: ${PORT:-8080}
-     */
-    private int port;
+    private TransportEntry transport;
 
     /**
      * The serializer type for this connection.
@@ -72,21 +56,6 @@ public class ConnectionEntry {
      */
     @JsonSetter(nulls = Nulls.SKIP)  // keep field default if YAML value is null
     private String serializer = "json";
-
-    /**
-     * Comma-separated list of Kafka broker addresses for async transports.
-     * Format: host1:port1,host2:port2
-     * Required on connections of type 'kafka'.
-     * Ignored for all other transport types.
-     */
-    private String bootstrapServers;
-
-    /**
-     * Consumer group id for async transports (e.g. Kafka).
-     * Required on consumer-side connections of type 'kafka'.
-     * Ignored for all other transport types.
-     */
-    private String consumerGroup;
 
     /**
      * Optional failure semantics configuration for this connection.
@@ -100,26 +69,14 @@ public class ConnectionEntry {
     public String getTo() { return to; }
     public void setTo(String to) { this.to = to; }
 
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-
-    public String getHost() { return host; }
-    public void setHost(String host) { this.host = host; }
-
-    public int getPort() { return port; }
-    public void setPort(int port) { this.port = port; }
+    public TransportEntry getTransport()             { return transport; }
+    public void setTransport(TransportEntry transport){ this.transport = transport; }
 
     public String getSerializer() { return serializer; }
     public void setSerializer(String serializer) {
         this.serializer = (serializer == null || serializer.isBlank())
                 ? "json" : serializer.strip();
     }
-
-    public String getConsumerGroup()                   { return consumerGroup; }
-    public void setConsumerGroup(String consumerGroup) { this.consumerGroup = consumerGroup; }
-
-    public String getBootstrapServers()                      { return bootstrapServers; }
-    public void setBootstrapServers(String bootstrapServers) { this.bootstrapServers = bootstrapServers; }
 
     public FailureSemanticsEntry getFailureSemantics() { return failureSemantics; }
     public void setFailureSemantics(FailureSemanticsEntry failureSemantics) {
@@ -155,24 +112,14 @@ public class ConnectionEntry {
      * Returns true if this is a direct (colocated, in-process) connection.
      */
     public boolean isDirect() {
-        return "direct".equalsIgnoreCase(type);
-    }
-
-    /**
-     * Returns true if this is an HTTP connection.
-     */
-    public boolean isHttp() {
-        return "http".equalsIgnoreCase(type);
-    }
-
-    public boolean isKafka() {
-        return "kafka".equalsIgnoreCase(type);
+        return "direct".equalsIgnoreCase(transport.getId());
     }
 
     @Override
     public String toString() {
         return "ConnectionEntry{from='" + from + "', to='" + to
-                + "', type='" + type + "', serializer='" + serializer + "'}";
+                + "', transport.id='" + (transport != null ? transport.getId() : null)
+                + "', serializer='" + serializer + "'}";
     }
 
     public void validate() {
@@ -180,20 +127,10 @@ public class ConnectionEntry {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'to'.");
         }
-        if (type == null || type.isBlank()) {
+        if (transport == null || transport.getId() == null || transport.getId().isBlank()) {
             throw new ConfigurationException(
-                    "[Itara] Connection to='" + to + "' is missing required field 'type'.");
+                    "[Itara] Connection to='" + to + "' is missing required field 'transport.id'.");
         }
-        if (!isDirect() && !isKafka()) {
-            if (port <= 0) {
-                throw new ConfigurationException(
-                        "[Itara] Connection to='" + to + "' of type '" + type
-                                + "' is missing required field 'port'.");
-            }
-        }
-        // host is not validated here — whether host is required depends on
-        // whether this JVM is the caller or the callee, which is determined
-        // by the agent after classpath scanning, not by the config loader.
     }
 
     public boolean isRelatedToAnyOfNodes(List<String> nodeIds) {

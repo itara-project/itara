@@ -6,7 +6,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("MetadataFile parsing")
 class MetadataFileTest {
@@ -46,11 +51,11 @@ class MetadataFileTest {
                 id = "inventory"
                 version = "1.0.0"
                 api-version = "1.x"
-
+                
                 [runtime]
                 language = "java"
                 compiler = "21"
-
+                
                 [itara]
                 spec-version = "0.1"
                 core-version = "0.1+"
@@ -73,7 +78,7 @@ class MetadataFileTest {
                 id = "inventory-api"
                 version = "1.0.0"
                 api-version = "1.x"
-
+                
                 [serializers]
                 supported = ["json", "protobuf"]
                 """;
@@ -93,7 +98,7 @@ class MetadataFileTest {
                 version = "1.0.0"
                 api-version = "1.x"
                 some-future-field = "ignored"
-
+                
                 [some-future-section]
                 whatever = "ignored"
                 """;
@@ -177,7 +182,7 @@ class MetadataFileTest {
         List<ImplementedEventContract> contracts =
                 metadata.getImplementedEventContracts().getContracts();
         assertEquals(2, contracts.size());
-        assertEquals("order-events/order-placed",    contracts.get(0).getId());
+        assertEquals("order-events/order-placed", contracts.get(0).getId());
         assertEquals("order-events/order-cancelled", contracts.get(1).getId());
     }
 
@@ -230,6 +235,114 @@ class MetadataFileTest {
               { id = "order-events/order-placed", version = "1.0.0", future-field = "ignored" }
             ]
             """;
+
+        assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
+    }
+
+    @Test
+    @DisplayName("parses transport type and capabilities for a transport artifact")
+    void parsesTransportSection() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "transport"
+                id = "http"
+                version = "0.1.0"
+                
+                [transport]
+                type = "http"
+                
+                [transport.capabilities]
+                nativeCallTimeout = true
+                externallyInterruptible = true
+                """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getTransport());
+        assertEquals("http", metadata.getTransport().getType());
+        assertTrue(metadata.getTransport().getCapabilities().isNativeCallTimeout());
+        assertTrue(metadata.getTransport().getCapabilities().isExternallyInterruptible());
+    }
+
+    @Test
+    @DisplayName("capabilities default to true when [transport.capabilities] section is absent")
+    void capabilitiesDefaultToTrueWhenAbsent() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "transport"
+                id = "http"
+                version = "0.1.0"
+                
+                [transport]
+                type = "http"
+                """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getTransport());
+        assertNotNull(metadata.getTransport().getCapabilities());
+        assertTrue(metadata.getTransport().getCapabilities().isNativeCallTimeout(),
+                "nativeCallTimeout should default to true");
+        assertTrue(metadata.getTransport().getCapabilities().isExternallyInterruptible(),
+                "externallyInterruptible should default to true");
+    }
+
+    @Test
+    @DisplayName("transport section is null for non-transport artifacts")
+    void transportSectionNullForNonTransportArtifacts() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "inventory"
+                version = "1.0.0"
+                """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNull(metadata.getTransport());
+    }
+
+    @Test
+    @DisplayName("parses nativeCallTimeout = false correctly")
+    void parsesNativeCallTimeoutFalse() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "transport"
+                id = "kafka"
+                version = "0.1.0"
+                
+                [transport]
+                type = "kafka"
+                
+                [transport.capabilities]
+                nativeCallTimeout = false
+                externallyInterruptible = false
+                """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertFalse(metadata.getTransport().getCapabilities().isNativeCallTimeout());
+        assertFalse(metadata.getTransport().getCapabilities().isExternallyInterruptible());
+    }
+
+    @Test
+    @DisplayName("unknown fields in transport section are ignored")
+    void unknownFieldsInTransportSectionIgnored() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "transport"
+                id = "http"
+                version = "0.1.0"
+                
+                [transport]
+                type = "http"
+                future-field = "ignored"
+                
+                [transport.capabilities]
+                nativeCallTimeout = true
+                externallyInterruptible = true
+                future-capability = "ignored"
+                """;
 
         assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
     }

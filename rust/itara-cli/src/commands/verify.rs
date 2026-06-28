@@ -199,12 +199,12 @@ fn check_orphaned_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
  
 fn check_unknown_transports(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        let t = conn.transport_type.to_ascii_lowercase();
+        let t = conn.transport.id.to_ascii_lowercase();
         if !KNOWN_TRANSPORTS.contains(&t.as_str()) {
             issues.push(Issue::error(format!(
                 "connection to '{}' has unknown transport type '{}' (known: {})",
                 conn.to,
-                conn.transport_type,
+                conn.transport.id,
                 KNOWN_TRANSPORTS.join(", "),
             )));
         }
@@ -244,7 +244,7 @@ fn check_virtual_transport_mismatch(config: &WiringConfig, issues: &mut Vec<Issu
         let transports: std::collections::HashSet<String> = config.connections.iter()
             .filter(|c| c.to == vn.id
                     || c.from.as_deref() == Some(vn.id.as_str()))
-            .map(|c| c.transport_type.to_ascii_lowercase())
+            .map(|c| c.transport.id.to_ascii_lowercase())
             .collect();
 
         if transports.len() > 1 {
@@ -329,14 +329,25 @@ mod tests {
             address: address.into(),
         })
     }
+
+
+    fn transport_entry(id: &str, port: Option<u16>) -> itara_config::TransportEntry {
+        let mut params = std::collections::HashMap::new();
+        if let Some(p) = port {
+            params.insert("port".to_string(), p.to_string());
+        }
+        itara_config::TransportEntry {
+            id: id.into(),
+            handle_timeout: false,
+            params,
+        }
+    }
  
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
             from: from.map(Into::into),
             to: to.into(),
-            transport_type: "http".into(),
-            host: None,
-            port: Some(port),
+            transport: transport_entry("http", Some(port)),
             serializer: "".into(),
         }
     }
@@ -345,9 +356,7 @@ mod tests {
         ConnectionEntry {
             from: Some(from.into()),
             to: to.into(),
-            transport_type: "direct".into(),
-            host: None,
-            port: None,
+            transport: transport_entry("direct", None),
             serializer: "".into(),
         }
     }
@@ -356,9 +365,7 @@ mod tests {
         ConnectionEntry {
             from: from.map(Into::into),
             to: to.into(),
-            transport_type: "kafka".into(),
-            host: None,
-            port: None,
+            transport: transport_entry("kafka", None),
             serializer: "json".into(),
         }
     }
@@ -367,9 +374,7 @@ mod tests {
         ConnectionEntry {
             from: from.map(Into::into),
             to: to.into(),
-            transport_type: transport.into(),
-            host: None,
-            port: Some(port),
+            transport: transport_entry(transport, Some(port)),
             serializer: "".into(),
         }
     }
@@ -651,9 +656,7 @@ mod tests {
                 ConnectionEntry {
                     from: Some("channel".into()),
                     to: "consumerNode".into(),
-                    transport_type: "http".into(),
-                    host: None,
-                    port: Some(8081),
+                    transport: transport_entry("http", Some(8081)),
                     serializer: "json".into(),
                 },
             ],

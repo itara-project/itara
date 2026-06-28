@@ -13,30 +13,39 @@ nodes:
 connections:
   - from:
     to: "orderNode"
-    type: http
-    host: "localhost"
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: "localhost"
+        port: 8081
     serializer: "json"
   - from:
     to: "inventoryNode"
-    type: http
-    host: "localhost"
-    port: 8082
+    transport:
+      id: http
+      params:
+        host: "localhost"
+        port: 8081
     serializer: "json"
   - from: "orderNode"
     to: "inventoryNode"
-    type: direct
+    transport:
+      id: direct
   - from: "orderNode"
     to: "fulfilmentNode"
-    type: direct
+    transport:
+      id: direct
   - from: "orderNode"
     to: "notificationNode"
-    type: direct
+    transport:
+      id: direct
   - from: "orderNode"
     to: "paymentNode"
-    type: http
-    host: payment
-    port: 8083
+    transport:
+      id: http
+      params:
+        host: payment
+        port: 8083
     serializer: "json"
     failureSemantics:
       id: built-in

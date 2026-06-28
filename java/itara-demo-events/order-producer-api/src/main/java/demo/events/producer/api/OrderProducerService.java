@@ -7,4 +7,10 @@ import io.itara.api.ContractMethod;
 public interface OrderProducerService {
     @ContractMethod
     String placeOrder(String customerId, double amount);
+
+    @ContractMethod
+    String cancelOrder(String orderId, String customerId);
+
+    @ContractMethod
+    String makePayment(String orderId, String customerId, double amount);
 }

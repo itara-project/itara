@@ -112,7 +112,7 @@ fn print_connections(config: &WiringConfig) {
         let from = conn.from.as_deref().unwrap_or("?");
         kv(
             &format!("{} →", from),
-            &format!("{:<20} [{}]", conn.to, conn.transport_type),
+            &format!("{:<20} [{}]", conn.to, conn.transport.id),
             from_width + 2, // +2 for " →"
         );
     }
@@ -146,11 +146,13 @@ fn print_deployment_groups(config: &WiringConfig, no_events: bool) {
 
             for conn in &inbound {
                 if conn.is_external() {
-                    println!("      Receives: external {} on {}", conn.transport_type, port_str(conn.port));
+                    println!("      Receives: external {} on {}", conn.transport.id, port_str(&conn.transport));
                 } else {
                     let from = conn.from.as_deref().unwrap_or("?");
-                    let port = conn.port.map(|p| format!(" on :{}", p)).unwrap_or_default();
-                    println!("      Receives: {} via {}{}", from, conn.transport_type, port);
+                    let port = conn.transport.params.get("port")
+                        .map(|p| format!(" on :{}", p))
+                        .unwrap_or_default();
+                    println!("      Receives: {} via {}{}", from, conn.transport.id, port);
                 }
             }
 
@@ -161,7 +163,7 @@ fn print_deployment_groups(config: &WiringConfig, no_events: bool) {
                 .collect();
 
             for conn in &outbound {
-                println!("      Calls:    {} via {}", conn.to, conn.transport_type);
+                println!("      Calls:    {} via {}", conn.to, conn.transport.id);
             }
 
             if !no_events {
@@ -355,10 +357,10 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
 }
 
 fn arrow_label(conn: &ConnectionEntry) -> String {
-    let port = conn.port
+    let port = conn.transport.params.get("port")
         .map(|p| format!(":{}", p))
         .unwrap_or_default();
-    format!("--{}{}-->", conn.transport_type, port)
+    format!("--{}{}-->", conn.transport.id, port)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -371,8 +373,10 @@ fn has_external_inbound(config: &WiringConfig, node_id: &str) -> bool {
         .any(|c| c.is_external() && c.to == node_id)
 }
 
-fn port_str(port: Option<u16>) -> String {
-    port.map(|p| format!(":{}", p)).unwrap_or_else(|| "(no port)".to_string())
+fn port_str(transport: &itara_config::TransportEntry) -> String {
+    transport.params.get("port")
+        .map(|p| format!(":{}", p))
+        .unwrap_or_else(|| "(no port)".to_string())
 }
 
 /// Converts a 0-based index to a spreadsheet-style group label: A, B, … Z, AA, AB, …
@@ -406,25 +410,33 @@ mod tests {
             address: address.into(),
         })
     }
- 
+    
+    fn transport_entry(id: &str, port: Option<u16>) -> itara_config::TransportEntry {
+        let mut params = std::collections::HashMap::new();
+        if let Some(p) = port {
+            params.insert("port".to_string(), p.to_string());
+        }
+        itara_config::TransportEntry {
+            id: id.into(),
+            handle_timeout: false,
+            params,
+        }
+    }
+
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
             from: from.map(Into::into),
             to: to.into(),
-            transport_type: "http".into(),
-            host: None,
-            port: Some(port),
+            transport: transport_entry("http", Some(port)),
             serializer: "".into(),
         }
     }
- 
+
     fn direct(from: &str, to: &str) -> ConnectionEntry {
         ConnectionEntry {
             from: Some(from.into()),
             to: to.into(),
-            transport_type: "direct".into(),
-            host: None,
-            port: None,
+            transport: transport_entry("direct", None),
             serializer: "".into(),
         }
     }

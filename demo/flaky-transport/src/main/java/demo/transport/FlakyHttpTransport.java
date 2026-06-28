@@ -1,7 +1,8 @@
 package demo.transport;
 
-import io.itara.runtime.DispatchHandler;
 import io.itara.transport.http.HttpTransport;
+import io.itara.transport.http.HttpTransportConfig;
+import io.itara.spi.transport.ItaraTransportConfig;
 
 import java.time.Duration;
 import java.util.Map;
@@ -32,7 +33,8 @@ public class FlakyHttpTransport extends HttpTransport {
     private final double failRate;
     private final Random random = new Random();
 
-    public FlakyHttpTransport() {
+    public FlakyHttpTransport(HttpTransportConfig config) {
+        super(config);
         String env = System.getenv(ENV_FAIL_RATE);
         double rate = DEFAULT_FAIL_RATE;
         if (env != null && !env.isBlank()) {
@@ -55,16 +57,11 @@ public class FlakyHttpTransport extends HttpTransport {
     }
 
     @Override
-    public String type() {
-        return "flaky-http";
-    }
-
-    @Override
     public byte[] send(String componentId,
                        String methodName,
                        byte[] payload,
                        Map<String, String> headers,
-                       Map<String, String> properties,
+                       ItaraTransportConfig config,
                        Duration timeout) throws Exception {
         if (random.nextDouble() < failRate) {
             log.info("[Itara/FlakyHTTP] Simulating transient failure for "
@@ -72,18 +69,6 @@ public class FlakyHttpTransport extends HttpTransport {
                     + " (rate=" + (int)(failRate * 100) + "%)");
             throw new RuntimeException("[Itara/FlakyHTTP] Simulated transient failure");
         }
-        return super.send(componentId, methodName, payload, headers, properties, timeout);
-    }
-
-    @Override
-    public void startListener(String componentId,
-                              Map<String, String> properties,
-                              DispatchHandler dispatcher) {
-        super.startListener(componentId, properties, dispatcher);
-    }
-
-    @Override
-    public void stopListener() {
-        super.stopListener();
+        return super.send(componentId, methodName, payload, headers, config, timeout);
     }
 }

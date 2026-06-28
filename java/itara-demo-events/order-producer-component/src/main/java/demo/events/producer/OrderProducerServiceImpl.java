@@ -1,7 +1,9 @@
 package demo.events.producer;
 
+import demo.events.api.OrderCancelledContract;
 import demo.events.api.OrderPlacedContract;
 import demo.events.producer.api.OrderProducerService;
+import payment.events.api.PaymentMadeContract;
 
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -16,9 +18,15 @@ public class OrderProducerServiceImpl implements OrderProducerService {
     private static final Logger log = Logger.getLogger(OrderProducerServiceImpl.class.getName());
 
     private final OrderPlacedContract orderPlacedContract;
+    private final OrderCancelledContract orderCancelledContract;
+    private final PaymentMadeContract paymentMadeContract;
 
-    public OrderProducerServiceImpl(OrderPlacedContract orderPlacedContract) {
+    public OrderProducerServiceImpl(OrderPlacedContract orderPlacedContract,
+                                    OrderCancelledContract orderCancelledContract,
+                                    PaymentMadeContract paymentMadeContract) {
         this.orderPlacedContract = orderPlacedContract;
+        this.orderCancelledContract = orderCancelledContract;
+        this.paymentMadeContract = paymentMadeContract;
     }
 
     @Override
@@ -31,6 +39,25 @@ public class OrderProducerServiceImpl implements OrderProducerService {
         orderPlacedContract.onOrderPlaced(orderId, customerId, amount);
 
         log.info("[OrderProducer] Event fired for order " + orderId);
+        return orderId;
+    }
+
+    @Override
+    public String cancelOrder(String orderId, String customerId) {
+        log.info("[OrderProducer] Cancelling order " + orderId
+                + " for customer " + customerId);
+
+        orderCancelledContract.onOrderCancelled(orderId, customerId);
+        return orderId;
+    }
+
+    @Override
+    public String makePayment(String orderId, String customerId, double amount) {
+        log.info("[OrderProducer] Making payment for order " + orderId
+                + " for customer " + customerId
+                + " amount " + amount);
+
+        paymentMadeContract.onPaymentMade(orderId, customerId, amount);
         return orderId;
     }
 }

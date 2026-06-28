@@ -1,23 +1,28 @@
 package io.itara.transport.kafka;
 
 import io.itara.runtime.DispatchHandler;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransport;
+import io.itara.spi.transport.ItaraTransportConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -41,32 +46,38 @@ import java.util.logging.Logger;
  *   x-itara-component-id  — the target component id
  *   x-itara-method-name   — the target method name
  *
- * Properties read:
- *   topic            — Kafka topic name (from virtual node address)
- *   bootstrapServers — comma-separated broker list (from connection entry)
- *   consumerGroup    — consumer group id (from connection entry, consumer side only)
- *
- * Discovered by the agent via META-INF/itara/transport.
+ * One instance per bootstrapServers + consumerGroup combination. Multiple
+ * components and topics may be registered on the same instance — they share
+ * one KafkaConsumer subscribing to all their topics, and one KafkaProducer
+ * to the same cluster.
  */
 public class KafkaTransport implements ItaraTransport {
 
-    public static final String TYPE = "kafka";
-
-    public static final String HEADER_COMPONENT_ID = "x-itara-component-id";
-    public static final String HEADER_METHOD_NAME  = "x-itara-method-name";
+    public static final String HEADER_COMPONENT_ID   = "x-itara-component-id";
+    public static final String HEADER_METHOD_NAME    = "x-itara-method-name";
+    public static final String HEADER_FAILURE_REASON = "x-itara-failure-reason";
 
     private static final Logger log = Logger.getLogger(KafkaTransport.class.getName());
 
     private static final Duration POLL_TIMEOUT = Duration.ofMillis(100);
+
+    // Accumulated during registerListener(), consumed by start()
+    private final Map<String, ListenerConfig> listeners = new ConcurrentHashMap<>();
+    private final Set<String> topics = new HashSet<>();
+
+    private final String bootstrapServers;
+    private final String consumerGroup;
+    private final KafkaFailureAction failureAction;
 
     private volatile KafkaProducer<byte[], byte[]> producer;
     private volatile KafkaConsumer<byte[], byte[]> consumer;
     private volatile Thread consumerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    @Override
-    public String type() {
-        return TYPE;
+    public KafkaTransport(KafkaTransportConfig config) {
+        this.bootstrapServers = config.getBootstrapServers();
+        this.consumerGroup = config.getConsumerGroup();
+        this.failureAction    = config.getFailureAction();
     }
 
     // ── Producer side ─────────────────────────────────────────────────────
@@ -84,11 +95,12 @@ public class KafkaTransport implements ItaraTransport {
                        String methodName,
                        byte[] payload,
                        Map<String, String> headers,
-                       Map<String, String> properties,
+                       ItaraTransportConfig config,
                        Duration timeout) throws Exception {
 
-        String topic            = required(properties, "topic",            componentId);
-        String bootstrapServers = required(properties, "bootstrapServers", componentId);
+        KafkaTransportConfig kafkaConfig = (KafkaTransportConfig) config;
+        String topic            = kafkaConfig.getTopic();
+        String bootstrapServers = kafkaConfig.getBootstrapServers();
 
         ensureProducer(bootstrapServers);
 
@@ -113,27 +125,37 @@ public class KafkaTransport implements ItaraTransport {
 
     // ── Consumer side ─────────────────────────────────────────────────────
 
-    /**
-     * Starts a background poll loop for the configured topic and consumer group.
-     * Returns immediately once the consumer is subscribed and the thread is running.
-     *
-     * Per message: extracts routing and context headers, calls the dispatcher.
-     * Response bytes are discarded — fire-and-forget; no caller is waiting.
-     */
     @Override
-    public void startListener(String componentId,
-                              Map<String, String> properties,
-                              DispatchHandler dispatcher) {
+    public void registerListener(String componentId,
+                                 ItaraTransportConfig config,
+                                 DispatchHandler dispatcher) {
+        KafkaTransportConfig kafkaConfig = (KafkaTransportConfig) config;
+        listeners.put(componentId, new ListenerConfig(
+                dispatcher,
+                kafkaConfig.getFailureAction(),
+                kafkaConfig.getDlaTopic()));
+        topics.add(kafkaConfig.getTopic());
+        log.fine("[Itara/Kafka] registered listener for component '" + componentId
+                + "' on topic '" + kafkaConfig.getTopic() + "'");
+    }
 
-        String topic            = required(properties, "topic",            componentId);
-        String bootstrapServers = required(properties, "bootstrapServers", componentId);
-        String consumerGroup    = required(properties, "consumerGroup",    componentId);
+    @Override
+    public void start() throws Exception {
+        if (listeners.isEmpty()) {
+            // Producer-only instance — no consumer needed
+            log.fine("[Itara/Kafka] no listeners registered, skipping consumer startup");
+            return;
+        }
 
         Properties consumerProps = new Properties();
         consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,  bootstrapServers);
         consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG,           consumerGroup);
         consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,  "earliest");
-        consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+        if (failureAction == KafkaFailureAction.REDELIVER) {
+            consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        } else {
+            consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+        }
         consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
                 ByteArrayDeserializer.class.getName());
         consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
@@ -147,37 +169,37 @@ public class KafkaTransport implements ItaraTransport {
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }
-        //consumer = new KafkaConsumer<>(consumerProps);
-        consumer.subscribe(List.of(topic));
+
+        consumer.subscribe(new ArrayList<>(topics));
         running.set(true);
 
-        consumerThread = new Thread(() -> pollLoop(dispatcher, componentId),
-                "itara-kafka-consumer-" + componentId);
+        consumerThread = new Thread(this::pollLoop,
+                "itara-kafka-consumer-" + consumerGroup);
         consumerThread.setDaemon(true);
         consumerThread.start();
 
-        log.info("[Itara/Kafka] Consumer listening on topic " + topic
-                + " group " + consumerGroup + " for " + componentId);
+        log.info("[Itara/Kafka] Consumer started on topics " + topics
+                + " group " + consumerGroup
+                + " cluster " + bootstrapServers);
     }
 
-    private void pollLoop(DispatchHandler dispatcher, String componentId) {
+    private void pollLoop() {
         while (running.get()) {
             try {
                 for (ConsumerRecord<byte[], byte[]> record : consumer.poll(POLL_TIMEOUT)) {
-                    handleRecord(record, dispatcher);
+                    handleRecord(record);
                 }
             } catch (Exception e) {
                 if (running.get()) {
                     log.log(Level.WARNING,
-                            "[Itara/Kafka] Poll error for " + componentId
+                            "[Itara/Kafka] Poll error on group " + consumerGroup
                                     + " — consumer will retry", e);
                 }
             }
         }
     }
 
-    private void handleRecord(ConsumerRecord<byte[], byte[]> record,
-                              DispatchHandler dispatcher) {
+    private void handleRecord(ConsumerRecord<byte[], byte[]> record) {
         Headers kafkaHeaders = record.headers();
 
         String targetComponentId = headerValue(kafkaHeaders, HEADER_COMPONENT_ID);
@@ -189,7 +211,13 @@ public class KafkaTransport implements ItaraTransport {
             return;
         }
 
-        // Collect all headers into the map the dispatcher expects
+        ListenerConfig listener = listeners.get(targetComponentId);
+        if (listener == null) {
+            log.warning("[Itara/Kafka] Skipping message — no listener registered"
+                    + " for component '" + targetComponentId + "'");
+            return;
+        }
+
         Map<String, String> headers = new HashMap<>();
         kafkaHeaders.forEach(h ->
                 headers.put(h.key(), new String(h.value(), StandardCharsets.UTF_8)));
@@ -197,17 +225,67 @@ public class KafkaTransport implements ItaraTransport {
         log.info("[Itara/Kafka] <- " + methodName + " on " + targetComponentId);
 
         try {
-            // Response bytes discarded — fire-and-forget, no caller waiting
-            dispatcher.dispatch(targetComponentId, methodName, record.value(), headers);
+            listener.dispatcher.dispatch(targetComponentId, methodName, record.value(), headers);
         } catch (Exception e) {
-            log.log(Level.WARNING,
-                    "[Itara/Kafka] Dispatch error for " + methodName
-                            + " on " + targetComponentId + " — message will not be retried", e);
+            handleDispatchFailure(targetComponentId, methodName, record, headers, listener, e);
+        }
+    }
+
+    private void handleDispatchFailure(String componentId,
+                                       String methodName,
+                                       ConsumerRecord<byte[], byte[]> record,
+                                       Map<String, String> headers,
+                                       ListenerConfig listener,
+                                       Exception cause) {
+        switch (listener.failureAction) {
+            case DROP:
+                log.log(Level.WARNING,
+                        "[Itara/Kafka] Dispatch failed for " + methodName
+                                + " on " + componentId + " — dropping message (failureAction=drop)",
+                        cause);
+                break;
+
+            case DLA:
+                log.log(Level.WARNING,
+                        "[Itara/Kafka] Dispatch failed for " + methodName
+                                + " on " + componentId + " — publishing to DLA topic '"
+                                + listener.dlaTopic + "'", cause);
+                try {
+                    ensureProducer(bootstrapServers);
+                    ProducerRecord<byte[], byte[]> dlaRecord =
+                            new ProducerRecord<>(listener.dlaTopic, record.value());
+                    // Copy all original headers to the DLA message
+                    headers.forEach((k, v) ->
+                            dlaRecord.headers().add(k, v.getBytes(StandardCharsets.UTF_8)));
+                    // Add failure reason header
+                    dlaRecord.headers().add(HEADER_FAILURE_REASON,
+                            cause.getMessage() != null
+                                    ? cause.getMessage().getBytes(StandardCharsets.UTF_8)
+                                    : "unknown".getBytes(StandardCharsets.UTF_8));
+                    producer.send(dlaRecord).get();
+                } catch (Exception dlaEx) {
+                    log.log(Level.SEVERE,
+                            "[Itara/Kafka] Failed to publish to DLA topic '"
+                                    + listener.dlaTopic + "' — message lost", dlaEx);
+                }
+                break;
+
+            case REDELIVER:
+                log.log(Level.WARNING,
+                        "[Itara/Kafka] Dispatch failed for " + methodName
+                                + " on " + componentId
+                                + " — not acknowledging, Kafka will redeliver", cause);
+                // Throwing here interrupts the poll loop commit cycle —
+                // with auto-commit disabled this would prevent the offset advancing.
+                // With auto-commit enabled (current config) redelivery is best-effort.
+                throw new RuntimeException(
+                        "[Itara/Kafka] Redelivery requested for " + methodName
+                                + " on " + componentId, cause);
         }
     }
 
     @Override
-    public void stopListener() {
+    public void stop() {
         running.set(false);
         if (consumer != null) {
             consumer.wakeup();  // interrupts poll() cleanly
@@ -252,21 +330,24 @@ public class KafkaTransport implements ItaraTransport {
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }
-        //producer = new KafkaProducer<>(props);
     }
 
     private static String headerValue(Headers headers, String key) {
-        var header = headers.lastHeader(key);
+        Header header = headers.lastHeader(key);
         return header != null ? new String(header.value(), StandardCharsets.UTF_8) : null;
     }
 
-    private static String required(Map<String, String> props, String key, String componentId) {
-        String value = props.get(key);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                    "[Itara/Kafka] Missing required property '" + key
-                            + "' for component '" + componentId + "'");
+    private static final class ListenerConfig {
+        final DispatchHandler dispatcher;
+        final KafkaFailureAction failureAction;
+        final String dlaTopic;
+
+        ListenerConfig(DispatchHandler dispatcher,
+                       KafkaFailureAction failureAction,
+                       String dlaTopic) {
+            this.dispatcher    = dispatcher;
+            this.failureAction = failureAction;
+            this.dlaTopic      = dlaTopic;
         }
-        return value;
     }
 }

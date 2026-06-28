@@ -1,7 +1,7 @@
 package io.itara.agent;
 
 import io.itara.runtime.TransportRegistry;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransportFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -67,18 +67,18 @@ public class TransportLoader {
 
                 try {
                     Class<?> cls = classLoader.loadClass(line);
-                    if (!ItaraTransport.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] skipping transport class="
-                                + line + " reason=does not implement ItaraTransport");
+                    if (!ItaraTransportFactory.class.isAssignableFrom(cls)) {
+                        log.warning("[Itara] skipping transport factory class="
+                                + line + " reason=does not implement ItaraTransportFactory");
                         continue;
                     }
-                    ItaraTransport transport =
-                            (ItaraTransport) cls.getDeclaredConstructor().newInstance();
-                    TransportRegistry.instance().register(transport);
+                    ItaraTransportFactory factory =
+                            (ItaraTransportFactory) cls.getDeclaredConstructor().newInstance();
+                    TransportRegistry.instance().registerFactory(factory);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] transport class not found class=" + line);
+                    log.warning("[Itara] transport factory class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] failed to instantiate transport class="
+                    log.warning("[Itara] failed to instantiate transport factory class="
                             + line + " error=" + e.getMessage());
                 }
             }

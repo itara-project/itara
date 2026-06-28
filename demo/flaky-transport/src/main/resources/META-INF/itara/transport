@@ -1,2 +1,2 @@
 # Demo-only flaky HTTP transport for failure semantics demonstration
-demo.transport.FlakyHttpTransport
+demo.transport.FlakyHttpTransportFactory

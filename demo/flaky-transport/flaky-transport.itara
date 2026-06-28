@@ -11,3 +11,10 @@ compiler = "21"
 [itara]
 spec-version = "0.2"
 core-version = "0.2+"
+
+[transport]
+type = "http"
+
+[transport.capabilities]
+nativeCallTimeout = true
+externallyInterruptible = true

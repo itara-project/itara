@@ -330,13 +330,14 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: direct
+                        transport:
+                          id: direct
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml)
                     .getConnections().get(0);
             assertEquals("gateway",    conn.getFrom());
             assertEquals("calculator", conn.getTo());
-            assertEquals("direct",     conn.getType());
+            assertEquals("direct",     conn.getTransport().getId());
             assertTrue(conn.isDirect());
         }
 
@@ -347,20 +348,20 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: "localhost"
+                            port: 8081
                         serializer: json
                     """;
-            ConnectionEntry conn = ConfigLoader.parseString(yaml)
-                    .getConnections().get(0);
-            assertEquals("gateway",   conn.getFrom());
-            assertEquals("calculator",conn.getTo());
-            assertEquals("http",      conn.getType());
-            assertEquals("localhost", conn.getHost());
-            assertEquals(8081,        conn.getPort());
-            assertEquals("json",      conn.getSerializer());
-            assertTrue(conn.isHttp());
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("gateway",    conn.getFrom());
+            assertEquals("calculator", conn.getTo());
+            assertEquals("http",       conn.getTransport().getId());
+            assertEquals("localhost",  conn.getTransport().getParams().get("host"));
+            assertEquals("8081",       conn.getTransport().getParams().get("port"));
+            assertEquals("json",       conn.getSerializer());
         }
 
         @Test
@@ -370,7 +371,8 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: direct
+                        transport:
+                          id: direct
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
         }
@@ -382,10 +384,195 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: direct
+                        transport:
+                          id: direct
                         unknownFutureField: somevalue
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+    }
+
+    // ── Transport parsing ─────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("transport block")
+    class TransportBlock {
+
+        @Test
+        @DisplayName("parses transport id")
+        void parsesTransportId() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("http", conn.getTransport().getId());
+        }
+
+        @Test
+        @DisplayName("parses transport params map")
+        void parsesTransportParams() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("localhost", conn.getTransport().getParams().get("host"));
+            assertEquals("8081",      conn.getTransport().getParams().get("port"));
+        }
+
+        @Test
+        @DisplayName("absent params block yields empty map")
+        void absentParamsYieldsEmptyMap() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertNotNull(conn.getTransport().getParams());
+            assertTrue(conn.getTransport().getParams().isEmpty());
+        }
+
+        @Test
+        @DisplayName("handleTimeout defaults to false when absent")
+        void handleTimeoutDefaultsFalse() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertFalse(conn.getTransport().isHandleTimeout());
+        }
+
+        @Test
+        @DisplayName("parses handleTimeout: true")
+        void parsesHandleTimeout() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          handleTimeout: true
+                          params:
+                            host: localhost
+                            port: "8081"
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertTrue(conn.getTransport().isHandleTimeout());
+        }
+
+        @Test
+        @DisplayName("throws when transport block is missing")
+        void throwsWhenTransportBlockMissing() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                    """;
+            assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("throws when transport id is missing")
+        void throwsWhenTransportIdMissing() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          handleTimeout: true
+                    """;
+            assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("unknown fields in transport block are ignored")
+        void unknownFieldsInTransportBlockIgnored() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          unknownFutureField: somevalue
+                    """;
+            assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("env var with default is substituted in params value")
+        void envVarSubstitutedInParams() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: "${CALC_HOST:-myhost}"
+                            port: "8081"
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("myhost", conn.getTransport().getParams().get("host"));
+        }
+
+        @Test
+        @DisplayName("direct connection transport id marks connection as direct")
+        void directTransportIdMarksConnectionAsDirect() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: direct
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            assertEquals("direct", conn.getTransport().getId());
+            assertTrue(conn.isDirect());
+        }
+
+        @Test
+        @DisplayName("full transport block parses all fields correctly")
+        void fullTransportBlockParsesCorrectly() {
+            String yaml = """
+                    connections:
+                      - from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          handleTimeout: true
+                          params:
+                            host: localhost
+                            port: "8081"
+                            customKey: customValue
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            var transport = conn.getTransport();
+            assertAll(
+                    () -> assertEquals("http",        transport.getId()),
+                    () -> assertTrue(transport.isHandleTimeout()),
+                    () -> assertEquals("localhost",   transport.getParams().get("host")),
+                    () -> assertEquals("8081",        transport.getParams().get("port")),
+                    () -> assertEquals("customValue", transport.getParams().get("customKey"))
+            );
         }
     }
 
@@ -401,48 +588,20 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - from: "gateway"
-                        type: direct
+                        transport:
+                          id: direct
                     """;
             assertThrows(ConfigurationException.class,
                     () -> ConfigLoader.parseString(yaml));
         }
 
         @Test
-        @DisplayName("throws when 'type' is missing")
+        @DisplayName("throws when 'transport' is missing")
         void throwsWhenTypeMissing() {
             String yaml = """
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                    """;
-            assertThrows(ConfigurationException.class,
-                    () -> ConfigLoader.parseString(yaml));
-        }
-
-        @Test
-        @DisplayName("throws when port is missing for HTTP connection")
-        void throwsWhenPortMissingForHttp() {
-            String yaml = """
-                    connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: http
-                        host: "localhost"
-                    """;
-            assertThrows(ConfigurationException.class,
-                    () -> ConfigLoader.parseString(yaml));
-        }
-
-        @Test
-        @DisplayName("throws when port is not a number")
-        void throwsWhenPortNotANumber() {
-            String yaml = """
-                    connections:
-                      - from: "gateway"
-                        to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: "not-a-number"
                     """;
             assertThrows(ConfigurationException.class,
                     () -> ConfigLoader.parseString(yaml));
@@ -462,12 +621,14 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: http
-                        host: "${CALC_HOST:-myhost}"
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: "${CALC_HOST:-myhost}"
+                            port: "8081"
                     """;
             assertEquals("myhost", ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).getHost());
+                    .getConnections().get(0).getTransport().getParams().get("host"));
         }
 
         @Test
@@ -477,12 +638,14 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gateway"
                         to:   "calculator"
-                        type: http
-                        host: "localhost"
-                        port: "${CALC_PORT:-9999}"
+                        transport:
+                          id: http
+                          params:
+                            host: "localhost"
+                            port: "${CALC_PORT:-9999}"
                     """;
-            assertEquals(9999, ConfigLoader.parseString(yaml)
-                    .getConnections().get(0).getPort());
+            assertEquals("9999", ConfigLoader.parseString(yaml)
+                    .getConnections().get(0).getTransport().getParams().get("port"));
         }
 
         @Test
@@ -542,7 +705,8 @@ class ConfigLoaderTest {
                     connections:
                       - from: "gatewayNode"
                         to:   "calculatorNode"
-                        type: "direct"
+                        transport:
+                          id: direct
                     """;
             WiringConfig config = ConfigLoader.parseString(yaml);
             assertEquals(2, config.getNodes().size());
@@ -563,20 +727,26 @@ class ConfigLoaderTest {
             connections:
               - from: "gatewayNode"
                 to: "calculatorNode"
-                type: http
-                host: "calculator"
-                port: 8081
+                transport:
+                  id: http
+                  params:
+                    host: "calculator"
+                    port: "8081"
                 serializer: "json"
               - from: "gatewayNode"
                 to: "notifierNode"
-                type: http
-                host: "notifier"
-                port: 8082
+                transport:
+                  id: http
+                  params:
+                    host: "notifier"
+                    port: "8082"
                 serializer: "json"
               - from:
                 to: "gatewayNode"
-                type: http
-                port: 8080
+                transport:
+                  id: http
+                  params:
+                    port: "8080"
                 serializer: "json"
             """;
 
@@ -775,18 +945,23 @@ class ConfigLoaderTest {
         connections:
           - from: "orderServiceNode"
             to: "orderCreatedChannel"
-            type: kafka
+            transport:
+              id: kafka
             serializer: "json"
           - from: "orderCreatedChannel"
             to: "inventoryServiceNode"
-            type: kafka
+            transport:
+              id: kafka
+              params:
+                consumerGroup: "inventory-consumer-group"
             serializer: "json"
-            consumer-group: "inventory-consumer-group"
           - from: "orderCreatedChannel"
             to: "notificationServiceNode"
-            type: kafka
+            transport:
+              id: kafka
+              params:
+                consumerGroup: "notification-consumer-group"
             serializer: "json"
-            consumer-group: "notification-consumer-group"
         """;
 
     @Nested
@@ -865,12 +1040,15 @@ class ConfigLoaderTest {
                 connections:
                   - from: "gatewayNode"
                     to: "orderServiceNode"
-                    type: http
-                    host: "order-service"
-                    port: 8081
+                    transport:
+                      id: http
+                      params:
+                        host: "order-service"
+                        port: "8081"
                   - from: "orderServiceNode"
                     to: "orderCreatedChannel"
-                    type: kafka
+                    transport:
+                      id: kafka
                     serializer: "json"
                 """;
             WiringConfig full = ConfigLoader.parseString(yaml);
@@ -887,7 +1065,8 @@ class ConfigLoaderTest {
                 connections:
                   - from: "orderServiceNode"
                     to: "orderCreatedChannel"
-                    type: kafka
+                    transport:
+                      id: kafka
                     serializer: "json"
                 """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
@@ -900,12 +1079,15 @@ class ConfigLoaderTest {
                 connections:
                   - from: "orderCreatedChannel"
                     to: "inventoryServiceNode"
-                    type: kafka
+                    transport:
+                      id: kafka
+                      params:
+                        consumerGroup: "inventory-consumer-group"
                     serializer: "json"
-                    consumerGroup: "inventory-consumer-group"
                 """;
             WiringConfig config = ConfigLoader.parseString(yaml);
-            assertEquals("inventory-consumer-group", config.getConnections().get(0).getConsumerGroup());
+            assertEquals("inventory-consumer-group",
+                    config.getConnections().get(0).getTransport().getParams().get("consumerGroup"));
         }
 
         @Test
@@ -1009,9 +1191,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1025,9 +1209,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                     """;
@@ -1043,9 +1229,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           maxRetry: 3
@@ -1062,9 +1250,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           timeout: 2s
@@ -1082,9 +1272,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           absoluteTimeout: 10s
@@ -1102,9 +1294,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           handleTimeout: true
@@ -1121,9 +1315,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           params:
@@ -1144,9 +1340,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                     """;
@@ -1162,9 +1360,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                     """;
@@ -1180,9 +1380,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           maxRetry: 3
@@ -1212,9 +1414,11 @@ class ConfigLoaderTest {
                     connections:
                       - from: gateway
                         to: calculator
-                        type: http
-                        host: localhost
-                        port: 8081
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
                         failureSemantics:
                           id: built-in
                           unknownFutureField: somevalue
@@ -1238,12 +1442,14 @@ class ConfigLoaderTest {
                 connections:
                   - from: gateway
                     to:   calculator
-                    type: http
-                    host: *calcHost
-                    port: 8081
+                    transport:
+                      id: http
+                      params:
+                        host: *calcHost
+                        port: "8081"
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            assertEquals("localhost", conn.getHost());
+            assertEquals("localhost", conn.getTransport().getParams().get("host"));
         }
 
         @Test
@@ -1254,17 +1460,19 @@ class ConfigLoaderTest {
                   - &baseConn
                     from: gateway
                     to:   calculator
-                    type: http
-                    host: localhost
-                    port: 8081
+                    transport:
+                      id: http
+                      params:
+                        host: localhost
+                        port: "8081"
                   - *baseConn
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
             assertEquals(2, conns.size());
-            assertEquals("gateway",   conns.get(1).getFrom());
-            assertEquals("calculator",conns.get(1).getTo());
-            assertEquals("localhost", conns.get(1).getHost());
-            assertEquals(8081,        conns.get(1).getPort());
+            assertEquals("gateway",    conns.get(1).getFrom());
+            assertEquals("calculator", conns.get(1).getTo());
+            assertEquals("localhost",  conns.get(1).getTransport().getParams().get("host"));
+            assertEquals("8081",       conns.get(1).getTransport().getParams().get("port"));
         }
 
         @Test
@@ -1279,9 +1487,11 @@ class ConfigLoaderTest {
                 connections:
                   - from: gateway
                     to:   calculator
-                    type: http
-                    host: localhost
-                    port: 8081
+                    transport:
+                      id: http
+                      params:
+                        host: localHost
+                        port: 8081
                     failureSemantics:
                       <<: *defaultFs
                 """;
@@ -1304,9 +1514,11 @@ class ConfigLoaderTest {
                 connections:
                   - from: gateway
                     to:   calculator
-                    type: http
-                    host: localhost
-                    port: 8081
+                    transport:
+                      id: http
+                      params:
+                        host: localHost
+                        port: 8081
                     failureSemantics:
                       <<: *defaultFs
                       timeout: 5s
@@ -1323,28 +1535,32 @@ class ConfigLoaderTest {
         void multipleAnchors() {
             String yaml = """
                 anchors:
-                  calcConn: &calcConn
+                  calcParams: &calcParams
                     host: calc-host
-                    port: 8081
-                  notifConn: &notifConn
+                    port: "8081"
+                  notifParams: &notifParams
                     host: notif-host
-                    port: 8082
+                    port: "8082"
                 connections:
                   - from: gateway
                     to:   calculator
-                    type: http
-                    <<: *calcConn
+                    transport:
+                      id: http
+                      params:
+                        <<: *calcParams
                   - from: gateway
                     to:   notifier
-                    type: http
-                    <<: *notifConn
+                    transport:
+                      id: http
+                      params:
+                        <<: *notifParams
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
             assertEquals(2, conns.size());
-            assertEquals("calc-host",  conns.get(0).getHost());
-            assertEquals(8081,         conns.get(0).getPort());
-            assertEquals("notif-host", conns.get(1).getHost());
-            assertEquals(8082,         conns.get(1).getPort());
+            assertEquals("calc-host",  conns.get(0).getTransport().getParams().get("host"));
+            assertEquals("8081",       conns.get(0).getTransport().getParams().get("port"));
+            assertEquals("notif-host", conns.get(1).getTransport().getParams().get("host"));
+            assertEquals("8082",       conns.get(1).getTransport().getParams().get("port"));
         }
     }
 }

@@ -5,6 +5,7 @@ import io.itara.agent.config.ConfigLoader;
 import io.itara.agent.config.ConnectionEntry;
 import io.itara.agent.config.Node;
 import io.itara.agent.config.NodeKind;
+import io.itara.agent.config.VirtualNode;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.agent.metadata.MetadataFile;
@@ -18,8 +19,10 @@ import io.itara.runtime.ReconstructibleExceptionRegistry;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.ItaraSerializer;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
+import io.itara.spi.transport.ItaraTransportConfig;
+import io.itara.spi.transport.TransportConfig;
 
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
@@ -169,8 +172,6 @@ public class ItaraAgent {
         // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
-                String type = conn.getType();
-
                 if (conn.isDirect()) {
                     // Colocated — factory handles decoration on first get()
                     log.fine("[Itara] connection wired type=direct from=" + conn.getFrom()
@@ -179,11 +180,11 @@ public class ItaraAgent {
                 }
 
                 // All non-direct connections go through the transport registry
-                ItaraTransport transport = transportRegistry.get(conn.getType());
+                TransportConfig rawConfig = buildTransportConfig(conn, config);
+                String transportId = conn.getTransport().getId();
+                ItaraTransportConfig transportConfig = transportRegistry.parseConfig(transportId, rawConfig);
+                ItaraTransport transport = transportRegistry.getOrCreate(transportId, transportConfig);
                 ItaraSerializer serializer = serializerRegistry.get(conn.getSerializer());
-
-                // Build properties map from the connection entry
-                Map<String, String> props = buildProperties(conn, config);
 
                 Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                 Node fromNode = conn.getFrom() != null
@@ -208,18 +209,15 @@ public class ItaraAgent {
                                 "[Itara] Virtual node '" + toNode.getId()
                                         + "' cannot be an inbound target.");
                     };
+                    if (fromNode != null && fromNode.getKind() == NodeKind.VIRTUAL) {
+                        componentId = fromNode.contractIdentifier();
+                    }
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            componentId, conn.getType(), serializer, registry, pattern);
-                    transport.startListener(componentId, props, dispatcher);
+                            componentId, transportId, serializer, registry, pattern);
+                    transport.registerListener(componentId, transportConfig, dispatcher);
 
-                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        log.info("[Itara] stopping listener type=" + conn.getType()
-                                + " component=" + componentId);
-                        transport.stopListener();
-                    }));
-
-                    log.info("[Itara] connection established type=" + conn.getType()
+                    log.info("[Itara] connection established id=" + transportId
                             + " direction=inbound"
                             + " from=" + (conn.isExternal() ? "external" : conn.getFrom())
                             + " to=" + conn.getTo()
@@ -257,12 +255,12 @@ public class ItaraAgent {
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             itaraClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(contractId, serializer, transport,
-                                    props, pattern, failureSemantics, apiMetadata, exceptionFactory)
+                            new ItaraProxyHandler(contractId, serializer, transport, transportId,
+                                    transportConfig, pattern, failureSemantics, apiMetadata, exceptionFactory)
                     );
                     registry.preRegister(contractId, proxy);
 
-                    log.info("[Itara] connection established type=" + conn.getType()
+                    log.info("[Itara] connection established id=" + conn.getTransport().getId()
                             + " direction=outbound"
                             + " from=" + conn.getFrom()
                             + " to=" + conn.getTo()
@@ -270,41 +268,35 @@ public class ItaraAgent {
                 }
             }
         }
+
+        // ── Step 11: Start transports ────────────────────────────────────────────
+        // All listeners have been registered. Transports now have the full picture
+        // and can make grouping and resource allocation decisions (one server per
+        // port, one consumer per group, etc.).
+        transportRegistry.startAll();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log.info("[Itara] stopping all transports");
+            transportRegistry.stopAll();
+        }));
     }
 
     /**
-     * Builds a properties map from a connection entry.
-     * Transports receive this map and extract what they need.
+     * Builds a TransportConfig for a connection.
      *
-     * Standard keys (transports may define their own additional keys):
-     *   host     - remote host (outbound connections)
-     *   port     - port number
-     *   from     - caller component id
-     *   to       - callee component id
+     * The params map comes from the transport block in the wiring config.
+     * The agent injects the virtual node topic address on top — this is
+     * the one topology fact the transport cannot know from params alone.
      */
-    private static Map<String, String> buildProperties(ConnectionEntry conn, WiringConfig config) {
-        Map<String, String> props = new HashMap<>();
-        if (conn.getHost() != null)  props.put("host", conn.getHost());
-        if (conn.getPort() > 0)      props.put("port", String.valueOf(conn.getPort()));
+    private static TransportConfig buildTransportConfig(ConnectionEntry conn, WiringConfig config) {
+        String virtualNodeAddress = config.findVirtualNode(conn.getFrom())
+                .or(() -> config.findVirtualNode(conn.getTo()))
+                .map(VirtualNode::getAddress)
+                .orElse(null);
 
-        // from: resolve component id for component nodes, skip for virtual nodes
-        if (conn.getFrom() != null && !conn.getFrom().isBlank()
-                && !config.isVirtualNode(conn.getFrom())) {
-            props.put("from", config.getComponentOfNodeId(conn.getFrom()));
-        }
-
-        // to: resolve component id for component nodes, skip for virtual nodes
-        if (conn.getTo() != null && !config.isVirtualNode(conn.getTo())) {
-            props.put("to", config.getComponentOfNodeId(conn.getTo()));
-        }
-
-        // Kafka-specific: topic address from the virtual node, consumer group from the connection
-        config.findVirtualNode(conn.getFrom()).ifPresent(vn -> props.put("topic", vn.getAddress()));
-        config.findVirtualNode(conn.getTo()).ifPresent(vn -> props.put("topic", vn.getAddress()));
-        if (conn.getConsumerGroup() != null) props.put("consumerGroup", conn.getConsumerGroup());
-        if (conn.getBootstrapServers() != null) props.put("bootstrapServers", conn.getBootstrapServers());
-
-        // Future: additional connection properties from the YAML will be added here
-        return props;
+        return TransportConfig.builder()
+                .handleTimeout(conn.getTransport().isHandleTimeout())
+                .params(conn.getTransport().getParams())
+                .virtualNodeAddress(virtualNodeAddress)
+                .build();
     }
 }

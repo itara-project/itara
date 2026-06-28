@@ -10,9 +10,10 @@ import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.spi.ItaraSerializer;
-import io.itara.spi.ItaraTransport;
+import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.failuresemantics.TransportCall;
+import io.itara.spi.transport.ItaraTransportConfig;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -55,10 +56,10 @@ public class ItaraProxyHandler implements InvocationHandler {
     private static final Logger log = Logger.getLogger(ItaraProxyHandler.class.getName());
 
     private final String componentId;
-    private final String transportType;
+    private final String transportId;
     private final ItaraSerializer serializer;
     private final ItaraTransport transport;
-    private final Map<String, String> properties;
+    private final ItaraTransportConfig transportConfig;
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
     private final ItaraFailureSemantics failureSemantics;
@@ -68,16 +69,17 @@ public class ItaraProxyHandler implements InvocationHandler {
     public ItaraProxyHandler(String componentId,
                              ItaraSerializer serializer,
                              ItaraTransport transport,
-                             Map<String, String> properties,
+                             String transportId,
+                             ItaraTransportConfig transportConfig,
                              ExchangePattern exchangePattern,
                              ItaraFailureSemantics failureSemantics,
                              MetadataFile apiMetadata,
                              ItaraReconstructibleExceptionFactory exceptionFactory) {
         this.componentId          = componentId;
-        this.transportType        = transport.type();
+        this.transportId          = transportId;
         this.serializer           = serializer;
         this.transport            = transport;
-        this.properties           = properties;
+        this.transportConfig      = transportConfig;
         this.facade               = ObservabilityFacade.instance();
         this.exchangePattern      = exchangePattern;
         this.failureSemantics     = failureSemantics;
@@ -96,7 +98,7 @@ public class ItaraProxyHandler implements InvocationHandler {
         ItaraContext previousCtx = ItaraContext.current();
 
         // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
-        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportType, exchangePattern)) {
+        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportId, exchangePattern)) {
 
             // 2. Serialize args — once, outside the retry lambda.
             //    Serialization is deterministic; there is no value in repeating it.
@@ -130,7 +132,7 @@ public class ItaraProxyHandler implements InvocationHandler {
                 // implementation may have opened (§14.5)
                 Map<String, String> headers = facade.buildOutboundHeaders();
                 try {
-                    return transport.send(componentId, method.getName(), payload, headers, properties, timeout);
+                    return transport.send(componentId, method.getName(), payload, headers, transportConfig, timeout);
                 } catch (ItaraRemoteException e) {
                     // Deserialize and reconstruct any exception that carries a serialized
                     // payload — this recovers the real ErrorKind from the remote side.

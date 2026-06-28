@@ -12,4 +12,5 @@ nodes:
 connections:
   - from: "gatewayNode"
     to: "calculatorNode"
-    type: "direct"
+    transport:
+      id: "direct"

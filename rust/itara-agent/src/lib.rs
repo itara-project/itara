@@ -247,15 +247,17 @@ fn wire_inbound(
     deferred: &mut Vec<(String, DispatcherFactoryFn, CString, Box<dyn ItaraTransport>)>,
     transport_handled: &mut std::collections::HashSet<String>,
 ) {
-    let port = conn.port.unwrap_or(8080);
+    let port: u16 = conn.transport.params.get("port")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
     let component_id = config.component_of_node(&conn.to)
         .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
 
-    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport_type, port, component_id, conn.serializer);
+    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport.id, port, component_id, conn.serializer);
 
     validate_serializer(index, component_id, &conn.serializer);
 
-    let transport = load_transport_for(index, &conn.transport_type, "", port);
+    let transport = load_transport_for(index, &conn.transport.id, "", port);
 
     // Look up the API cdylib for the component.
     match index.api_lib(component_id) {
@@ -303,11 +305,13 @@ fn wire_outbound(
 ) {
     let component_id = config.component_of_node(&conn.to)
         .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
-    let host     = conn.host.as_deref().unwrap_or("localhost");
-    let port     = conn.port.unwrap_or(8080);
+    let host     = conn.transport.params.get("host").map(|s| s.as_str()).unwrap_or("localhost");
+    let port: u16 = conn.transport.params.get("port")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
     let base_url = format!("http://{}:{}", host, port);
 
-    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport_type, component_id, base_url, conn.serializer);
+    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport.id, component_id, base_url, conn.serializer);
 
     validate_serializer(index, component_id, &conn.serializer);
 
@@ -325,7 +329,7 @@ fn wire_outbound(
             "[Itara] Cannot load API cdylib for '{}': {}", component_id, e
         ));
 
-    let transport = load_transport_for(index, &conn.transport_type, &base_url, 0);
+    let transport = load_transport_for(index, &conn.transport.id, &base_url, 0);
 
     // The serializer id is passed to the proxy factory as a null-terminated C string.
     // The proxy copies it into a Rust String internally, so the CString only needs

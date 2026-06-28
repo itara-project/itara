@@ -9,18 +9,21 @@ import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraReconstructibleException;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.spi.ItaraSerializer;
 import io.itara.transport.http.HttpTransport;
+import io.itara.transport.http.HttpTransportConfig;
 import io.itara.transport.http.ItaraHttpServer;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -60,7 +63,8 @@ class HttpTransportIntegrationTest {
         port = findFreePort();
 
         ItaraSerializer serializer = new JsonItaraSerializer();
-        HttpTransport transport = new HttpTransport();
+        HttpTransportConfig config = new HttpTransportConfig("localhost", port, false);
+        HttpTransport transport = new HttpTransport(config);
 
         ObservabilityFacade.initialize();
 
@@ -73,18 +77,19 @@ class HttpTransportIntegrationTest {
 
         // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
         ItaraDispatcher dispatcher = new ItaraDispatcher(
-                COMPONENT_ID, HttpTransport.TYPE, serializer, registry, ExchangePattern.REQUEST_REPLY
+                COMPONENT_ID, "http", serializer, registry, ExchangePattern.REQUEST_REPLY
         );
-        server = new ItaraHttpServer(port, dispatcher);
+        Map<String, DispatchHandler> dispatchers = new HashMap<>();
+        dispatchers.put(COMPONENT_ID, dispatcher);
+        server = new ItaraHttpServer(port, dispatchers);
         server.start();
 
-        // Outbound — proxy handler owns the pipeline, transport is a byte carrier
         proxy = (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, transport,
-                        Map.of("host", "localhost", "port", String.valueOf(port)),
+                        COMPONENT_ID, serializer, transport, "http",
+                        config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
@@ -153,14 +158,16 @@ class HttpTransportIntegrationTest {
     @Order(6)
     @DisplayName("calling unknown component produces TRANSPORT kind")
     void unknownComponentProducesTransport() throws IOException {
+        HttpTransportConfig config = new HttpTransportConfig("localhost", port, false);
         CalculatorService badProxy = (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
                         "nonexistent-component",
                         new JsonItaraSerializer(),
-                        new HttpTransport(),
-                        Map.of("host", "localhost", "port", String.valueOf(port)),
+                        new HttpTransport(config),
+                        "http",
+                        config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
@@ -179,14 +186,16 @@ class HttpTransportIntegrationTest {
     @DisplayName("calling unreachable server produces TRANSPORT kind")
     void unreachableServerProducesTransport() throws IOException {
         int deadPort = findFreePort(); // Nothing listening here
+        HttpTransportConfig config = new HttpTransportConfig("localhost", deadPort, false);
         CalculatorService badProxy = (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
                         COMPONENT_ID,
                         new JsonItaraSerializer(),
-                        new HttpTransport(),
-                        Map.of("host", "localhost", "port", String.valueOf(deadPort)),
+                        new HttpTransport(config),
+                        "http",
+                        config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
@@ -228,13 +237,15 @@ class HttpTransportIntegrationTest {
     @DisplayName("checked error reconstruction")
     class CheckedErrorReconstruction {
 
+        HttpTransportConfig config = new HttpTransportConfig("localhost", port, false);
+
         private CalculatorService proxyWithFactory() {
             return (CalculatorService) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
-                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
@@ -248,8 +259,8 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
-                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
@@ -307,8 +318,8 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
-                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
@@ -360,8 +371,8 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(),
-                            Map.of("host", "localhost", "port", String.valueOf(port)),
+                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,

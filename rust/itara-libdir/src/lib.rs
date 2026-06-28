@@ -53,6 +53,45 @@ pub struct SerializersMeta {
     pub supported: Vec<String>,
 }
 
+/// Capability declarations for a transport artifact.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TransportCapabilities {
+    /// Whether the transport can enforce the per-call timeout natively.
+    /// Defaults to true when absent.
+    #[serde(default = "default_true", rename = "nativeCallTimeout")]
+    pub native_call_timeout: bool,
+
+    /// Whether the transport is safe to interrupt externally on timeout.
+    /// Defaults to true when absent.
+    #[serde(default = "default_true", rename = "externallyInterruptible")]
+    pub externally_interruptible: bool,
+}
+
+impl Default for TransportCapabilities {
+    fn default() -> Self {
+        Self {
+            native_call_timeout: true,
+            externally_interruptible: true,
+        }
+    }
+}
+
+fn default_true() -> bool { true }
+
+/// The [transport] section of a transport `.itara` metadata file.
+/// Only meaningful when artifact.kind = "transport".
+#[derive(Debug, Clone, Deserialize)]
+pub struct TransportMeta {
+    /// The transport category — describes the communication protocol.
+    /// Examples: "http", "kafka", "amqp".
+    /// Two implementations with the same type are compatible caller/callee pairs.
+    #[serde(default, rename = "type")]
+    pub transport_type: Option<String>,
+
+    #[serde(default)]
+    pub capabilities: TransportCapabilities,
+}
+
 /// Parsed contents of a single `.itara` metadata file.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetadataFile {
@@ -67,6 +106,9 @@ pub struct MetadataFile {
     /// Declared serializers — present on kind = "api" artifacts.
     #[serde(default)]
     pub serializers: Option<SerializersMeta>,
+
+    #[serde(default)]
+    pub transport: Option<TransportMeta>,
 }
 
 // ── LibEntry ──────────────────────────────────────────────────────────────────
@@ -469,5 +511,80 @@ something = "also ignored"
         // Should parse without error
         let result = toml::from_str::<MetadataFile>(toml);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parses_transport_section_with_capabilities() {
+        let toml = r#"
+[artifact]
+kind = "transport"
+id = "http"
+version = "0.1.0"
+
+[transport]
+type = "http"
+
+[transport.capabilities]
+nativeCallTimeout = true
+externallyInterruptible = true
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let transport = meta.transport.unwrap();
+        assert_eq!(transport.transport_type.as_deref(), Some("http"));
+        assert!(transport.capabilities.native_call_timeout);
+        assert!(transport.capabilities.externally_interruptible);
+    }
+
+    #[test]
+    fn transport_capabilities_default_to_true_when_absent() {
+        let toml = r#"
+[artifact]
+kind = "transport"
+id = "http"
+version = "0.1.0"
+
+[transport]
+type = "http"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let transport = meta.transport.unwrap();
+        assert!(transport.capabilities.native_call_timeout,
+            "nativeCallTimeout should default to true");
+        assert!(transport.capabilities.externally_interruptible,
+            "externallyInterruptible should default to true");
+    }
+
+    #[test]
+    fn transport_section_absent_for_non_transport_artifacts() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.transport.is_none());
+    }
+
+    #[test]
+    fn parses_kafka_transport_with_false_capabilities() {
+        let toml = r#"
+[artifact]
+kind = "transport"
+id = "kafka"
+version = "0.1.0"
+
+[transport]
+type = "kafka"
+
+[transport.capabilities]
+nativeCallTimeout = false
+externallyInterruptible = true
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let transport = meta.transport.unwrap();
+        assert_eq!(transport.transport_type.as_deref(), Some("kafka"));
+        assert!(!transport.capabilities.native_call_timeout);
+        assert!(transport.capabilities.externally_interruptible);
     }
 }

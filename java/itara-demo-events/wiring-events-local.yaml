@@ -11,18 +11,24 @@ nodes:
 connections:
   - from:
     to: "orderProducerNode"
-    type: http
-    host: localhost
-    port: 8081
+    transport:
+      id: http
+      params:
+        host: localhost
+        port: 8081
     serializer: "json"
   - from: "orderProducerNode"
     to: "orderPlacedChannel"
-    type: kafka
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
     serializer: "json"
-    bootstrapServers: "localhost:9092"
   - from: "orderPlacedChannel"
     to: "orderConsumerNode"
-    type: kafka
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
+        consumerGroup: "order-consumer-group"
     serializer: "json"
-    bootstrapServers: "localhost:9092"
-    consumerGroup: "order-consumer-group"
