@@ -7,6 +7,14 @@ nodes:
     kind: virtual
     contract: "order-events/order-placed"
     address: "demo.events.order-placed"
+  - id: "orderCancelledChannel"
+    kind: virtual
+    contract: "order-events/order-cancelled"
+    address: "demo.events.order-cancelled"
+  - id: "paymentMadeChannel"
+    kind: virtual
+    contract: "payment-events/payment-made"
+    address: "demo.events.payment-made"
 
 connections:
   - from:
@@ -24,7 +32,37 @@ connections:
       params:
         bootstrapServers: "localhost:9092"
     serializer: "json"
+  - from: "orderProducerNode"
+    to: "orderCancelledChannel"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
+    serializer: "json"
+  - from: "orderProducerNode"
+    to: "paymentMadeChannel"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
+    serializer: "json"
   - from: "orderPlacedChannel"
+    to: "orderConsumerNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "orderCancelledChannel"
+    to: "orderConsumerNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "localhost:9092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "paymentMadeChannel"
     to: "orderConsumerNode"
     transport:
       id: kafka
