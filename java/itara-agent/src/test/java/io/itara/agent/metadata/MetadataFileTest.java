@@ -252,8 +252,8 @@ class MetadataFileTest {
                 type = "http"
                 
                 [transport.capabilities]
-                nativeCallTimeout = true
-                externallyInterruptible = true
+                native-call-timeout = true
+                externally-interruptible = true
                 """;
 
         MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
@@ -282,9 +282,9 @@ class MetadataFileTest {
         assertNotNull(metadata.getTransport());
         assertNotNull(metadata.getTransport().getCapabilities());
         assertTrue(metadata.getTransport().getCapabilities().isNativeCallTimeout(),
-                "nativeCallTimeout should default to true");
+                "native-call-timeout should default to true");
         assertTrue(metadata.getTransport().getCapabilities().isExternallyInterruptible(),
-                "externallyInterruptible should default to true");
+                "externally-interruptible should default to true");
     }
 
     @Test
@@ -303,7 +303,7 @@ class MetadataFileTest {
     }
 
     @Test
-    @DisplayName("parses nativeCallTimeout = false correctly")
+    @DisplayName("parses native-call-timeout = false correctly")
     void parsesNativeCallTimeoutFalse() throws Exception {
         String toml = """
                 [artifact]
@@ -315,8 +315,8 @@ class MetadataFileTest {
                 type = "kafka"
                 
                 [transport.capabilities]
-                nativeCallTimeout = false
-                externallyInterruptible = false
+                native-call-timeout = false
+                externally-interruptible = false
                 """;
 
         MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
@@ -339,11 +339,164 @@ class MetadataFileTest {
                 future-field = "ignored"
                 
                 [transport.capabilities]
-                nativeCallTimeout = true
-                externallyInterruptible = true
+                native-call-timeout = true
+                externally-interruptible = true
                 future-capability = "ignored"
                 """;
 
         assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
+    }
+
+    // ── FailureSemanticsCapabilities ──────────────────────────────────────────
+
+    @Test
+    void failure_semantics_capabilities_default_to_false_when_absent() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "failure-semantics"
+                id = "built-in"
+                version = "0.1.0"
+
+                [failure-semantics]
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        FailureSemanticsCapabilities caps = meta.getFailureSemantics().getCapabilities();
+        assertFalse(caps.isSupportsExternalTimeout());
+    }
+
+    @Test
+    void failure_semantics_capabilities_parsed_when_true() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "failure-semantics"
+                id = "built-in"
+                version = "0.1.0"
+
+                [failure-semantics.capabilities]
+                supports-external-timeout = true
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        assertTrue(meta.getFailureSemantics().getCapabilities().isSupportsExternalTimeout());
+    }
+
+    @Test
+    void failure_semantics_absent_for_non_fs_artifacts() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "calculator"
+                version = "1.0.0"
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        assertNull(meta.getFailureSemantics());
+    }
+
+    @Test
+    void unknown_fields_in_failure_semantics_ignored() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "failure-semantics"
+                id = "built-in"
+                version = "0.1.0"
+
+                [failure-semantics.capabilities]
+                supports-external-timeout = true
+                future-field = "ignored"
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        assertTrue(meta.getFailureSemantics().getCapabilities().isSupportsExternalTimeout());
+    }
+
+    // ── ApiDependenciesMeta ───────────────────────────────────────────────────
+
+    @Test
+    void api_dependencies_absent_is_empty() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "gateway"
+                version = "1.0.0"
+                api-version = "1.0.0"
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        assertNull(meta.getApiDependencies());
+    }
+
+    @Test
+    void api_dependencies_single_entry() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "gateway"
+                version = "1.0.0"
+                api-version = "1.0.0"
+
+                [api-dependencies]
+                calls = [
+                  { id = "calculator", version = "1.0.0" },
+                ]
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        List<ApiDependency> calls = meta.getApiDependencies().getCalls();
+        assertEquals(1, calls.size());
+        assertEquals("calculator", calls.get(0).getId());
+        assertEquals("1.0.0", calls.get(0).getVersion());
+    }
+
+    @Test
+    void api_dependencies_multiple_entries() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "gateway"
+                version = "1.0.0"
+                api-version = "1.0.0"
+
+                [api-dependencies]
+                calls = [
+                  { id = "calculator", version = "1.0.0" },
+                  { id = "inventory",  version = "2.1.0" },
+                ]
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        List<ApiDependency> calls = meta.getApiDependencies().getCalls();
+        assertEquals(2, calls.size());
+        assertEquals("calculator", calls.get(0).getId());
+        assertEquals("1.0.0", calls.get(0).getVersion());
+        assertEquals("inventory", calls.get(1).getId());
+        assertEquals("2.1.0", calls.get(1).getVersion());
+    }
+
+    @Test
+    void api_dependencies_absent_for_non_component_artifacts() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "api"
+                id = "calculator"
+                version = "1.0.0"
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        assertNull(meta.getApiDependencies());
+    }
+
+    @Test
+    void unknown_fields_in_api_dependencies_ignored() throws Exception {
+        String toml = """
+                [artifact]
+                kind = "component"
+                id = "gateway"
+                version = "1.0.0"
+                api-version = "1.0.0"
+
+                [api-dependencies]
+                calls = [
+                  { id = "calculator", version = "1.0.0", future-field = "ignored" },
+                ]
+                future-section-field = "also ignored"
+                """;
+        MetadataFile meta = mapper.readValue(toml, MetadataFile.class);
+        List<ApiDependency> calls = meta.getApiDependencies().getCalls();
+        assertEquals(1, calls.size());
+        assertEquals("calculator", calls.get(0).getId());
     }
 }

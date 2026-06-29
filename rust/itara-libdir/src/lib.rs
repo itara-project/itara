@@ -58,12 +58,12 @@ pub struct SerializersMeta {
 pub struct TransportCapabilities {
     /// Whether the transport can enforce the per-call timeout natively.
     /// Defaults to true when absent.
-    #[serde(default = "default_true", rename = "nativeCallTimeout")]
+    #[serde(default = "default_true", rename = "native-call-timeout")]
     pub native_call_timeout: bool,
 
     /// Whether the transport is safe to interrupt externally on timeout.
     /// Defaults to true when absent.
-    #[serde(default = "default_true", rename = "externallyInterruptible")]
+    #[serde(default = "default_true", rename = "externally-interruptible")]
     pub externally_interruptible: bool,
 }
 
@@ -92,6 +92,70 @@ pub struct TransportMeta {
     pub capabilities: TransportCapabilities,
 }
 
+/// Capability declarations for a failure semantics artifact.
+///
+/// Defaults to false when the section is absent — a failure semantics
+/// implementation that does not declare this capability is assumed not
+/// to support it (§14.10).
+#[derive(Debug, Clone, Deserialize)]
+pub struct FailureSemanticsCapabilities {
+    /// Whether this implementation can enforce the per-attempt timeout
+    /// by external interruption of the transport thread (§14.10).
+    /// Defaults to false — implementations must opt in explicitly.
+    #[serde(default, rename = "supports-external-timeout")]
+    pub supports_external_timeout: bool,
+}
+
+impl Default for FailureSemanticsCapabilities {
+    fn default() -> Self {
+        Self { supports_external_timeout: false }
+    }
+}
+
+/// The [failure-semantics] section of a failure-semantics `.itara` metadata file.
+/// Only meaningful when artifact.kind = "failure-semantics".
+#[derive(Debug, Clone, Deserialize)]
+pub struct FailureSemanticsMeta {
+    #[serde(default)]
+    pub capabilities: FailureSemanticsCapabilities,
+}
+
+/// A single entry in the [api-dependencies] section of a component
+/// `.itara` metadata file.
+///
+/// Declares one synchronous API contract this component was compiled
+/// against. The id matches the artifact.id of the callee's kind = "api"
+/// `.itara` file. The version is the exact version the component was
+/// built against.
+///
+/// Example TOML:
+///
+///   [[api-dependencies.calls]]
+///   id = "calculator"
+///   version = "1.0.0"
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApiDependency {
+    /// Matches artifact.id of the callee's kind = "api" artifact.
+    pub id: String,
+
+    /// Exact version this component was compiled against.
+    pub version: String,
+}
+
+/// The [api-dependencies] section of a component `.itara` metadata file.
+///
+/// Lists the synchronous API contracts this component calls, with the
+/// exact version each was compiled against. Only meaningful on
+/// kind = "component" artifacts.
+///
+/// Absent means the component declares no outbound API calls — valid
+/// for leaf components.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ApiDependenciesMeta {
+    #[serde(default)]
+    pub calls: Vec<ApiDependency>,
+}
+
 /// Parsed contents of a single `.itara` metadata file.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetadataFile {
@@ -109,6 +173,12 @@ pub struct MetadataFile {
 
     #[serde(default)]
     pub transport: Option<TransportMeta>,
+
+    #[serde(default, rename = "failure-semantics")]
+    pub failure_semantics: Option<FailureSemanticsMeta>,
+
+    #[serde(default, rename = "api-dependencies")]
+    pub api_dependencies: Option<ApiDependenciesMeta>,
 }
 
 // ── LibEntry ──────────────────────────────────────────────────────────────────
@@ -265,6 +335,113 @@ impl LibIndex {
     /// Iterate over all entries for debugging / CLI use.
     pub fn all(&self) -> impl Iterator<Item = &LibEntry> {
         self.entries.values()
+    }
+}
+
+// ── MetadataIndex ─────────────────────────────────────────────────────────────
+//
+// Purpose-built for the CLI. Scans a directory of `.itara` files with no
+// sibling lib requirement. Returns raw metadata for the CLI to reason over.
+// Makes no policy decisions — parse failures and duplicates are surfaced to
+// the caller for interpretation.
+
+/// The result of a metadata directory scan.
+///
+/// `index` is always populated (possibly empty). `parse_failures` and
+/// `duplicates` are collected without aborting the scan — the CLI decides
+/// how to surface them.
+pub struct ScanResult {
+    pub index: MetadataIndex,
+    /// Files that could not be parsed: (path, error message).
+    pub parse_failures: Vec<(PathBuf, String)>,
+    /// Duplicate (kind, id) pairs: (kind, id, path of the ignored file).
+    pub duplicates: Vec<(String, String, PathBuf)>,
+}
+
+/// An index of `.itara` metadata files scanned from a directory.
+///
+/// Keyed by (kind, id), both lowercased. The CLI uses this to look up
+/// metadata by the identifiers present in the wiring config, without
+/// loading any artifact.
+///
+/// Distinct from `LibIndex` which is agent-facing and requires sibling
+/// lib files. `MetadataIndex` is tooling-facing and requires nothing
+/// beyond the `.itara` files themselves.
+#[derive(Debug, Default)]
+pub struct MetadataIndex {
+    entries: HashMap<(String, String), MetadataFile>,
+}
+
+impl MetadataIndex {
+    /// Scan a directory for `.itara` files and build the index.
+    ///
+    /// Returns `Err` only if the directory itself cannot be read.
+    /// Per-file parse failures and duplicate entries are collected in
+    /// `ScanResult` for the caller to interpret.
+    pub fn scan(dir: &Path) -> Result<ScanResult, String> {
+        let entries = fs::read_dir(dir).map_err(|e| {
+            format!("cannot read metadata directory '{}': {}", dir.display(), e)
+        })?;
+
+        let mut index = MetadataIndex::default();
+        let mut parse_failures = Vec::new();
+        let mut duplicates = Vec::new();
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("itara") {
+                continue;
+            }
+
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    parse_failures.push((path, e.to_string()));
+                    continue;
+                }
+            };
+
+            let meta: MetadataFile = match toml::from_str(&content) {
+                Ok(m) => m,
+                Err(e) => {
+                    parse_failures.push((path, e.to_string()));
+                    continue;
+                }
+            };
+
+            let key = (
+                meta.artifact.kind.to_lowercase(),
+                meta.artifact.id.to_lowercase(),
+            );
+
+            if index.entries.contains_key(&key) {
+                duplicates.push((key.0, key.1, path));
+            } else {
+                index.entries.insert(key, meta);
+            }
+        }
+
+        Ok(ScanResult { index, parse_failures, duplicates })
+    }
+
+    /// Look up a component artifact by its artifact.id.
+    pub fn component(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("component".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up a transport artifact by its artifact.id.
+    pub fn transport(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("transport".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up a failure-semantics artifact by its artifact.id.
+    pub fn failure_semantics(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("failure-semantics".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up an API artifact by its artifact.id.
+    pub fn api(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("api".to_string(), id.to_lowercase()))
     }
 }
 
@@ -525,8 +702,8 @@ version = "0.1.0"
 type = "http"
 
 [transport.capabilities]
-nativeCallTimeout = true
-externallyInterruptible = true
+native-call-timeout = true
+externally-interruptible = true
 "#;
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         let transport = meta.transport.unwrap();
@@ -549,9 +726,9 @@ type = "http"
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         let transport = meta.transport.unwrap();
         assert!(transport.capabilities.native_call_timeout,
-            "nativeCallTimeout should default to true");
+            "native-call-timeout should default to true");
         assert!(transport.capabilities.externally_interruptible,
-            "externallyInterruptible should default to true");
+            "externally-interruptible should default to true");
     }
 
     #[test]
@@ -578,13 +755,301 @@ version = "0.1.0"
 type = "kafka"
 
 [transport.capabilities]
-nativeCallTimeout = false
-externallyInterruptible = true
+native-call-timeout = false
+externally-interruptible = true
 "#;
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         let transport = meta.transport.unwrap();
         assert_eq!(transport.transport_type.as_deref(), Some("kafka"));
         assert!(!transport.capabilities.native_call_timeout);
         assert!(transport.capabilities.externally_interruptible);
+    }
+
+    // ── FailureSemanticsCapabilities ──────────────────────────────────────────
+
+    #[test]
+    fn failure_semantics_capabilities_default_to_false_when_absent() {
+        let toml = r#"
+[artifact]
+kind = "failure-semantics"
+id = "built-in"
+version = "0.1.0"
+
+[failure-semantics]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let caps = meta.failure_semantics.unwrap().capabilities;
+        assert!(!caps.supports_external_timeout);
+    }
+
+    #[test]
+    fn failure_semantics_capabilities_parsed_when_true() {
+        let toml = r#"
+[artifact]
+kind = "failure-semantics"
+id = "built-in"
+version = "0.1.0"
+
+[failure-semantics.capabilities]
+supports-external-timeout = true
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.failure_semantics.unwrap().capabilities.supports_external_timeout);
+    }
+
+    #[test]
+    fn failure_semantics_absent_for_non_fs_artifacts() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.failure_semantics.is_none());
+    }
+
+    #[test]
+    fn unknown_fields_in_failure_semantics_ignored() {
+        let toml = r#"
+[artifact]
+kind = "failure-semantics"
+id = "built-in"
+version = "0.1.0"
+
+[failure-semantics.capabilities]
+supports-external-timeout = true
+future-field = "ignored"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.failure_semantics.unwrap().capabilities.supports_external_timeout);
+    }
+
+    // ── ApiDependenciesMeta ───────────────────────────────────────────────────
+
+    #[test]
+    fn api_dependencies_absent_is_none() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "gateway"
+version = "1.0.0"
+api-version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.api_dependencies.is_none());
+    }
+
+    #[test]
+    fn api_dependencies_single_entry() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "gateway"
+version = "1.0.0"
+api-version = "1.0.0"
+
+[api-dependencies]
+calls = [
+  { id = "calculator", version = "1.0.0" },
+]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let calls = &meta.api_dependencies.unwrap().calls;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "calculator");
+        assert_eq!(calls[0].version, "1.0.0");
+    }
+
+    #[test]
+    fn api_dependencies_multiple_entries() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "gateway"
+version = "1.0.0"
+api-version = "1.0.0"
+
+[api-dependencies]
+calls = [
+  { id = "calculator", version = "1.0.0" },
+  { id = "inventory",  version = "2.1.0" },
+]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let calls = &meta.api_dependencies.unwrap().calls;
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id, "calculator");
+        assert_eq!(calls[0].version, "1.0.0");
+        assert_eq!(calls[1].id, "inventory");
+        assert_eq!(calls[1].version, "2.1.0");
+    }
+
+    #[test]
+    fn api_dependencies_absent_for_non_component_artifacts() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.api_dependencies.is_none());
+    }
+
+    #[test]
+    fn unknown_fields_in_api_dependencies_ignored() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "gateway"
+version = "1.0.0"
+api-version = "1.0.0"
+
+[api-dependencies]
+calls = [
+  { id = "calculator", version = "1.0.0", future-field = "ignored" },
+]
+future-section-field = "also ignored"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let calls = &meta.api_dependencies.unwrap().calls;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "calculator");
+    }
+
+    // ── MetadataIndex ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn scan_indexes_component_and_api_with_same_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "calculator-component.itara", r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "1.0.0"
+api-version = "1.0.0"
+"#);
+        write_temp(p, "calculator-api.itara", r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        assert!(result.duplicates.is_empty());
+        assert!(result.index.component("calculator").is_some());
+        assert!(result.index.api("calculator").is_some());
+    }
+
+    #[test]
+    fn scan_transport_lookup_by_artifact_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "itara-http.itara", r#"
+[artifact]
+kind = "transport"
+id = "http"
+version = "0.1.0"
+
+[transport]
+type = "http"
+
+[transport.capabilities]
+native-call-timeout = true
+externally-interruptible = true
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        let meta = result.index.transport("http").unwrap();
+        assert_eq!(meta.artifact.id, "http");
+        assert!(meta.transport.as_ref().unwrap().capabilities.native_call_timeout);
+    }
+
+    #[test]
+    fn scan_failure_semantics_lookup_by_artifact_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "built-in.itara", r#"
+[artifact]
+kind = "failure-semantics"
+id = "built-in"
+version = "0.1.0"
+
+[failure-semantics.capabilities]
+supports-external-timeout = true
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        let meta = result.index.failure_semantics("built-in").unwrap();
+        assert!(meta.failure_semantics.as_ref().unwrap().capabilities.supports_external_timeout);
+    }
+
+    #[test]
+    fn scan_missing_dir_returns_error() {
+        let result = MetadataIndex::scan(Path::new("/nonexistent/metadata/dir"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn scan_unparseable_file_collected_not_fatal() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "broken.itara", "this is not valid toml = = =");
+        write_temp(p, "calculator-api.itara", r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert_eq!(result.parse_failures.len(), 1);
+        assert!(result.parse_failures[0].0.ends_with("broken.itara"));
+        assert!(result.index.api("calculator").is_some());
+    }
+
+    #[test]
+    fn scan_duplicate_kind_id_keeps_first_collects_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "calculator-a.itara", r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "1.0.0"
+api-version = "1.0.0"
+"#);
+        write_temp(p, "calculator-b.itara", r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "2.0.0"
+api-version = "2.0.0"
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert_eq!(result.duplicates.len(), 1);
+        assert_eq!(result.duplicates[0].0, "component");
+        assert_eq!(result.duplicates[0].1, "calculator");
+        // the index still has an entry — first one wins
+        assert!(result.index.component("calculator").is_some());
+    }
+
+    #[test]
+    fn component_not_found_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = MetadataIndex::scan(dir.path()).unwrap();
+        assert!(result.index.component("nonexistent").is_none());
     }
 }

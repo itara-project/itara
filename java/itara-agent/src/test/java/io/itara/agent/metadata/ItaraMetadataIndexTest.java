@@ -148,8 +148,8 @@ class ItaraMetadataIndexTest {
                     type = "http"
 
                     [transport.capabilities]
-                    nativeCallTimeout = true
-                    externallyInterruptible = true
+                    native-call-timeout = true
+                    externally-interruptible = true
                     """);
 
             System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());

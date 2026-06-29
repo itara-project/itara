@@ -16,5 +16,5 @@ core-version = "0.2+"
 type = "kafka"
 
 [transport.capabilities]
-nativeCallTimeout = false
-externallyInterruptible = true
+native-call-timeout = false
+externally-interruptible = true

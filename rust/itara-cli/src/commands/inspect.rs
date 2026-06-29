@@ -429,6 +429,7 @@ mod tests {
             to: to.into(),
             transport: transport_entry("http", Some(port)),
             serializer: "".into(),
+            failure_semantics: None,
         }
     }
 
@@ -438,6 +439,7 @@ mod tests {
             to: to.into(),
             transport: transport_entry("direct", None),
             serializer: "".into(),
+            failure_semantics: None,
         }
     }
  
