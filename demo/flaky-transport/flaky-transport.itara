@@ -16,5 +16,5 @@ core-version = "0.2+"
 type = "http"
 
 [transport.capabilities]
-nativeCallTimeout = true
-externallyInterruptible = true
+native-call-timeout = true
+externally-interruptible = true

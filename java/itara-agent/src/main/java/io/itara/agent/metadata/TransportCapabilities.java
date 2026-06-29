@@ -28,7 +28,7 @@ public class TransportCapabilities {
      * If false, the failure semantics layer is responsible for external
      * enforcement (§14.10).
      */
-    @JsonProperty("nativeCallTimeout")
+    @JsonProperty("native-call-timeout")
     private boolean nativeCallTimeout = true;
 
     /**
@@ -36,7 +36,7 @@ public class TransportCapabilities {
      * i.e. the thread blocked in send() can be interrupted without leaving
      * the transport in a broken state.
      */
-    @JsonProperty("externallyInterruptible")
+    @JsonProperty("externally-interruptible")
     private boolean externallyInterruptible = true;
 
     public boolean isNativeCallTimeout()       { return nativeCallTimeout; }

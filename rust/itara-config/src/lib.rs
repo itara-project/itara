@@ -321,6 +321,50 @@ where
     d.deserialize_map(ParamsVisitor)
 }
 
+/// The failureSemantics block of a connection entry in the wiring configuration.
+///
+/// Mirrors the Java `FailureSemanticsEntry` exactly — same fields, same defaults.
+/// Duration values (timeout, absoluteTimeout) are kept as raw strings; parsing
+/// to Duration is an agent concern, not a config-parsing concern.
+///
+/// Example YAML:
+///   failureSemantics:
+///     id: built-in
+///     timeout: 2s
+///     handleTimeout: true
+///     absoluteTimeout: 10s
+///     maxRetry: 3
+///     params:
+///       waitDuration: 500ms
+///
+/// Absent means the noop implementation is used (§14.1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct FailureSemanticsEntry {
+    /// The failure semantics type identifier.
+    pub id: String,
+
+    /// Per-attempt timeout as a duration string, e.g. "2s", "500ms".
+    #[serde(default)]
+    pub timeout: Option<String>,
+
+    /// Whether the failure semantics implementation should enforce the
+    /// per-attempt timeout by external interruption (§14.10).
+    #[serde(default, rename = "handleTimeout")]
+    pub handle_timeout: bool,
+
+    /// Hard ceiling on total execution time across all attempts, e.g. "10s".
+    #[serde(default, rename = "absoluteTimeout")]
+    pub absolute_timeout: Option<String>,
+
+    /// Maximum number of retries. Attempts = maxRetry + 1.
+    #[serde(default, rename = "maxRetry")]
+    pub max_retry: Option<u32>,
+
+    /// Implementation-specific parameters.
+    #[serde(default, deserialize_with = "deserialize_params")]
+    pub params: std::collections::HashMap<String, String>,
+}
+
 /// A connection declared in the wiring configuration.
 ///
 /// Defines how one node calls another, including the transport type and
@@ -353,6 +397,10 @@ pub struct ConnectionEntry {
 
     /// The serializer type for this connection. Defaults to "json".
     pub serializer: String,
+
+    /// Optional failure semantics configuration for this connection.
+    /// None means the noop implementation is used (§14.1).
+    pub failure_semantics: Option<FailureSemanticsEntry>,
 }
 
 #[derive(Deserialize)]
@@ -363,6 +411,8 @@ struct ConnectionHelper {
     transport: TransportEntry,
     #[serde(default = "default_serializer")]
     serializer: String,
+    #[serde(default, rename = "failureSemantics")]
+    failure_semantics: Option<FailureSemanticsEntry>,
 }
 
 impl<'de> serde::Deserialize<'de> for ConnectionEntry {
@@ -373,6 +423,7 @@ impl<'de> serde::Deserialize<'de> for ConnectionEntry {
             to:         h.to,
             transport:  h.transport,
             serializer: h.serializer,
+            failure_semantics:  h.failure_semantics,
         })
     }
 }
@@ -398,6 +449,16 @@ impl ConnectionEntry {
             }
         }
         node_ids.contains(&self.to)
+    }
+
+    /// Returns true if a per-attempt timeout is declared on this connection.
+    /// Convenience for verify checks that need to know timeout presence
+    /// without navigating the nested Option chain themselves.
+    pub fn has_timeout(&self) -> bool {
+        self.failure_semantics
+            .as_ref()
+            .and_then(|fs| fs.timeout.as_ref())
+            .is_some()
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -1053,5 +1114,146 @@ connections:
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(config.connections[0].is_direct());
+    }
+
+    // ── FailureSemanticsEntry ─────────────────────────────────────────────────
+
+    #[test]
+    fn failure_semantics_absent_is_none() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].failure_semantics.is_none());
+    }
+
+    #[test]
+    fn failure_semantics_other_fields_default_correctly() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      id: built-in
+"#;
+        let config = parse_string(yaml).unwrap();
+        let fs = config.connections[0].failure_semantics.as_ref().unwrap();
+        assert_eq!(fs.id, "built-in");
+        assert!(fs.timeout.is_none());
+        assert!(!fs.handle_timeout);
+        assert!(fs.absolute_timeout.is_none());
+        assert!(fs.max_retry.is_none());
+        assert!(fs.params.is_empty());
+    }
+
+    #[test]
+    fn failure_semantics_without_id_fails_parsing() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      timeout: 2s
+"#;
+        assert!(parse_string(yaml).is_err());
+    }
+
+    #[test]
+    fn failure_semantics_full() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      id: built-in
+      timeout: 2s
+      handleTimeout: true
+      absoluteTimeout: 10s
+      maxRetry: 3
+      params:
+        waitDuration: 500ms
+        slidingWindowSize: "10"
+"#;
+        let config = parse_string(yaml).unwrap();
+        let fs = config.connections[0].failure_semantics.as_ref().unwrap();
+        assert_eq!(fs.id, "built-in");
+        assert_eq!(fs.timeout.as_deref(), Some("2s"));
+        assert!(fs.handle_timeout);
+        assert_eq!(fs.absolute_timeout.as_deref(), Some("10s"));
+        assert_eq!(fs.max_retry, Some(3));
+        assert_eq!(fs.params.get("waitDuration").map(|s| s.as_str()), Some("500ms"));
+        assert_eq!(fs.params.get("slidingWindowSize").map(|s| s.as_str()), Some("10"));
+    }
+
+    #[test]
+    fn failure_semantics_handle_timeout_parsed() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      id: built-in
+      timeout: 5s
+      handleTimeout: true
+"#;
+        let config = parse_string(yaml).unwrap();
+        let fs = config.connections[0].failure_semantics.as_ref().unwrap();
+        assert!(fs.handle_timeout);
+    }
+
+    #[test]
+    fn has_timeout_returns_true_when_set() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      id: built-in
+      timeout: 2s
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].has_timeout());
+    }
+
+    #[test]
+    fn has_timeout_returns_false_when_no_failure_semantics() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(!config.connections[0].has_timeout());
+    }
+
+    #[test]
+    fn has_timeout_returns_false_when_failure_semantics_has_no_timeout() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    failureSemantics:
+      id: built-in
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(!config.connections[0].has_timeout());
     }
 }

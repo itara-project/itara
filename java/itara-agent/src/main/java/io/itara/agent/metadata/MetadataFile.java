@@ -35,6 +35,10 @@ public class MetadataFile {
     @JsonProperty("methods")
     private MethodsMeta methods = MethodsMeta.ofEmpty();
     private TransportMeta transport;
+    @JsonProperty("failure-semantics")
+    private FailureSemanticsMeta failureSemantics;
+    @JsonProperty("api-dependencies")
+    private ApiDependenciesMeta apiDependencies;
 
 
     public ArtifactMeta getArtifact() { return artifact; }
@@ -64,11 +68,19 @@ public class MetadataFile {
     public TransportMeta getTransport()              { return transport; }
     public void setTransport(TransportMeta transport){ this.transport = transport; }
 
+    public FailureSemanticsMeta getFailureSemantics()               { return failureSemantics; }
+    public void setFailureSemantics(FailureSemanticsMeta fs)        { this.failureSemantics = fs; }
+
+    public ApiDependenciesMeta getApiDependencies()                 { return apiDependencies; }
+    public void setApiDependencies(ApiDependenciesMeta a)           { this.apiDependencies = a; }
+
     @Override
     public String toString() {
         return "MetadataFile{artifact=" + artifact + ", runtime=" + runtime
                 + ", itara=" + itara + ", serializers=" + serializers
                 + ", transport=" + transport
+                + ", failureSemantics=" + failureSemantics
+                + ", apiDependencies=" + apiDependencies
                 + ", implementedEventContracts=" + implementedEventContracts + "}";
     }
 }

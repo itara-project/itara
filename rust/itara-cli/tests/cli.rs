@@ -320,7 +320,7 @@ mod verify {
         itara().args(["verify", &fixture("verify_clean.yaml")])
             .assert().success()
             .stdout(predicate::str::contains("✓"))
-            .stdout(predicate::str::contains("No issues found."));
+            .stdout(predicate::str::contains("no --metadata-dir provided"));
     }
 
     #[test]
@@ -456,17 +456,23 @@ mod verify {
     #[test]
     fn skip_suppresses_targeted_check() {
         // verify_orphan_node.yaml's only problem is the orphaned node.
+        // Without --metadata-dir a warning is always present, so we check
+        // there are no errors rather than asserting "No issues found."
         itara().args(["verify", "--skip", "orphaned-nodes", &fixture("verify_orphan_node.yaml")])
             .assert().success()
-            .stdout(predicate::str::contains("No issues found."));
+            .stdout(predicate::str::contains("no --metadata-dir provided"))
+            .stdout(predicate::str::contains("ERROR").not());
     }
 
     #[test]
     fn only_runs_exactly_the_named_check() {
         // verify_orphan_node.yaml has no duplicate ids — clean under this check alone.
+        // Without --metadata-dir a warning is always present, so we check
+        // there are no errors rather than asserting "No issues found."
         itara().args(["verify", "--only", "duplicate-ids", &fixture("verify_orphan_node.yaml")])
             .assert().success()
-            .stdout(predicate::str::contains("No issues found."));
+            .stdout(predicate::str::contains("no --metadata-dir provided"))
+            .stdout(predicate::str::contains("ERROR").not());
     }
 
     #[test]

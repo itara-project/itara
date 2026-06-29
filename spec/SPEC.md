@@ -390,17 +390,34 @@ non-idempotent = ["divide", "transfer", "placeOrder"]
 
 #### Component Artifacts
 
-An artifact of `kind = "component"` MUST declare the API version it implements.
-This is the field the tooling uses to verify that the component is compatible
-with the API artifact it is wired against:
+An artifact of `kind = "component"` MUST declare the API version it implements
+as a standard semver range. This is the field the tooling uses to verify that
+the component is compatible with the callers that depend on it:
 
 ```toml
 [artifact]
 kind        = "component"
 id          = "calculator"
 version     = "1.2.0"
-api-version = "1.x"          # semver range of the API this component implements
+api-version = "^1.0"         # semver range of the API this component implements
 ```
+
+A component artifact SHOULD declare the synchronous API contracts it calls and
+the exact version each was compiled against. This enables tooling to verify
+API version compatibility across connections before deployment:
+
+```toml
+[api-dependencies]
+calls = [
+  { id = "inventory", version = "2.1.0" },
+  { id = "payment",   version = "1.0.0" },
+]
+```
+
+The `id` of each entry matches the `artifact.id` of the callee's `kind = "api"`
+or `kind = "component"` metadata file. The `version` is the exact version the
+component was compiled against — not a range. Compatibility is determined by
+the tooling using standard semver semantics.
 
 #### Transport Artifacts
 
@@ -428,8 +445,8 @@ section:
 
 ```toml
 [transport.capabilities]
-nativeCallTimeout       = true   # supports native per-call timeout enforcement
-externallyInterruptible = true   # safe to interrupt externally on timeout
+native-call-timeout       = true   # supports native per-call timeout enforcement
+externally-interruptible  = true   # safe to interrupt externally on timeout
 ```
 
 Both fields default to `true` when the `[transport.capabilities]` section
@@ -438,6 +455,31 @@ when interrupted externally MUST explicitly declare
 `externallyInterruptible = false`.
 
 See §14.10 for how these declarations are used together with the failure semantics layer.
+
+#### Failure Semantics Artifacts
+
+An artifact of `kind = "failure-semantics"` MUST declare its capabilities in a
+`[failure-semantics.capabilities]` section:
+
+```toml
+[artifact]
+kind    = "failure-semantics"
+id      = "built-in"
+version = "1.0.0"
+
+[failure-semantics.capabilities]
+supports-external-timeout = true   # can enforce timeout by external interruption
+```
+
+`supports-external-timeout` defaults to `false` when the
+`[failure-semantics.capabilities]` section is absent — an implementation that
+does not declare this capability is assumed not to support external timeout
+enforcement. An implementation MUST declare `supports-external-timeout = true`
+explicitly if it supports it, because configuring external timeout enforcement
+on a connection whose failure semantics implementation does not support it is
+an error the tooling MUST catch.
+
+See §14.10 for how this declaration is used in tooling validation.
 
 ### 5.5 Artifact Discovery
 
@@ -979,6 +1021,27 @@ The verify command MUST exit with a non-zero exit code if any ERROR is present.
 Warnings MUST NOT affect the exit code. This makes the verify command suitable
 for use as a CI gate — a topology that does not pass verify does not deploy.
 
+#### Metadata-dependent checks
+
+When artifact metadata is available to the tooling, a conforming implementation
+MUST additionally perform the following checks:
+
+| Check | Severity | Condition |
+|-------|----------|-----------|
+| API version incompatibility | ERROR | A caller component was compiled against a version of a callee's API that does not satisfy the callee's declared `api-version` range |
+| Timeout capability mismatch | ERROR | A connection configures timeout enforcement in a way that conflicts with the capabilities declared in the transport or failure semantics metadata — see §14.10 for the full list of conditions |
+| Transport interrupt safety | ERROR | A connection configures external timeout enforcement but the transport declares `externally-interruptible = false` |
+
+Version compatibility MUST be evaluated using standard semver semantics. The
+callee declares a semver range in `api-version`; the caller declares the exact
+version it was compiled against in `[api-dependencies]`. The call is compatible
+if and only if the caller's version satisfies the callee's range.
+
+When metadata is not available, a conforming implementation MUST warn the
+operator that metadata-dependent checks are being skipped. This warning MUST
+be visible in the command output and MUST NOT cause the command to exit with
+a non-zero status.
+
 The following conditions are explicitly NOT checked, because static analysis
 cannot reliably determine whether they represent errors:
 
@@ -1215,20 +1278,25 @@ nodes:
 connections:
   - from: "orderServiceNode"
     to: "orderCreatedChannel"
-    type: kafka
+    transport:
+      id: kafka
     serializer: "json"
 
   - from: "orderCreatedChannel"
     to: "inventoryServiceNode"
-    type: kafka
+    transport:
+      id: kafka
+      params:
+        consumer-group: "inventory-consumer-group"
     serializer: "json"
-    consumer-group: "inventory-consumer-group"
 
   - from: "orderCreatedChannel"
     to: "notificationServiceNode"
-    type: kafka
+    transport:
+      id: kafka
+      params:
+        consumer-group: "notification-consumer-group"
     serializer: "json"
-    consumer-group: "notification-consumer-group"
 ```
 
 ### 13.5 Context Propagation
@@ -1488,6 +1556,7 @@ Whether each side enforces the per-attempt timeout is declared independently:
   this connection
 - The failure semantics implementation declares whether it should enforce the
   timeout by external interruption for this connection
+
 Both are independent, optional declarations.
  
 **Absolute timeout**
@@ -1511,6 +1580,7 @@ A transport MUST declare the following capabilities in its metadata file:
  
 - Whether it supports native per-call timeout enforcement
 - Whether it is safe to interrupt externally on timeout
+
 A transport that does not declare these capabilities is assumed to support
 both. A transport that may leave connections in an inconsistent state when
 interrupted externally MUST declare that it is not safe to interrupt.

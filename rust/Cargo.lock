@@ -803,7 +803,10 @@ dependencies = [
  "assert_cmd",
  "clap",
  "itara-config",
+ "itara-libdir",
  "predicates",
+ "semver",
+ "tempfile",
 ]
 
 [[package]]
