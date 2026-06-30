@@ -30,6 +30,16 @@
         <artifactId>notification-api</artifactId>
         <version>${project.version}</version>
       </dependency>
+      <dependency>
+        <groupId>io.itara.demo</groupId>
+        <artifactId>order-events</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.itara.demo</groupId>
+        <artifactId>fulfilment-events</artifactId>
+        <version>${project.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 </project>

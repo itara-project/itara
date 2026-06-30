@@ -1,3 +1,5 @@
+name: itara-demo-kafka
+
 services:
 
   kafka:
@@ -6,6 +8,8 @@ services:
     ports:
       - "9092:9092"       # host access — your Java apps connect here
       - "9093:9093"       # internal cluster port (KRaft controller)
+    networks:
+      - itara-net
     environment:
       # ── KRaft (no ZooKeeper) ──────────────────────────────────────────
       KAFKA_NODE_ID: 1
@@ -43,6 +47,8 @@ services:
     container_name: itara-kafka-ui
     ports:
       - "8090:8080"       # open http://localhost:8090 in your browser
+    networks:
+      - itara-net
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -52,3 +58,8 @@ services:
 
 volumes:
   kafka-data:
+
+networks:
+  itara-net:
+    external: true
+    name: itara-demo-otel_itara-net

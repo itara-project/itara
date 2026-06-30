@@ -25,15 +25,19 @@
         </dependency>
         <dependency>
             <groupId>io.itara.demo</groupId>
-            <artifactId>notification-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.itara.demo</groupId>
             <artifactId>fulfilment-api</artifactId>
         </dependency>
         <dependency>
             <groupId>io.itara.demo</groupId>
             <artifactId>payment-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.demo</groupId>
+            <artifactId>order-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.demo</groupId>
+            <artifactId>fulfilment-events</artifactId>
         </dependency>
     </dependencies>
 </project>

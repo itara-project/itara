@@ -21,7 +21,6 @@ public class InventoryActivator implements ItaraActivator {
         log.info("[InventoryActivator] Creating InventoryServiceImpl");
         try {
             DatabaseManager db = new DatabaseManager("inventory.db");
-            log.info("[InventoryActivator] db manager created");
             return new InventoryServiceImpl(db);
         } catch (Exception e) {
             throw new RuntimeException("Failed to activate inventory component", e);

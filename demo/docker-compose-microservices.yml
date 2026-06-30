@@ -101,6 +101,8 @@ services:
       - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
       - ./notification/notification-api/target/notification-api-1.0-SNAPSHOT.jar:/app/notification-api.jar:ro
       - ./notification/notification-component/target/notification-component-1.0-SNAPSHOT.jar:/app/notification-component.jar:ro
+      - ./order-events/target/order-events-1.0-SNAPSHOT.jar:/app/order-events.jar:ro
+      - ./fulfilment-events/target/fulfilment-events-1.0-SNAPSHOT.jar:/app/fulfilment-events.jar:ro
       - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./metafiles:/app/metafiles:ro
@@ -125,7 +127,7 @@ services:
       - "-Ditara.nodes=notificationNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/notification-api.jar:/app/notification-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "/app/itara-common.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/notification-api.jar:/app/notification-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
       - "io.itara.runtime.ItaraMain"
     networks:
       - itara-net
@@ -161,8 +163,9 @@ services:
       - ./order/order-component/target/order-component-1.0-SNAPSHOT.jar:/app/order-component.jar:ro
       - ./inventory/inventory-api/target/inventory-api-1.0-SNAPSHOT.jar:/app/inventory-api.jar:ro
       - ./fulfilment/fulfilment-api/target/fulfilment-api-1.0-SNAPSHOT.jar:/app/fulfilment-api.jar:ro
-      - ./notification/notification-api/target/notification-api-1.0-SNAPSHOT.jar:/app/notification-api.jar:ro
       - ./payment/java/payment-api/target/payment-api-1.0-SNAPSHOT.jar:/app/payment-api.jar:ro
+      - ./order-events/target/order-events-1.0-SNAPSHOT.jar:/app/order-events.jar:ro
+      - ./fulfilment-events/target/fulfilment-events-1.0-SNAPSHOT.jar:/app/fulfilment-events.jar:ro
       - ./wiring-microservices.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./metafiles:/app/metafiles:ro
@@ -187,7 +190,7 @@ services:
       - "-Ditara.nodes=orderNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/order-api.jar:/app/order-component.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/notification-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "/app/itara-common.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/order-api.jar:/app/order-component.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/notification-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
       - "io.itara.runtime.ItaraMain"
     depends_on:
       - inventory

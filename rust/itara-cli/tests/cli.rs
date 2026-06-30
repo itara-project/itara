@@ -388,13 +388,21 @@ mod verify {
 
     #[test]
     fn unknown_transport_exits_nonzero() {
-        itara().args(["verify", &fixture("verify_unknown_transport.yaml")])
+        itara().args([
+            "verify",
+            "--metadata-dir", &fixture("metadata-http-only"),
+            &fixture("verify_unknown_transport.yaml"),
+        ])
             .assert().failure();
     }
 
     #[test]
     fn unknown_transport_names_the_type() {
-        itara().args(["verify", &fixture("verify_unknown_transport.yaml")])
+        itara().args([
+            "verify",
+            "--metadata-dir", &fixture("metadata-http-only"),
+            &fixture("verify_unknown_transport.yaml"),
+        ])
             .assert().failure()
             .stdout(predicate::str::contains("grpc"))
             .stdout(predicate::str::contains("unknown transport"));

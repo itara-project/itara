@@ -13,22 +13,16 @@ public class DatabaseManager implements AutoCloseable {
     private final Connection connection;
 
     public DatabaseManager(String dbPath) throws SQLException {
-        log.info("Creating DB manager #1");
         try {
-            log.info("Creating DB manager #2");
             Class.forName("org.sqlite.JDBC");
-            log.info("Creating DB manager #3");
         } catch (ClassNotFoundException e) {
-            log.info("Creating DB manager #3.5");
             throw new RuntimeException("SQLite JDBC driver not found on classpath", e);
         }
-        log.info("Creating DB manager #4");
         connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
         try (Statement s = connection.createStatement()) {
             s.execute("PRAGMA journal_mode=WAL");
             s.execute("PRAGMA foreign_keys=ON");
         }
-        log.info("Creating DB manager #5");
         initSchema();
         log.info("[DatabaseManager] Ready at: " + dbPath);
     }
