@@ -2,14 +2,14 @@
 kind = "api"
 id = "payment"
 version = "0.1.0"
-api-version = "0.x"
+api-version = "0.1.0"
 
 [runtime]
 language = "java"
 compiler = "21"
 
 [itara]
-spec-version = "0.1"
+spec-version = "0.2"
 core-version = "0.1+"
 
 [methods]

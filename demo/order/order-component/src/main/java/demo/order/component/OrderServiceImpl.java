@@ -1,12 +1,13 @@
 package demo.order.component;
 
 import demo.fulfilment.api.FulfilmentService;
+import demo.fulfilment.events.OrderCancelledContract;
+import demo.fulfilment.events.OrderFulfilledContract;
 import demo.inventory.api.InsufficientStockException;
 import demo.inventory.api.InventoryService;
-import demo.notification.api.NotificationService;
 import demo.order.api.OrderService;
+import demo.order.events.OrderReservedContract;
 import demo.payment.api.PaymentService;
-import io.itara.exceptions.ItaraRemoteException;
 
 import java.util.logging.Logger;
 
@@ -17,17 +18,23 @@ public class OrderServiceImpl implements OrderService {
     private final InventoryService    inventory;
     private final PaymentService      payment;
     private final FulfilmentService   fulfilment;
-    private final NotificationService notification;
+    private final OrderCancelledContract orderCancelledContract;
+    private final OrderFulfilledContract orderFulfilledContract;
+    private final OrderReservedContract orderReservedContract;
 
     public OrderServiceImpl(
             InventoryService    inventory,
             PaymentService      payment,
             FulfilmentService   fulfilment,
-            NotificationService notification) {
+            OrderCancelledContract orderCancelledContract,
+            OrderFulfilledContract orderFulfilledContract,
+            OrderReservedContract orderReservedContract) {
         this.inventory    = inventory;
         this.payment      = payment;
         this.fulfilment   = fulfilment;
-        this.notification = notification;
+        this.orderCancelledContract = orderCancelledContract;
+        this.orderFulfilledContract = orderFulfilledContract;
+        this.orderReservedContract = orderReservedContract;
     }
 
     @Override
@@ -42,18 +49,19 @@ public class OrderServiceImpl implements OrderService {
             log.warning("[Order] Insufficient stock for order=" + orderId + ": " + e.getMessage());
             return false;
         }
+        orderReservedContract.onOrderReserved(orderId, productId, quantity);
 
         boolean paid = payment.process_payment(orderId, amountCents, currency);
 
         if (paid) {
             inventory.releaseReservation(orderId, true);
             fulfilment.processOrder(orderId, productId, quantity);
-            notification.notifyOrderFulfilled(orderId);
+            orderFulfilledContract.onOrderFulfilled(orderId);
             log.info("[Order] Order placed successfully — orderId=" + orderId);
             return true;
         } else {
             inventory.releaseReservation(orderId, false);
-            notification.notifyOrderCancelled(orderId);
+            orderCancelledContract.onOrderCancelled(orderId);
             log.warning("[Order] Payment failed, order cancelled — orderId=" + orderId);
             return false;
         }
@@ -64,7 +72,7 @@ public class OrderServiceImpl implements OrderService {
         log.info("[Order] Cancelling order=" + orderId);
         inventory.releaseReservation(orderId, false);
         fulfilment.cancelOrder(orderId);
-        notification.notifyOrderCancelled(orderId);
+        orderCancelledContract.onOrderCancelled(orderId);
         log.info("[Order] Order cancelled — orderId=" + orderId);
     }
 }

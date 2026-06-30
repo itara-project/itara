@@ -19,5 +19,13 @@
             <groupId>io.itara</groupId>
             <artifactId>itara-common</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.itara.demo</groupId>
+            <artifactId>order-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.demo</groupId>
+            <artifactId>fulfilment-events</artifactId>
+        </dependency>
     </dependencies>
 </project>

@@ -20,6 +20,7 @@ mkdir -p libs
 cp ../java/itara-observability-logging/target/itara-observability-logging-1.0-SNAPSHOT.jar         libs/
 cp ../java/itara-serializer-json/target/itara-serializer-json-1.0-SNAPSHOT.jar                     libs/
 cp ../java/itara-transport-http/target/itara-transport-http-1.0-SNAPSHOT.jar                       libs/
+cp ../java/itara-transport-kafka/target/itara-transport-kafka-1.0-SNAPSHOT.jar                     libs/
 cp ../java/itara-failure-semantics-builtin/target/itara-failure-semantics-builtin-1.0-SNAPSHOT.jar libs/
 cp flaky-transport/target/flaky-transport-1.0-SNAPSHOT.jar                                         libs/
 mkdir -p metafiles
@@ -27,6 +28,7 @@ cp ../java/itara-observability-logging/itara-observability-logging.itara        
 cp ../java/itara-observability-otel/itara-observability-otel.itara               metafiles/
 cp ../java/itara-serializer-json/itara-serializer-json.itara                     metafiles/
 cp ../java/itara-transport-http/itara-transport-http.itara                       metafiles/
+cp ../java/itara-transport-kafka/itara-transport-kafka.itara                     metafiles/
 cp ../java/itara-failure-semantics-builtin/itara-failure-semantics-builtin.itara metafiles/
 cp inventory/inventory-api/inventory-api.itara                                   metafiles/
 cp inventory/inventory-component/inventory-component.itara                       metafiles/
@@ -37,6 +39,8 @@ cp notification/notification-component/notification-component.itara             
 cp order/order-api/order-api.itara                                               metafiles/
 cp order/order-component/order-component.itara                                   metafiles/
 cp payment/java/payment-api/payment-api.itara                                    metafiles/
+cp order-events/order-events.itara                                               metafiles/
+cp fulfilment-events/fulfilment-events.itara                                     metafiles/
 cp flaky-transport/flaky-transport.itara                                         metafiles/
 echo "  Java libraries collected in demo/libs/ and .itara metadata files in demo/metafiles/"
 
@@ -51,6 +55,7 @@ cp ../rust/itara-observability-logging/itara_observability_logging.itara payment
 cp ../rust/itara-observability-otel/itara_observability_otel.itara       payment/itara-libs/
 cp ../rust/itara-transport-http/itara_transport_http.itara               payment/itara-libs/
 cp payment/payment-component/payment_component.itara                     payment/itara-libs/
+cp payment/payment-component/payment_component.itara                     metafiles/
 cp payment/payment-api/payment_api.itara                                 payment/itara-libs/
 cp payment/target/release/libpayment_api.so                              payment/itara-libs/
 cp payment/target/release/libpayment_component.so                        payment/itara-libs/

@@ -2,7 +2,7 @@
 kind = "api"
 id = "notification"
 version = "0.1.0"
-api-version = "0.x"
+api-version = "0.1.0"
 
 [runtime]
 language = "java"

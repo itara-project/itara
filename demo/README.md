@@ -1,6 +1,6 @@
 # Itara Demo — Order Processing System
 
-This demo runs the same order processing system in three different topologies.
+This demo runs the same order processing system in three topologies plus a failure-injection variant.
 The business logic doesn't change. The components don't change. Only the wiring
 config changes — and the traces show exactly what each topology decision costs.
 
@@ -18,12 +18,16 @@ An order processing application with five components:
 | fulfilment | Java | Order fulfilment after payment |
 | notification | Java | Order confirmation |
 
-Payment is implemented in Rust and runs as a separate process in all three
+Payment is implemented in Rust and runs as a separate process in all four
 topologies. This reflects a common real-world pattern — payment services
 running in a separate security boundary. Java-Rust colocation is not
 supported; the two runtimes communicate over HTTP, which is visible in
 the traces. See [ADR 0013](../docs/adr/0013-rust-dynamic-approach-evaluation.md)
 for the current state and direction of the Rust implementation.
+
+Notification runs as a separate process in every topology and communicates
+exclusively through events over Kafka — reflecting how notification systems are
+typically deployed in practice, and demonstrating Itara's event-driven support.
 
 ---
 
@@ -133,6 +137,12 @@ docker compose -f demo/docker-compose-otel.yml up -d
 Wait until Kibana is ready — about 60 seconds on first run.
 Check: http://localhost:5601
 
+Then start the Kafka stack for the events and leave it running:
+
+```bash
+docker compose -f demo/docker-compose-kafka.yml up -d
+```
+
 Then start whichever topology you want to run:
 
 ```bash
@@ -163,10 +173,18 @@ in Kibana for comparison.
 
 ## Sending requests
 
-Add stock to the inventory:
+Add stock to the inventory in the microservices topologies:
 
 ```bash
 curl -X POST http://localhost:8082/itara/inventory/addItem \
+     -H "Content-Type: application/json" \
+     -d '["WIDGET-A", "Flux Capacitor", 100]'
+```
+
+And in the monolith and informed topologies:
+
+```bash
+curl -X POST http://localhost:8081/itara/inventory/addItem \
      -H "Content-Type: application/json" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
@@ -199,10 +217,10 @@ for why the events fire where they do.
 
 | Event | Side | Fires |
 |-------|------|-------|
-| `CALL_SENT` | Caller | Before serialization |
-| `CALL_RECEIVED` | Callee | After deserialization |
-| `RETURN_SENT` | Callee | Before serialization of result |
-| `RETURN_RECEIVED` | Caller | After deserialization of result |
+| `CALL_SENT` | Caller | At the business/topology boundary, before serialization |
+| `CALL_RECEIVED` | Callee | At the business/topology boundary, after deserialization |
+| `RETURN_SENT` | Callee | At the business/topology boundary, before serialization of result |
+| `RETURN_RECEIVED` | Caller | At the business/topology boundary, after deserialization of result |
 
 This produces two spans per call in the trace:
 
@@ -215,6 +233,20 @@ The gap between the outer and inner span is the transport overhead:
 serialization, network, deserialization. For direct calls the gap is
 nearly zero. For remote calls it is directly measurable. This decomposition
 happens without any instrumentation in the component code.
+ 
+The same four-event model applies to event-driven calls. The producer side
+fires `CALL_SENT` and `RETURN_RECEIVED` at the business/topology boundary when
+publishing; the consumer side fires `CALL_RECEIVED` and `RETURN_SENT` at the
+same boundary when handling. The OTel observer used in this demo represents
+producer and consumer as two separate traces with no parent-child
+relationship, correlated by `itaraTraceId` — this is an OTel modelling choice,
+not an Itara guarantee. Itara leaves the trace shape up to the observer
+implementation; the only thing it guarantees is the correlation ID. In the
+traces overview, event handlers appear in the list the same way method calls
+do — named `<events-artifact>/<event-name>.<handler-method>`, with the
+consuming component as the originating service. Event consumption is
+queryable and measurable in the same place as everything else — no separate
+dashboard, no special tooling for async flows.
 
 ### In the monolith trace
 
@@ -222,6 +254,10 @@ happens without any instrumentation in the component code.
   the outer and inner span are almost identical in duration
 - The payment call shows a visible gap — serialization and network cost to
   the Rust process
+- `order-events/order-reserved.onOrderReserved` and
+  `fulfilment-events/order-fulfilled.onOrderFulfilled` appear as spans within
+  the same trace — the events are emitted from within the business flow,
+  observable alongside the synchronous calls
 - Two services visible in the trace legend: the Java monolith and payment
 
 ![Monolith topology trace](../docs/images/trace-monolith.png)
@@ -230,7 +266,10 @@ happens without any instrumentation in the component code.
 
 - Every call shows a visible gap between outer and inner span
 - Component execution times are unchanged — only the transport costs differ
-- Five services visible in the trace legend
+- The same two events appear as spans within the producer's trace, regardless
+  of how distributed the rest of the topology is
+- Four services visible in the trace legend: order, inventory, payment,
+  fulfilment
 
 ![Microservices topology trace](../docs/images/trace-microservices.png)
 
@@ -239,14 +278,30 @@ happens without any instrumentation in the component code.
 - Inventory calls look like the monolith — near-zero gap, direct
 - Everything else looks like microservices — transport overhead visible
 - The contrast between the two patterns is visible in the same trace
+- Order and inventory share a service name in the trace legend
+  (`orderAndInventory`), reflecting their colocation
 
 ![Informed topology trace](../docs/images/trace-informed.png)
 
 ### In the microservices-flaky trace
 
-Idempotent calls show sibling `attempt` spans when they fail and retry.
-Non-idempotent calls show exactly one attempt — failure surfaces immediately,
-no retry. Both visible in the same trace, nothing changed in the business code.
+Idempotent calls show sibling `attempt` spans when they fail and retry —
+visible here on `inventory.releaseReservation`, where the first attempt fails
+and a second attempt succeeds. Non-idempotent calls show exactly one attempt:
+failure surfaces immediately, no retry. Both cases are visible in the same
+trace, nothing changed in the business code.
+ 
+![Microservices-flaky topology trace](../docs/images/trace-microservices-flaky.png)
+ 
+### In the traces overview
+ 
+Event handlers appear in the list the same way method calls do — named
+`<events-artifact>/<event-name>.<handler-method>`, with the consuming
+component (`notification`) as the originating service. Event consumption is
+queryable and measurable in the same place as everything else — no separate
+dashboard, no special tooling for async flows.
+ 
+![Traces overview](../docs/images/trace-overview.png)
 
 ---
 
@@ -258,70 +313,91 @@ directly from the wiring config — no containers, no network, just the config:
 ```
 $ ./rust/target/release/itara inspect demo/wiring-monolith.yaml
 Itara topology — demo/wiring-monolith.yaml
- 
+
 Nodes:
-  fulfilmentNode   component: fulfilment
-  inventoryNode    component: inventory           (external entry point)
-  notificationNode component: notification
-  paymentNode      component: payment
-  orderNode        component: order               (external entry point)
- 
+  fulfilmentNode        component: fulfilment
+  inventoryNode         component: inventory                     (external entry point)
+  notificationNode      component: notification
+  paymentNode           component: payment
+  orderNode             component: order                         (external entry point)
+  orderReservedChannel  virtual:   order-events/order-reserved @ demo.events.order-reserved
+  orderFulfilledChannel virtual:   fulfilment-events/order-fulfilled @ demo.events.order-fulfilled
+  orderCancelledChannel virtual:   fulfilment-events/order-cancelled @ demo.events.order-cancelled
+
 Connections:
-  orderNode →        inventoryNode        [direct]
-  orderNode →        fulfilmentNode       [direct]
-  orderNode →        notificationNode     [direct]
-  orderNode →        paymentNode          [http]
- 
+  orderNode →             inventoryNode        [direct]
+  orderNode →             fulfilmentNode       [direct]
+  orderNode →             paymentNode          [http]
+  orderNode →             orderReservedChannel [kafka]
+  orderNode →             orderFulfilledChannel [kafka]
+  orderNode →             orderCancelledChannel [kafka]
+  orderReservedChannel →  notificationNode     [kafka]
+  orderFulfilledChannel → notificationNode     [kafka]
+  orderCancelledChannel → notificationNode     [kafka]
+
 Deployment groups (derived):
-  Group A: fulfilmentNode, orderNode, inventoryNode, notificationNode
+  Group A: fulfilmentNode, orderNode, inventoryNode
     fulfilmentNode (fulfilment)
     orderNode (order)
       Receives: external http on :8081
       Calls:    inventoryNode via direct
       Calls:    fulfilmentNode via direct
-      Calls:    notificationNode via direct
       Calls:    paymentNode via http
+      Emits:       orderReservedChannel (order-events/order-reserved)
+      Emits:       orderFulfilledChannel (fulfilment-events/order-fulfilled)
+      Emits:       orderCancelledChannel (fulfilment-events/order-cancelled)
     inventoryNode (inventory)
-      Receives: external http on :8082
+      Receives: external http on :8081
+
+  Group B: notificationNode
     notificationNode (notification)
- 
-  Group B: paymentNode
+      Listens to:  orderReservedChannel (order-events/order-reserved)
+      Listens to:  orderFulfilledChannel (fulfilment-events/order-fulfilled)
+      Listens to:  orderCancelledChannel (fulfilment-events/order-cancelled)
+
+  Group C: paymentNode
     paymentNode (payment)
       Receives: orderNode via http on :8083
- 
+
 Graph:
   [external] --http:8081--> [orderNode]
-  [external] --http:8082--> [inventoryNode]
+  [external] --http:8081--> [inventoryNode]
   [orderNode] --direct--> [inventoryNode]
   [orderNode] --direct--> [fulfilmentNode]
-  [orderNode] --direct--> [notificationNode]
   [orderNode] --http:8083--> [paymentNode]
+  [orderNode] --kafka--> [orderReservedChannel]
+  [orderNode] --kafka--> [orderFulfilledChannel]
+  [orderNode] --kafka--> [orderCancelledChannel]
+  [orderReservedChannel] --kafka--> [notificationNode]
+  [orderFulfilledChannel] --kafka--> [notificationNode]
+  [orderCancelledChannel] --kafka--> [notificationNode]
 ```
  
-All three topology configs can be inspected the same way. The deployment
+All four topology configs can be inspected the same way. The deployment
 groups change with the config — in the microservices topology every component
 is its own group; in the informed topology order and inventory share a group.
  
 `itara verify` checks the config for errors before anything starts:
  
 ```
-$ ./rust/target/release/itara verify demo/wiring-monolith.yaml
+$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-monolith.yaml
 ✓ itara verify — demo/wiring-monolith.yaml
 
-  5 nodes, 6 connections
+  8 nodes, 11 connections
 
   No issues found.
 ```
  
 ```
-$ ./rust/target/release/itara verify demo/wiring-informed-with-error.yaml   # with a missing connection fabricated
+$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-informed-with-error.yaml   # with some errors and warnings fabricated
 ✗ itara verify — demo/wiring-informed-with-error.yaml
 
-  5 nodes, 5 connections
+  8 nodes, 10 connections
 
-  ERROR  node 'notificationNode' is declared but not referenced in any connection
+  ERROR  node 'fulfilmentNode' is declared but not referenced in any connection
+  WARN   connection 'orderNode' → 'paymentNode': a timeout is declared but neither the transport nor the failure semantics implementation is configured to enforce it — the timeout value will be passed to the transport but nothing will act on it
 
-  1 error
+  1 error, 1 warning
 ```
 
 The topology is visible and validated before a single container starts.

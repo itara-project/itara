@@ -1,0 +1,11 @@
+[artifact]
+kind = "transport"
+id = "http"
+version = "0.1.0"
+
+[transport]
+type = "http"
+
+[transport.capabilities]
+native-call-timeout = true
+externally-interruptible = true

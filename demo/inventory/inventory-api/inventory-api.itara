@@ -2,7 +2,7 @@
 kind = "api"
 id = "inventory"
 version = "0.1.0"
-api-version = "0.x"
+api-version = "0.1.0"
 
 [runtime]
 language = "java"
@@ -13,5 +13,6 @@ spec-version = "0.1"
 core-version = "0.1+"
 
 [methods]
-non-idempotent = ["addItem", "reserveOrder", "releaseReservation"]
+non-idempotent = ["addItem", "reserveOrder"]
 # checkAvailability is idempotent — read-only, no side effects
+# for the sake of the demo, releaseReservation is also idempotent

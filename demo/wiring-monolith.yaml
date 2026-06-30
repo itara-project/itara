@@ -9,6 +9,18 @@ nodes:
     component: "payment"
   - id: "orderNode"
     component: "order"
+  - id: "orderReservedChannel"
+    kind: virtual
+    contract: "order-events/order-reserved"
+    address: "demo.events.order-reserved"
+  - id: "orderFulfilledChannel"
+    kind: virtual
+    contract: "fulfilment-events/order-fulfilled"
+    address: "demo.events.order-fulfilled"
+  - id: "orderCancelledChannel"
+    kind: virtual
+    contract: "fulfilment-events/order-cancelled"
+    address: "demo.events.order-cancelled"
 
 connections:
   - from:
@@ -36,13 +48,10 @@ connections:
     transport:
       id: direct
   - from: "orderNode"
-    to: "notificationNode"
-    transport:
-      id: direct
-  - from: "orderNode"
     to: "paymentNode"
     transport:
       id: http
+      handleTimeout: true
       params:
         host: payment
         port: 8083
@@ -54,3 +63,48 @@ connections:
       params:
         waitDuration: 500ms
         retryRuntime: "true"
+  - from: "orderNode"
+    to: orderReservedChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderNode"
+    to: orderFulfilledChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderNode"
+    to: orderCancelledChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderReservedChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "orderFulfilledChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "orderCancelledChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"

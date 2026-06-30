@@ -9,13 +9,4 @@ import io.itara.api.ContractMethod;
  */
 @ComponentInterface(id = "notification")
 public interface NotificationService {
-
-    @ContractMethod
-    void notifyOrderReserved(String orderId, String productId, int quantity);
-
-    @ContractMethod
-    void notifyOrderFulfilled(String orderId);
-
-    @ContractMethod
-    void notifyOrderCancelled(String orderId);
 }

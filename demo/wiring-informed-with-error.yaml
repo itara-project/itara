@@ -9,6 +9,18 @@ nodes:
     component: "payment"
   - id: "orderNode"
     component: "order"
+  - id: "orderReservedChannel"
+    kind: virtual
+    contract: "order-events/order-reserved"
+    address: "demo.events.order-reserved"
+  - id: "orderFulfilledChannel"
+    kind: virtual
+    contract: "fulfilment-events/order-fulfilled"
+    address: "demo.events.order-fulfilled"
+  - id: "orderCancelledChannel"
+    kind: virtual
+    contract: "fulfilment-events/order-cancelled"
+    address: "demo.events.order-cancelled"
 
 connections:
   - from:
@@ -46,29 +58,13 @@ connections:
     to: "inventoryNode"
     transport:
       id: direct
-  - from: "orderNode"
-    to: "fulfilmentNode"
-    transport:
-      id: http
-      params:
-        host: "fulfilment"
-        port: 8085
-    serializer: "json"
-    failureSemantics:
-      id: built-in
-      maxRetry: 3
-      timeout: 5s
-      params:
-        waitDuration: 500ms
-        retryRuntime: "true"
-# order -> notification connection left out to show CLI capabilities
 #  - from: "orderNode"
-#    to: "notificationNode"
+#    to: "fulfilmentNode"
 #    transport:
 #      id: http
 #      params:
-#        host: "notification"
-#        port: 8086
+#        host: "fulfilment"
+#        port: 8085
 #    serializer: "json"
 #    failureSemantics:
 #      id: built-in
@@ -77,3 +73,48 @@ connections:
 #      params:
 #        waitDuration: 500ms
 #        retryRuntime: "true"
+  - from: "orderNode"
+    to: orderReservedChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderNode"
+    to: orderFulfilledChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderNode"
+    to: orderCancelledChannel
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+    serializer: "json"
+  - from: "orderReservedChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "orderFulfilledChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"
+  - from: "orderCancelledChannel"
+    to: "notificationNode"
+    transport:
+      id: kafka
+      params:
+        bootstrapServers: "kafka:29092"
+        consumerGroup: "order-consumer-group"
+    serializer: "json"

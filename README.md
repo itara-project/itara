@@ -262,15 +262,19 @@ spec/          VISION.md, MANIFESTO.md, SPEC.md
 
 An order processing system — four Java components and a Rust payment service — running in three different topologies. The same components, the same business logic, the same code. Only the wiring config changes.
 
+Notification runs as a separate process in every topology, communicating exclusively through events over Kafka — a natural fit for async, and a constant across all three topologies regardless of how the synchronous calls are arranged.
+
 | Topology | What runs together | What the traces show |
 |----------|-------------------|----------------------|
-| Monolith | Order, inventory, fulfilment, notification colocated | Near-zero overhead on direct calls, network cost to Rust payment visible |
+| Monolith | Order, inventory, fulfilment colocated; notification and payment separate | Near-zero overhead on direct calls, network cost to Rust payment visible |
 | Microservices | Every component in its own container | Transport overhead on every call, measurable on both sides |
 | Informed | Order and inventory colocated, rest distributed | Inventory overhead gone, cross-language trace unchanged |
 
-The Rust payment service appears in the same distributed trace as the Java components — a single Kibana trace spanning two languages, two runtimes, one topology.
+A fourth scenario, microservices with a flaky transport, shows the failure semantics SPI in action — retries on idempotent calls, immediate failure on non-idempotent ones, both visible as sibling spans in the same trace.
 
-**Monolith** — four Java components colocated, Rust payment separate:
+The Rust payment service appears in the same distributed trace as the Java components — a single Kibana trace spanning two languages, two runtimes, one topology. Event handlers appear in the trace overview the same way method calls do, queryable and measurable without any special tooling for async flows.
+
+**Monolith** — order, inventory, and fulfilment colocated, payment and notification separate:
 
 ![Monolith topology trace](docs/images/trace-monolith.png)
 

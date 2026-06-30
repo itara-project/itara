@@ -2,7 +2,7 @@
 kind = "component"
 id = "notification"
 version = "0.1.0"
-api-version = "0.x"
+api-version = "0.1.0"
 
 [runtime]
 language = "java"
@@ -11,3 +11,10 @@ compiler = "21"
 [itara]
 spec-version = "0.1"
 core-version = "0.1+"
+
+[implemented-event-contracts]
+contracts = [
+  { id = "order-events/order-reserved", version = "1.0-SNAPSHOT" },
+  { id = "fulfilment-events/order-cancelled", version = "1.0-SNAPSHOT" },
+  { id = "fulfilment-events/order-fulfilled", version = "1.0-SNAPSHOT" }
+]

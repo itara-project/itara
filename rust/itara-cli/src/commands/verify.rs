@@ -5,10 +5,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::output::{Issue, TICK, CROSS, blank};
 
-/// Transport types the CLI recognises as valid.
-/// Extend this list as new transport libs are added to the runtime.
-const KNOWN_TRANSPORTS: &[&str] = &["http", "direct", "kafka"];
-
 const VALID_CHECKS: &[&str] = &[
     "orphaned-nodes",
     "orphaned-connections",
@@ -110,7 +106,7 @@ pub fn run(args: Args) -> i32 {
     let (metadata_index, mut metadata_issues) = match &args.metadata_dir {
         None => {
             let warning = Issue::warning(
-                "no --metadata-dir provided — API version, event contract, \
+                "no --metadata-dir provided — API version, known transport, \
                  timeout, and transport interrupt checks are skipped".to_string(),
             );
             (None, vec![warning])
@@ -164,12 +160,12 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter, meta: Option<&Met
     if filter.should_run("self-connections")      { check_self_connections(config, &mut issues); }
     if filter.should_run("orphaned-nodes")        { check_orphaned_nodes(config, &mut issues); }
     if filter.should_run("orphaned-connections")  { check_orphaned_connections(config, &mut issues); }
-    if filter.should_run("unknown-transport")     { check_unknown_transports(config, &mut issues); }
     if filter.should_run("virtual-no-producers")      { check_virtual_no_producers(config, &mut issues); }
     if filter.should_run("virtual-no-consumers")      { check_virtual_no_consumers(config, &mut issues); }
     if filter.should_run("virtual-transport-mismatch"){ check_virtual_transport_mismatch(config, &mut issues); }
 
     if let Some(meta) = meta {
+        if filter.should_run("unknown-transport")          { check_unknown_transports(config, meta, &mut issues); }
         if filter.should_run("api-version-compatibility")  { check_api_version_compatibility(config, meta, &mut issues); }
         if filter.should_run("timeout-capability")         { check_timeout_capability(config, meta, &mut issues); }
         if filter.should_run("transport-interrupt-safety") { check_transport_interrupt_safety(config, meta, &mut issues); }
@@ -257,15 +253,17 @@ fn check_orphaned_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
     }
 }
  
-fn check_unknown_transports(config: &WiringConfig, issues: &mut Vec<Issue>) {
+fn check_unknown_transports(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        let t = conn.transport.id.to_ascii_lowercase();
-        if !KNOWN_TRANSPORTS.contains(&t.as_str()) {
+        let t = &conn.transport.id;
+        if t.eq_ignore_ascii_case("direct") {
+            continue; // built-in pseudo-transport, no metadata artifact
+        }
+        if meta.transport(t).is_none() {
             issues.push(Issue::error(format!(
-                "connection to '{}' has unknown transport type '{}' (known: {})",
-                conn.to,
-                conn.transport.id,
-                KNOWN_TRANSPORTS.join(", "),
+                "connection to '{}' has unknown transport type '{}' \
+                 — no matching transport metadata found",
+                conn.to, t,
             )));
         }
     }
@@ -938,40 +936,58 @@ mod tests {
     #[test]
     fn unknown_transport_flagged() {
         let cfg = config(
-            vec![node("a", "ca"), node("b", "cb")],
-            vec![
-                http(None, "a", 8080),
-                conn_with_transport(Some("a"), "b", "grpc", 8081),
-            ],
+            vec![node("a", "comp-a"), node("b", "comp-b")],
+            vec![conn_with_transport(Some("a"), "b", "carrier-pigeon", 8081)],
         );
-        let issues = collect_issues(&cfg, &CheckFilter::All, None);
-        assert_eq!(errors(&issues).len(), 1);
-        assert!(issues[0].message.contains("grpc"));
-        assert!(issues[0].message.contains("unknown transport"));
+        let meta = index_from_toml(&[&transport_meta("http", true, true)]);
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["unknown-transport"].iter().map(|s| s.to_string()).collect()
+        ), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("carrier-pigeon"));
     }
- 
+
     #[test]
     fn known_transports_not_flagged() {
-        for transport in KNOWN_TRANSPORTS {
-            let conn = if *transport == "direct" {
-                direct("a", "b")
-            } else {
-                conn_with_transport(Some("a"), "b", transport, 8081)
-            };
+        for transport in ["http", "kafka"] {
             let cfg = config(
-                vec![node("a", "ca"), node("b", "cb")],
-                vec![http(None, "a", 8080), conn],
+                vec![node("a", "comp-a"), node("b", "comp-b")],
+                vec![conn_with_transport(Some("a"), "b", transport, 8081)],
             );
-            let issues = collect_issues(&cfg, &CheckFilter::All, None);
-            let transport_issues: Vec<_> = issues.iter()
-                .filter(|i| i.message.contains("unknown transport"))
-                .collect();
+            let meta = index_from_toml(&[&transport_meta(transport, true, true)]);
+            let issues = collect_issues(&cfg, &CheckFilter::Only(
+                ["unknown-transport"].iter().map(|s| s.to_string()).collect()
+            ), Some(&meta));
             assert!(
-                transport_issues.is_empty(),
-                "transport '{}' was incorrectly flagged as unknown",
-                transport
+                issues.iter().filter(|i| i.is_error()).count() == 0,
+                "transport '{}' was unexpectedly flagged", transport
             );
         }
+    }
+
+    #[test]
+    fn direct_transport_never_flagged_even_without_metadata() {
+        let cfg = config(
+            vec![node("a", "comp-a"), node("b", "comp-b")],
+            vec![direct("a", "b")],
+        );
+        // empty metadata dir — no transport entries at all, "direct" must
+        // still never be flagged
+        let meta = index_from_toml(&[]);
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["unknown-transport"].iter().map(|s| s.to_string()).collect()
+        ), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 0);
+    }
+
+    #[test]
+    fn unknown_transport_check_skipped_without_metadata() {
+        let cfg = config(
+            vec![node("a", "comp-a"), node("b", "comp-b")],
+            vec![conn_with_transport(Some("a"), "b", "carrier-pigeon", 8081)],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        assert!(issues.iter().filter(|i| i.is_error()).count() == 0);
     }
  
     #[test]
@@ -1183,6 +1199,7 @@ api-version = "{api_version}"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "1.5.0"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
@@ -1197,6 +1214,7 @@ api-version = "{api_version}"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "1.0.0"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
@@ -1225,6 +1243,7 @@ api-version = "{api_version}"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "2.0.0"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1240,6 +1259,7 @@ api-version = "{api_version}"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "0.9.0"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1263,7 +1283,10 @@ api-version = "{api_version}"
             vec![node("caller", "comp-a"), node("callee", "comp-b")],
             vec![http(Some("caller"), "callee", 8081)],
         );
-        let meta = index_from_toml(&[&callee_meta("comp-b", "^1.0")]);
+        let meta = index_from_toml(&[
+            &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
+        ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
         assert!(issues[0].message.contains("comp-a"));
@@ -1284,6 +1307,7 @@ version = "1.0.0"
 api-version = "1.0.0"
 "#,
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1299,6 +1323,7 @@ api-version = "1.0.0"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "some-other-api", "1.0.0"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1314,6 +1339,7 @@ api-version = "1.0.0"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "not-a-version"),
             &callee_meta("comp-b", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1326,7 +1352,10 @@ api-version = "1.0.0"
             vec![node("caller", "comp-a"), node("callee", "comp-b")],
             vec![http(Some("caller"), "callee", 8081)],
         );
-        let meta = index_from_toml(&[&caller_meta("comp-a", "comp-b", "1.0.0")]);
+        let meta = index_from_toml(&[
+            &caller_meta("comp-a", "comp-b", "1.0.0"),
+            &transport_meta("http", true, true),
+        ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
         assert!(issues[0].message.contains("comp-b"));
@@ -1346,6 +1375,7 @@ kind = "component"
 id = "comp-b"
 version = "1.0.0"
 "#,
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1361,6 +1391,7 @@ version = "1.0.0"
         let meta = index_from_toml(&[
             &caller_meta("comp-a", "comp-b", "1.0.0"),
             &callee_meta("comp-b", "not-a-range"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
@@ -1377,7 +1408,10 @@ version = "1.0.0"
             ],
             vec![kafka(Some("channel"), "callee")],
         );
-        let meta = index_from_toml(&[&callee_meta("comp-b", "^1.0")]);
+        let meta = index_from_toml(&[
+            &callee_meta("comp-b", "^1.0"),
+            &transport_meta("kafka", true, true),
+        ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert!(issues.iter().filter(|i| i.is_error()).count() == 0);
     }
@@ -1391,7 +1425,10 @@ version = "1.0.0"
             ],
             vec![kafka(Some("caller"), "channel")],
         );
-        let meta = index_from_toml(&[&caller_meta("comp-a", "channel", "1.0.0")]);
+        let meta = index_from_toml(&[
+            &caller_meta("comp-a", "channel", "1.0.0"),
+            &transport_meta("kafka", true, true),
+        ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert!(issues.iter().filter(|i| i.is_error()).count() == 0);
     }
@@ -1425,6 +1462,7 @@ calls = [
 "#),
             &callee_meta("comp-b", "^1.0"),
             &callee_meta("comp-c", "^1.0"),
+            &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
         assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);

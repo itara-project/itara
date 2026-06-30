@@ -1,0 +1,10 @@
+[artifact]
+kind = "events"
+id = "fulfilment-events"
+version = "0.1.0"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"
