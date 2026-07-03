@@ -47,7 +47,7 @@ It does **not** define:
  - correlation IDs
 
 These are mechanical concerns.  
-They belong to the runtime and the topology layer, not the code.
+They belong to the topology layer, not the business or API layers.
 
 ---
 

@@ -420,8 +420,8 @@ metadata format the CLI reads.
   the box; distributed traces in Kibana across JVMs and Rust processes
 - Itara-native correlation IDs (`itaraTraceId` / `itaraSpanId`)
 - W3C traceparent propagation
-- Spring Boot compatible — components as Spring beans fetched from the Itara
-  registry
+- Spring Boot coexistence — components can be fetched from the Itara registry
+and returned as Spring beans; no dedicated integration or adapter exists
 - `itara-cli` — `itara inspect` visualises topology and deployment groups;
   `itara verify` catches wiring config errors and API version compatibility
   mismatches before deployment
