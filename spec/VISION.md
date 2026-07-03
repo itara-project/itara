@@ -1,13 +1,13 @@
 # Itara — Architectural Vision
  
 This document describes where Itara is going, not just where it is.
-It is a living document. Last updated: May 2026.
+It is a living document. Last updated: July 2026.
  
 ---
  
 ## The north star
  
-A production system should be able to change its topology — how its components communicate and where they run — without touching code, without migration ceremony, and without downtime. And it should be able to do so safely: with the confidence that the new topology is correct before it is applied, that every connection is validated, and that nothing can be misconfigured silently.
+A production system should have a declared, validated, and executable topology — how its components communicate and connect — that is easy to change without touching business code, without migration ceremony, and without downtime. And it should be able to do so safely: with the confidence that the new topology is correct before it is applied, that every connection is validated, and that nothing can be misconfigured silently.
  
 This is physically possible. What has been missing is the architectural model that makes it real.
  
@@ -29,7 +29,7 @@ Itara is built on two co-equal parts. Neither is sufficient without the other.
  
 **The wiring agent** makes topology a separate layer. It reads the wiring config before the application starts, resolves all connections once, wires the components together, and then steps aside. The application runs at full speed with no intermediary, no proxy in the call path, no decisions made at call time. The agent is language-specific — each supported language has its own implementation — but the wiring config and the component model are language-neutral.
  
-**The tooling ecosystem** makes that layer safe and manageable. It validates configurations before deployment, catches mismatches and incompatibilities at authoring time, visualises the topology as a graph, and guides engineers through changes. Incorrect topologies cannot be deployed silently. The layer Itara introduces is the layer the tooling understands completely.
+**The tooling ecosystem** makes that layer safe and manageable. It validates configurations before deployment, catches mismatches and incompatibilities at authoring time, visualises the topology as a graph, closes the loop between declared and actual topology, and guides engineers through changes. Incorrect topologies cannot be deployed silently. The layer Itara introduces is the layer the tooling understands deeply.
  
 The wiring agent moves complexity out of the code. The tooling takes responsibility for that complexity. Together they make topology a first-class engineering artifact — declared explicitly, validated before deployment, and easy to change precisely because the system understands itself completely.
  
@@ -61,7 +61,7 @@ The agent is implemented separately for each supported language, following the i
  
 ### The topology compiler
  
-The primary authoring and validation tool is a CLI that understands the system completely — which components exist, what contracts they implement, what serializers and transports they support, what versions are compatible. It validates every connection in the wiring config before deployment: API contracts, serializer compatibility, version ranges, dependency completeness.
+The primary authoring and validation tool is a CLI that understands the system deeply — which components exist, what contracts they implement, what serializers and transports they support, what versions are compatible. It validates every connection in the wiring config before deployment: API contracts, serializer compatibility, version ranges, dependency completeness.
  
 This is the compiler for distributed system topology. It takes intent, validates it against what the system actually contains, and produces a verified artifact. A topology that does not pass validation does not deploy. Incorrect configurations are caught at authoring time, not discovered in production.
  
@@ -77,11 +77,12 @@ The trust ladder governs how much autonomy the controller is granted:
 2. **Recommendations** — controller suggests with reasoning, engineer approves
 3. **Prepared actions** — one button, fully described, reversible
 4. **Full automation** — opt-in, scoped, with kill switches and full audit trail
+
 The controller never operates opaquely. Every recommendation is explained. Every automated action is logged and reversible. Trust is built on transparency, not on promises.
  
 ### The long-range vision
  
-The tooling direction extends further than configuration authoring. As the system matures, the tooling becomes capable of reasoning about the entire lifecycle of a distributed system: validating that a topology change is safe before it is applied, predicting the effect of splitting or merging components against observed behaviour, and eventually driving automated topology decisions that the engineer approves rather than initiates.
+The tooling direction extends further than configuration authoring. As the system matures, the tooling becomes capable of reasoning about the entire lifecycle of a distributed system: validating that a topology change is safe before it is applied, predicting the effect of splitting or merging components against observed behaviour, and eventually enforcing that the actual topology matches the declared topology — the same control loop that infrastructure-as-code brought to servers — and driving automated topology decisions that the engineer approves rather than initiates.
  
 The long-range vision: a distributed system that can recompile its own components with updated contracts, redeploy them with a new topology, and verify the result — all driven by the same tooling that started as an interactive CLI. Not autonomous in the sense of opaque, but autonomous in the sense of tireless, consistent, and always verifiable.
  
@@ -91,7 +92,7 @@ The long-range vision: a distributed system that can recompile its own component
 
 Observability is not an afterthought in Itara — it is a structural property of the architecture. The agent intercepts every call between components at startup. That interception point is the natural place to collect latency, throughput, error rates, and transport overhead without any instrumentation burden on the developer.
 
-Every connection in the topology graph has metrics attached to it automatically. Engineers see not just the structure of their system but its behaviour — in real time, without writing a single line of monitoring code.
+Every connection in the topology graph has events attached to it automatically. Engineers can see not just the structure of their system but how every connection behaves — latency, errors, and transport overhead, without writing a single line of monitoring code.
 
 This observability is also what makes the controller trustworthy. Before automation is ever enabled, the engineer can watch the controller's reasoning against real data and verify that it is correct. A system that cannot be observed cannot be safely automated. Itara treats these as inseparable requirements.
  
@@ -125,20 +126,10 @@ This mathematical work is a research direction, not a committed implementation p
  
 ## Why now
  
-The microservices explosion has made the operational pain acute and universal. Kubernetes has trained engineers to think in external controllers and declarative topology. Rust makes native agent libraries practical without GC overhead. Academic work on queuing models and feedback control of computing systems has existed for two decades without a practical application to pull it into production use.
+The microservices explosion has made the operational pain acute and universal. Kubernetes and Terraform have trained engineers to think in external controllers and declarative topology. Rust makes native agent libraries practical without GC overhead. Academic work on queuing models and feedback control of computing systems has existed for two decades without a practical application to pull it into production use.
  
 Itara is the missing application.
- 
----
- 
-## Open questions
- 
-- The description language: minimum declaration for correct controller decisions
-- Scale-invariant reasoning: making correct decisions at any component granularity
-- The goal language: expressing heterogeneous, conflicting optimisation targets
-- Controller decision model: formal approach that can be explained and audited
-- Compositional mathematical models: composing component models at runtime
-- Deployment integration: how the tooling interacts with existing orchestrators during topology transitions
+
 ---
  
 ## Author and origin

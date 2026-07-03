@@ -60,7 +60,7 @@ Failure semantics — retries, timeouts, circuit breaking — are connection-lev
  
 The failure semantics SPI is pluggable. A single implementation owns the complete strategy for a connection — retry logic, timeout enforcement, circuit breaking — as a cohesive unit of behaviour declared in configuration. A built-in implementation ships with the platform covering the common cases. Teams with specific requirements can provide their own. The wiring config carries enough information for the tooling to catch misconfigurations — such as a timeout declared against a transport that cannot enforce it — before deployment.
  
-The current implementation surfaces failures as typed error contracts at the call site — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. The failure semantics SPI is part of the v0.2 milestone.
+The current implementation surfaces failures as typed error contracts at the call site — `CHECKED` for declared component errors, `RUNTIME` for unexpected component failures, and `TRANSPORT` for infrastructure failures. The failure semantics SPI shipped in v0.2.
 
 ---
 
@@ -104,9 +104,9 @@ Itara makes that decision a configuration entry. Changing from HTTP to Kafka is 
 
 ### Does this work with Spring Boot?
 
-Yes. Itara and Spring Boot are different layers and coexist naturally — neither knows about the other. A Spring `@Bean` method can call the Itara registry to fetch a component implementation and return it as a bean. Spring manages its context, Itara manages the wiring beneath it. There is no dedicated adapter and none is needed.
+Yes. Itara and Spring Boot are different layers and coexist naturally — neither knows about the other. A Spring `@Bean` method can call the Itara registry to fetch a component implementation and return it as a bean. Spring manages its context, Itara manages the wiring beneath it. There is no dedicated adapter at this stage — Itara and Spring Boot coexist, but there is no deeper integration.
 
-Migrating an existing Spring Boot service is incremental: extract the service interface into a separate API artifact, write an activator (a single-method factory that receives the registry and returns the implementation), and update the relevant `@Bean` method to pull from the registry instead of constructing directly. The rest of the Spring context is untouched. Deeper integration — for example reusing Spring's servlet infrastructure for HTTP transport — may happen through optional separate libraries in the future, but will never be a core feature.
+Migrating an existing Spring Boot service is incremental: extract the service interface into a separate API artifact, write an activator (a single-method factory that receives the registry and returns the implementation), and update the relevant `@Bean` method to pull from the registry instead of constructing directly. The rest of the Spring context is untouched. Deeper integration — for example reusing Spring's servlet infrastructure for HTTP transport — may happen through optional separate libraries in the future.
 
 ---
 
@@ -122,7 +122,7 @@ The parallel is genuine, not coincidental. A language community that thinks care
 
 ### What languages are supported?
 
-Java and Rust today. Both have working implementations with cross-language calls demonstrated — a Java gateway calling a Rust calculator over HTTP produces a single distributed trace in Kibana. Go and Python are on the roadmap. The specification is language-neutral; any language capable of dynamic linking or RPC can implement it.
+Java and Rust today. Both have working implementations with cross-language calls demonstrated — a Java gateway calling a Rust calculator over HTTP produces a single distributed trace in Kibana. Go and Python are on the roadmap. The specification is language-neutral; any language with sufficient metaprogramming or build-time automation capability can implement it.
 
 ---
 
@@ -132,31 +132,136 @@ This is not a new problem — it is the same diamond dependency issue that appea
 
 Itara's position is that this is exactly the kind of problem a topology compiler should catch. The `.itara` metadata file that every component artifact carries is the natural place to declare key dependency versions. The CLI, when validating a wiring configuration that collocates two components, can compare their dependency manifests and apply straightforward rules: matching major and minor versions are approved, a minor version difference produces a warning, a major version difference is rejected before the configuration is accepted.
 
-This is on the roadmap for the CLI's wiring configuration verification phase. The goal is the same as it is for serializer compatibility and contract version checking — topology errors caught before deployment, not discovered when the first request fails.
+This is planned for v0.3 of the CLI's wiring configuration verification. The goal is the same as it is for serializer compatibility and contract version checking — topology errors caught before deployment, not discovered when the first request fails.
 
 It is worth acknowledging that Itara's component composition model — whether dynamic loading at runtime or static assembly at build time, depending on the language implementation — introduces its own angle on this problem — similar to the challenges found in plugin architectures, such as those in message brokers or application servers, where independently built plugins share a runtime and can conflict. Itara does not make this problem worse than it already is in those ecosystems, but it does not make it disappear either. That is a real drawback and it is treated as one. The tooling is the planned mitigation — making the conflict visible and rejectable at configuration time rather than leaving it to surface at runtime.
 
 In the meantime, colocation is a decision made by someone who controls the build. Components built by the same team with a shared dependency strategy are the natural colocation candidates. The tooling will make the safe boundary explicit and enforceable rather than a matter of discipline.
 
+---
+
+### How do I handle secrets in the wiring config?
+ 
+The wiring config supports environment variable substitution — any value can
+be written as `${VAR_NAME}` and the agent resolves it at startup from the
+environment. This is sufficient for most cases: hostnames, ports, bootstrap
+server addresses, and similar connection parameters can all be injected without
+hardcoding them.
+ 
+More sophisticated secret management — a secret store SPI that can resolve
+secrets from Vault, AWS Secrets Manager, or similar — is a natural future
+extension. The substitution pass that already exists provides a clean insertion
+point for it. For now, env var substitution is the supported and recommended
+approach.
+ 
+---
+ 
+### Can I use Itara without the CLI?
+ 
+Yes. The CLI is not required to run components — the agent reads the wiring
+config directly at startup and works without it.
+ 
+What you lose without the CLI is the safety layer: orphaned nodes, version
+mismatches, timeout misconfiguration, and transport capability conflicts are
+all caught by `itara verify` before deployment. Without it, these surface at
+startup or at runtime instead. The CLI is not optional polish — it is how
+Itara keeps its promise that incorrect topologies cannot be deployed silently.
+The agent alone cannot substitute for it.
+ 
+---
+ 
+### What happens if the wiring config is wrong?
+ 
+Two layers of protection catch configuration errors.
+ 
+The first is the CLI: `itara verify` catches structural errors and
+compatibility mismatches before anything starts. The set of checks grows with
+the project and with feedback from real usage.
+ 
+The second is the agent itself: whatever the CLI does not catch, the agent
+validates at startup time. If a connection cannot be resolved, a referenced
+artifact is missing, or a configuration is invalid, the agent fails fast and
+the application does not start. The deployment never succeeds in a broken
+state. There is no partial startup, no lazy failure on the first call.
+ 
+---
+ 
+### How does Itara interact with service discovery?
+ 
+It doesn't, currently. Itara relies on the infrastructure's ability to resolve
+the addresses declared in the wiring config — whether that's DNS, a hosts
+file, or a container orchestrator's internal networking. The address in the
+config must be resolvable by whatever mechanism the environment provides.
+ 
+A service discovery SPI is on the roadmap for v0.3, which would allow
+implementations to resolve component addresses dynamically at startup rather
+than requiring them to be statically declared in the wiring config.
+ 
+---
+ 
+### How do I handle schema evolution in event contracts?
+ 
+Nothing special is implemented at this stage. The usual approaches apply:
+additive changes are safe, breaking changes require coordinated versioning
+across producers and consumers. The event contract version declared in the
+`.itara` metadata file is what the CLI uses to check compatibility — a version
+bump signals that consumers need to be reviewed.
+ 
+Patterns like consumer-driven contract testing and the expand-contract
+technique work alongside Itara without any special support. This is an area
+that will develop further as real-world usage surfaces what tooling is
+actually needed.
+ 
+---
+ 
+### Should the wiring config be version-controlled?
+ 
+Yes — version controlling the wiring config is the recommended approach. It is
+the authoritative declaration of the system's topology, and treating it with
+the same discipline as code is the right instinct.
+ 
+How topology changes are managed across environments, how config versions map
+to deployments, and how rollback is handled are not yet fully specified.
+Design notes exist on the topic but it is not yet part of the formal
+specification. Feedback on real-world config management needs is welcome.
+ 
+---
+ 
+### What does migration away from Itara look like?
+ 
+Components are plain classes and interfaces. The API artifacts are plain Java
+interfaces or equivalent. Nothing in the component code requires Itara to
+compile or run — the only Itara dependency is in the activator, the single
+factory method that wires the component into the registry.
+ 
+Migrating out means replacing the Itara wiring with whatever mechanism you
+want to use instead, and removing the activator. The business logic, the
+contracts, and the tests are all untouched.
+ 
+Migration out can also be gradual, the same way migration in can be. Itara
+coexists with other communication mechanisms without interference — you can
+move connections out of the wiring config one at a time while the rest of the
+system continues running through Itara unchanged.
+
+---
+
 ### What is the current state? Is it production-ready?
 
-Not yet. The current milestone is v0.2, targeting a public Show HN release.
+Not yet. The current release is v0.2, tagged and public on GitHub.
 
-What works today: direct and HTTP topologies in Java and Rust, cross-language calls, pluggable serializers, self-describing artifacts via `.itara` metadata files, Spring Boot integration, distributed traces via OTel, and `itara-cli` with `inspect` and `verify` commands. The specification is at v0.1.
-
-What works today: direct, HTTP, and Kafka topologies in Java, cross-language calls with Rust over HTTP, pluggable serializers, pluggable observers, the four-event observability model with OTel and Kibana integration, self-describing artifacts via `.itara` metadata files, Spring Boot integration, event-driven topology with virtual nodes, and `itara-cli` with `inspect` and `verify` commands. The specification is at v0.1 with v0.2 in progress.
-
-What is still in progress: Kafka transport, full observability SPI in Rust, and the Java reference implementation reaching full v0.1 spec conformance. Use it for experimentation and architecture exploration. Production use requires the missing pieces.
-
-What is in progress for v0.2: failure semantics SPI (retry, timeout, circuit breaking as pluggable connection-level config), checked exception reconstruction, transport SPI lifecycle rework and transport type field, API and event contract version compatibility checking in the CLI, and YAML anchor and merge key support for the wiring config. Use it for experimentation and architecture exploration. Production use requires the v0.2 milestone to close.
+What works today: direct, HTTP, and Kafka topologies in Java and Rust, cross-language calls with Rust over HTTP, pluggable serializers, pluggable observers, Spring Boot coexistence confirmed for basic cases, the four-event observability model with OTel and Kibana integration, self-describing artifacts via `.itara` metadata files, event-driven topology with virtual nodes and event contracts, failure semantics SPI (retry, timeout, and circuit breaking as pluggable connection-level config with idempotency protection), checked error reconstruction, YAML anchor and merge key support in the wiring config, and `itara-cli` with `inspect` and `verify` commands including API version compatibility and timeout capability checks. The specification is at v0.2.
+ 
+Use it for experimentation and architecture exploration. Production use requires further work on tooling maturity, agent-less deployment options, and language coverage.
 
 ---
 
 ### What is Orca?
 
-Orca is the planned commercial controller — the intelligent layer above the orchestrator. It observes OTel metrics, builds a model of system behaviour, and recommends or executes topology changes. The open-source runtime is and will remain free. Orca is the commercial product built on top of it.
-
+Orca is the planned controller — the component that closes the loop. Itara makes topology declared and verifiable; Orca enforces it at runtime. It observes the running system, detects drift between the declared topology and actual behaviour, and acts on it. In its most capable form, it makes suggestions based on observed performance — recommending topology changes the engineer can approve, prepare, and apply with confidence.
+ 
 The trust ladder governs how much autonomy Orca is granted: from recommendations the engineer approves, to prepared reversible actions, to full automation that is always auditable and always stoppable.
+ 
+How much of Orca will be open source and how much will be enterprise features is not yet decided.
 
 ---
 

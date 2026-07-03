@@ -1,7 +1,7 @@
 # Itara Specification
 
 **Status:** Accepted  
-**Version:** 0.1  
+**Version:** 0.2  
 **Repository:** https://github.com/itara-project/itara  
 **License:** Apache 2.0
 
@@ -1696,9 +1696,9 @@ Resolved as an SPI. Service discovery is a pluggable plugin type, discoverable v
 
 ---
 
-## Appendix B: Non-Goals
+## Appendix B: Currently out of scope
 
-The following are explicitly outside the scope of this specification:
+The following are considered for future versions:
 
 - Topology optimisation or intelligent topology management (the domain of the controller, a separate product)
 - Security and authentication between components
@@ -1708,4 +1708,4 @@ The following are explicitly outside the scope of this specification:
 
 ---
 
-*End of Itara Specification — v0.1*
+*End of Itara Specification — v0.2*
