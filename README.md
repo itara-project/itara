@@ -22,6 +22,7 @@ Change how your components communicate — collocated direct calls, HTTP, messag
 - [The demo](#the-demo)
 - [Running the Rust demo](#running-the-rust-demo)
 - [The CLI](#the-cli)
+- [What Itara is not](#what-itara-is-not)
 - [Current state](#current-state)
 
 ---
@@ -391,6 +392,12 @@ reported but do not block.
 See [SPEC §12](spec/SPEC.md#12-tooling) for the full tooling specification
 and [ADR 0008](docs/adr/0008-metadata-file-over-meta-inf.md) for the
 metadata format the CLI reads.
+
+---
+
+## What Itara is not
+ 
+Itara is not a service mesh, a sidecar, a container orchestrator, or a replacement for Dapr, Kubernetes, or your observability platform. It does not own the network, the deployment, or the runtime. It concentrates one currently invisible concern — topology — into an explicit, verifiable, and executable layer, and lets everything else continue doing what it already does.
 
 ---
 

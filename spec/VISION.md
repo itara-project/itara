@@ -22,6 +22,16 @@ Worse, topology is invisible. Nobody has the full picture. Changes are made by r
 Itara reframes this. Topology is not a property of the code — it is a continuously adjustable variable declared in configuration and applied by the wiring agent. Component logic expresses what a system does. The wiring config expresses how the parts connect. These are different concerns and they should live in different places.
  
 ---
+
+## What Itara is not
+ 
+Itara is a thin slice. It concentrates one specific concern — topology — into an explicit and executable layer. The goal is not to own the stack or replace what already works.
+ 
+Container orchestrators own deployment, scaling, and scheduling. Service meshes own network-level traffic policy between deployment units. Observability platforms own how telemetry is stored, queried, and visualised. Deployment tooling owns how software reaches production. These are all solved problems with mature, well-understood tools. Itara does not compete with them — it declares the topology that sits above and between them, and eventually generates inputs for them from that declaration.
+ 
+What has no mature solution is the layer between architecture diagrams and running systems — the layer where topology decisions are made, encoded throughout the codebase as side effects, and then lost. That is the layer Itara owns.
+
+---
  
 ## The two pillars
  
@@ -82,7 +92,7 @@ The controller never operates opaquely. Every recommendation is explained. Every
  
 ### The long-range vision
  
-The tooling direction extends further than configuration authoring. As the system matures, the tooling becomes capable of reasoning about the entire lifecycle of a distributed system: validating that a topology change is safe before it is applied, predicting the effect of splitting or merging components against observed behaviour, and eventually enforcing that the actual topology matches the declared topology — the same control loop that infrastructure-as-code brought to servers — and driving automated topology decisions that the engineer approves rather than initiates.
+The tooling direction extends further than configuration authoring. As the system matures, the tooling becomes capable of reasoning about the entire lifecycle of a distributed system: validating that a topology change is safe before it is applied, predicting the effect of topology changes on observed behaviour before they are applied, and eventually enforcing that the actual topology matches the declared topology — the same control loop that infrastructure-as-code brought to servers — and driving automated topology decisions that the engineer approves rather than initiates.
  
 The long-range vision: a distributed system that can recompile its own components with updated contracts, redeploy them with a new topology, and verify the result — all driven by the same tooling that started as an interactive CLI. Not autonomous in the sense of opaque, but autonomous in the sense of tireless, consistent, and always verifiable.
  

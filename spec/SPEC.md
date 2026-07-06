@@ -19,7 +19,7 @@ This specification defines the component model, the wiring model, the agent cont
 
 ## Status of This Document
 
-This is version **0.1** of the Itara specification. It reflects the current design of the reference implementations and the decisions made by the core team as of the date of this document. Sections marked **[OPEN]** contain unresolved design questions that will be addressed in future versions. The specification is stable for the areas it covers. Breaking changes to covered areas will be communicated clearly before they are made.
+This is version **0.2** of the Itara specification. It reflects the current design of the reference implementations and the decisions made by the core team as of the date of this document. Sections marked **[OPEN]** contain unresolved design questions that will be addressed in future versions. The specification is stable for the areas it covers. Breaking changes to covered areas will be communicated clearly before they are made.
 
 Feedback, objections, and proposals are welcome as GitHub issues on the Itara repository.
 

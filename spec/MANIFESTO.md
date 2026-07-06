@@ -104,8 +104,8 @@ Components live *inside* Itara.
 ---
 
 ## **6. Refactoring Must Be Cheap**
-Splitting a component must be a configuration change.  
-Merging components must be a configuration change.  
+Colocating components in the same process must be a configuration change.
+Distributing components across separate processes must be a configuration change.  
 Changing protocols must be a configuration change.  
 Moving from local to remote must be a configuration change.
 
