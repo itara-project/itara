@@ -60,6 +60,30 @@ business code.
 
 ---
 
+## The Three Layers
+
+**Business logic, contracts, and topology are three distinct concerns. Itara
+keeps them separate.**
+
+Every Itara system has three layers:
+
+- **Business layer** — the implementation: what the system actually does.
+  Written by developers. Has no knowledge of transport, topology, or
+  infrastructure.
+- **Contract layer** — the interfaces: what each component exposes to its
+  callers. Defines operations, inputs, outputs, and errors. Contains no
+  transport or topology knowledge.
+- **Topology layer** — the wiring: which nodes exist, how they connect, what
+  transport they use, how failures are handled. Lives entirely in the wiring
+  configuration and the proxies and listeners the wiring agent constructs from
+  it.
+
+The separation is the point. Business logic does not leak into topology.
+Topology does not leak into business logic. Changing one does not require
+touching the other.
+
+---
+
 ## Wiring Configuration
 
 **The single file that describes the complete topology of a system.**
@@ -199,30 +223,6 @@ an inbound listener for the callee side. The component code never sees the
 transport. Transports are declared in the wiring configuration and loaded by
 the agent at startup. Built-in transports include HTTP and Kafka. Additional
 transports can be provided as plugin artifacts.
-
----
-
-## The Three Layers
-
-**Business logic, contracts, and topology are three distinct concerns. Itara
-keeps them separate.**
-
-Every Itara system has three layers:
-
-- **Business layer** — the implementation: what the system actually does.
-  Written by developers. Has no knowledge of transport, topology, or
-  infrastructure.
-- **Contract layer** — the interfaces: what each component exposes to its
-  callers. Defines operations, inputs, outputs, and errors. Contains no
-  transport or topology knowledge.
-- **Topology layer** — the wiring: which nodes exist, how they connect, what
-  transport they use, how failures are handled. Lives entirely in the wiring
-  configuration and the proxies and listeners the wiring agent constructs from
-  it.
-
-The separation is the point. Business logic does not leak into topology.
-Topology does not leak into business logic. Changing one does not require
-touching the other.
 
 ---
 
