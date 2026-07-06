@@ -18,6 +18,24 @@ The closest analogy is a classloader for distributed systems topology — someth
 
 ---
 
+### What is Itara not trying to do?
+ 
+Itara is a thin slice — it concentrates one specific concern, topology, into an explicit and executable layer. It is not trying to replace anything in the existing stack.
+ 
+**Container orchestrators** (Kubernetes, Nomad, ECS) own deployment, scaling, and scheduling. Itara declares which components connect and how; orchestrators decide where they run and how many instances exist. These are complementary concerns.
+ 
+**Service meshes** (Istio, Linkerd, Envoy) operate on network traffic between deployment units, typically as sidecars. Itara operates at the component level, above the network, with explicit contracts between components. A service mesh and Itara can coexist — they solve different problems at different layers.
+ 
+**Dapr** provides building blocks (pub/sub, state stores, service invocation) as a sidecar API. Itara declares and realizes the communication structure between components without a sidecar in the call path at runtime. See the Dapr FAQ entry for a longer comparison.
+ 
+**Deployment and CI/CD tooling** (Terraform, Helm, ArgoCD) own how software gets to where it runs. Itara's tooling will eventually generate inputs for these systems from the declared topology, but it does not replace them.
+ 
+**Observability platforms** (Datadog, Jaeger, Grafana, Kibana) own how telemetry is stored, queried, and visualised. Itara emits structured observability events and ships an OTel observer — where that data goes is the operator's choice.
+ 
+The goal is not to own the stack. It is to make one currently invisible layer — topology — explicit, verifiable, and executable, and let everything else continue doing what it already does well.
+
+---
+
 ### Isn't this the same as CORBA, Java RMI, or other transparency-oriented systems?
 
 No, and the distinction matters.
@@ -38,9 +56,19 @@ Dapr is a sidecar: a separate process injected alongside your container. Every c
 
 Itara works at the method call level. When two components are declared colocated in the wiring config, the proxy resolves at startup and the call is a direct in-process function call — no serialization, no network, no sidecar. When they are remote, the call goes over HTTP or whichever transport is configured. The code is identical in both cases. Dapr cannot offer zero-overhead colocation because the sidecar model structurally prevents it.
 
-There is also a granularity difference. Dapr operates at the service level — the unit of deployment is a service, and the sidecar wires services together. Itara operates at the component level, which is deliberately finer-grained than a service. Multiple components can live in one process, be split across processes, or be merged back together — all through config changes. Service boundaries are not fixed deployment artifacts in Itara; they are adjustable topology decisions.
+There is also a granularity difference. Dapr operates at the service level — the unit of deployment is a service, and the sidecar wires services together. Itara operates at the component level, which is deliberately finer-grained than a service. Multiple components can be colocated in one process or distributed across separate processes — all through config changes. Service boundaries are not fixed deployment artifacts in Itara; they are adjustable topology decisions.
 
 The other difference: Dapr abstracts infrastructure (state stores, brokers, secrets). Itara abstracts topology — where components run and how they connect. These are different problems.
+
+---
+
+### How does Itara compare to Microsoft Aspire?
+ 
+They operate at different layers and solve different problems.
+ 
+Aspire is a development and deployment orchestration tool — it declares which services and infrastructure resources exist, how they start up, and how they get deployed. It significantly improves the experience of running and shipping multi-service applications, particularly for .NET teams.
+ 
+Itara operates one layer deeper: the communication contracts between components. It declares what components call, what they return, how failures are handled, and validates that every connection is correct before deployment. Where Aspire answers "how do I run and deploy my services consistently," Itara answers "what are the communication contracts between my components, are they valid, and can topology change without touching code." The two tools address complementary concerns and can coexist.
 
 ---
 
