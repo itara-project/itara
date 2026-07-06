@@ -126,6 +126,106 @@ cd demo && ./collect-otel-libs.sh
 
 ---
 
+## What the CLI shows
+ 
+Before running anything, `itara inspect` derives the deployment groups
+directly from the wiring config — no containers, no network, just the config:
+ 
+```
+$ ./rust/target/release/itara inspect demo/wiring-monolith.yaml
+Itara topology — demo/wiring-monolith.yaml
+
+Nodes:
+  fulfilmentNode        component: fulfilment
+  inventoryNode         component: inventory                     (external entry point)
+  notificationNode      component: notification
+  paymentNode           component: payment
+  orderNode             component: order                         (external entry point)
+  orderReservedChannel  virtual:   order-events/order-reserved @ demo.events.order-reserved
+  orderFulfilledChannel virtual:   fulfilment-events/order-fulfilled @ demo.events.order-fulfilled
+  orderCancelledChannel virtual:   fulfilment-events/order-cancelled @ demo.events.order-cancelled
+
+Connections:
+  orderNode →             inventoryNode        [direct]
+  orderNode →             fulfilmentNode       [direct]
+  orderNode →             paymentNode          [http]
+  orderNode →             orderReservedChannel [kafka]
+  orderNode →             orderFulfilledChannel [kafka]
+  orderNode →             orderCancelledChannel [kafka]
+  orderReservedChannel →  notificationNode     [kafka]
+  orderFulfilledChannel → notificationNode     [kafka]
+  orderCancelledChannel → notificationNode     [kafka]
+
+Deployment groups (derived):
+  Group A: fulfilmentNode, orderNode, inventoryNode
+    fulfilmentNode (fulfilment)
+    orderNode (order)
+      Receives: external http on :8081
+      Calls:    inventoryNode via direct
+      Calls:    fulfilmentNode via direct
+      Calls:    paymentNode via http
+      Emits:       orderReservedChannel (order-events/order-reserved)
+      Emits:       orderFulfilledChannel (fulfilment-events/order-fulfilled)
+      Emits:       orderCancelledChannel (fulfilment-events/order-cancelled)
+    inventoryNode (inventory)
+      Receives: external http on :8081
+
+  Group B: notificationNode
+    notificationNode (notification)
+      Listens to:  orderReservedChannel (order-events/order-reserved)
+      Listens to:  orderFulfilledChannel (fulfilment-events/order-fulfilled)
+      Listens to:  orderCancelledChannel (fulfilment-events/order-cancelled)
+
+  Group C: paymentNode
+    paymentNode (payment)
+      Receives: orderNode via http on :8083
+
+Graph:
+  [external] --http:8081--> [orderNode]
+  [external] --http:8081--> [inventoryNode]
+  [orderNode] --direct--> [inventoryNode]
+  [orderNode] --direct--> [fulfilmentNode]
+  [orderNode] --http:8083--> [paymentNode]
+  [orderNode] --kafka--> [orderReservedChannel]
+  [orderNode] --kafka--> [orderFulfilledChannel]
+  [orderNode] --kafka--> [orderCancelledChannel]
+  [orderReservedChannel] --kafka--> [notificationNode]
+  [orderFulfilledChannel] --kafka--> [notificationNode]
+  [orderCancelledChannel] --kafka--> [notificationNode]
+```
+ 
+All four topology configs can be inspected the same way. The deployment
+groups change with the config — in the microservices topology every component
+is its own group; in the informed topology order and inventory share a group.
+ 
+`itara verify` checks the config for errors before anything starts:
+ 
+```
+$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-monolith.yaml
+✓ itara verify — demo/wiring-monolith.yaml
+
+  8 nodes, 11 connections
+
+  No issues found.
+```
+ 
+```
+$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-informed-with-error.yaml   # with some errors and warnings fabricated
+✗ itara verify — demo/wiring-informed-with-error.yaml
+
+  8 nodes, 10 connections
+
+  ERROR  node 'fulfilmentNode' is declared but not referenced in any connection
+  WARN   connection 'orderNode' → 'paymentNode': a timeout is declared but neither the transport nor the failure semantics implementation is configured to enforce it — the timeout value will be passed to the transport but nothing will act on it
+
+  1 error, 1 warning
+```
+
+The topology is visible and validated before a single container starts.
+See [SPEC §11](../spec/SPEC.md#11-tooling) for the tooling specification.
+
+---
+
 ## Running
 
 Start the observability stack once and leave it running:
@@ -165,6 +265,10 @@ To adjust the failure rate for the flaky scenario:
 ITARA_FLAKY_FAIL_RATE=0.2 docker compose -f demo/docker-compose-microservices-flaky.yml up
 ```
 
+The stack is ready when you see `INFO: [Itara] agent ready` in the Java
+component logs and `[Itara/HTTP] Server listening on ...` in the Rust payment logs.
+Send requests only after both appear.
+
 To switch topologies, stop the current one and start another. The
 observability stack keeps running — traces from all topologies accumulate
 in Kibana for comparison.
@@ -188,6 +292,8 @@ curl -X POST http://localhost:8081/itara/inventory/addItem \
      -H "Content-Type: application/json" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
+
+**Note**: `addItem` uses port 8082 in the microservices topology and 8081 in the monolith and informed topologies. Use the same port for placeOrder as the topology you are running.
 
 Place an order:
 
@@ -302,103 +408,3 @@ queryable and measurable in the same place as everything else — no separate
 dashboard, no special tooling for async flows.
  
 ![Traces overview](../docs/images/trace-overview.png)
-
----
-
-## What the CLI shows
- 
-Before running anything, `itara inspect` derives the deployment groups
-directly from the wiring config — no containers, no network, just the config:
- 
-```
-$ ./rust/target/release/itara inspect demo/wiring-monolith.yaml
-Itara topology — demo/wiring-monolith.yaml
-
-Nodes:
-  fulfilmentNode        component: fulfilment
-  inventoryNode         component: inventory                     (external entry point)
-  notificationNode      component: notification
-  paymentNode           component: payment
-  orderNode             component: order                         (external entry point)
-  orderReservedChannel  virtual:   order-events/order-reserved @ demo.events.order-reserved
-  orderFulfilledChannel virtual:   fulfilment-events/order-fulfilled @ demo.events.order-fulfilled
-  orderCancelledChannel virtual:   fulfilment-events/order-cancelled @ demo.events.order-cancelled
-
-Connections:
-  orderNode →             inventoryNode        [direct]
-  orderNode →             fulfilmentNode       [direct]
-  orderNode →             paymentNode          [http]
-  orderNode →             orderReservedChannel [kafka]
-  orderNode →             orderFulfilledChannel [kafka]
-  orderNode →             orderCancelledChannel [kafka]
-  orderReservedChannel →  notificationNode     [kafka]
-  orderFulfilledChannel → notificationNode     [kafka]
-  orderCancelledChannel → notificationNode     [kafka]
-
-Deployment groups (derived):
-  Group A: fulfilmentNode, orderNode, inventoryNode
-    fulfilmentNode (fulfilment)
-    orderNode (order)
-      Receives: external http on :8081
-      Calls:    inventoryNode via direct
-      Calls:    fulfilmentNode via direct
-      Calls:    paymentNode via http
-      Emits:       orderReservedChannel (order-events/order-reserved)
-      Emits:       orderFulfilledChannel (fulfilment-events/order-fulfilled)
-      Emits:       orderCancelledChannel (fulfilment-events/order-cancelled)
-    inventoryNode (inventory)
-      Receives: external http on :8081
-
-  Group B: notificationNode
-    notificationNode (notification)
-      Listens to:  orderReservedChannel (order-events/order-reserved)
-      Listens to:  orderFulfilledChannel (fulfilment-events/order-fulfilled)
-      Listens to:  orderCancelledChannel (fulfilment-events/order-cancelled)
-
-  Group C: paymentNode
-    paymentNode (payment)
-      Receives: orderNode via http on :8083
-
-Graph:
-  [external] --http:8081--> [orderNode]
-  [external] --http:8081--> [inventoryNode]
-  [orderNode] --direct--> [inventoryNode]
-  [orderNode] --direct--> [fulfilmentNode]
-  [orderNode] --http:8083--> [paymentNode]
-  [orderNode] --kafka--> [orderReservedChannel]
-  [orderNode] --kafka--> [orderFulfilledChannel]
-  [orderNode] --kafka--> [orderCancelledChannel]
-  [orderReservedChannel] --kafka--> [notificationNode]
-  [orderFulfilledChannel] --kafka--> [notificationNode]
-  [orderCancelledChannel] --kafka--> [notificationNode]
-```
- 
-All four topology configs can be inspected the same way. The deployment
-groups change with the config — in the microservices topology every component
-is its own group; in the informed topology order and inventory share a group.
- 
-`itara verify` checks the config for errors before anything starts:
- 
-```
-$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-monolith.yaml
-✓ itara verify — demo/wiring-monolith.yaml
-
-  8 nodes, 11 connections
-
-  No issues found.
-```
- 
-```
-$ ./rust/target/release/itara verify --metadata-dir demo/metafiles/ demo/wiring-informed-with-error.yaml   # with some errors and warnings fabricated
-✗ itara verify — demo/wiring-informed-with-error.yaml
-
-  8 nodes, 10 connections
-
-  ERROR  node 'fulfilmentNode' is declared but not referenced in any connection
-  WARN   connection 'orderNode' → 'paymentNode': a timeout is declared but neither the transport nor the failure semantics implementation is configured to enforce it — the timeout value will be passed to the transport but nothing will act on it
-
-  1 error, 1 warning
-```
-
-The topology is visible and validated before a single container starts.
-See [SPEC §11](../spec/SPEC.md#11-tooling) for the tooling specification.
