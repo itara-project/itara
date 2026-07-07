@@ -94,11 +94,10 @@ Topology decisions should be cheap to change. A system whose topology cannot be 
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **SHOULD**, **SHOULD NOT**, **RECOMMENDED**, **MAY**, and **OPTIONAL** in this document are to be interpreted as described in [RFC 2119](https://www.ietf.org/rfc/rfc2119.txt).
 
-**Component**  
-A unit of business logic with a defined contract and a concrete implementation. A component has an identifier that is unique within a deployment.
+Terms not defined here are defined in the [project glossary](../GLOSSARY.md). Where this document defines a term that also appears in the glossary, the definition here takes precedence within the scope of this specification.
 
-**Contract**  
-An interface or trait that defines the operations a component exposes. A contract MUST NOT contain any knowledge of transport mechanism, deployment topology, or runtime infrastructure.
+**Wiring Agent**  
+The component of the implementation that reads the wiring configuration, loads plugins, constructs proxies and listeners, and registers activators. The wiring agent initialises the system before application code executes and then steps aside — it is not present in the call path at runtime. In Java this is a JVM premain agent. In Rust this is an `itara_init()` library call. Other languages follow the same pattern. Within this document and in general usage, it is also referred to as the **agent**.
 
 **Implementation**  
 A concrete class or struct that satisfies a contract. An implementation MUST NOT contain any knowledge of how it is connected to other components.
@@ -106,38 +105,20 @@ A concrete class or struct that satisfies a contract. An implementation MUST NOT
 **Activator**  
 A factory responsible for creating an instance of a component implementation. The activator is the single point where an implementation is instantiated and its dependencies are resolved from the registry.
 
-**Node**  
-A deployment identity declared in the wiring configuration. A node has an identifier and references a component. Multiple nodes may reference the same component — they are independent deployment positions in the topology. The number of running instances of a node is an orchestrator concern, not an Itara concern.
-
-**Wiring Configuration**  
-A declarative description of the nodes present in a deployment and the connections between them. The wiring configuration is the sole source of topology information. It is consumed by the agent at startup. A master wiring configuration describes the complete topology of a system. Each agent instance self-selects the relevant slice based on which nodes it is responsible for.
-
-**Connection**  
-A directed relationship between two nodes expressing that one node (the caller) communicates with another node (the callee) over a specified transport type.
-
-**Transport**  
-A pluggable mechanism for carrying calls between components. A transport provides both the outbound proxy (for the caller) and the inbound listener (for the callee). Transports are loaded by the agent at startup and are invisible to component code.
-
 **Serializer**  
 A pluggable mechanism for converting typed method arguments and return values to and from byte arrays. Serializers are loaded by the agent at startup. A serializer is selected per connection in the wiring configuration.
-
-**Proxy**  
-An object that satisfies a component contract but delegates calls to a remote or local implementation via the agent-resolved mechanism. A proxy is created by the agent and registered in the component registry. Component code interacts with the proxy as if it were the real implementation. For direct connections, the proxy fires observability events and then calls the implementation directly.
 
 **Listener**  
 A transport-specific server that receives inbound calls and dispatches them to the local component implementation via the component registry.
 
-**Registry**  
-The agent's store of component instances and proxies, keyed by component identifier. The registry is the mechanism by which one component obtains a reference to another.
-
-**Agent**  
-The component of the implementation that reads the wiring configuration, loads plugins, constructs proxies and listeners, and registers activators. The agent initialises the system before application code executes. In Java this is a JVM premain agent. In Rust this is an `itara_init()` library call. Other languages follow the same pattern.
+**Registry**
+The wiring agent's store of component instances and proxies, keyed by component identifier. The registry is the mechanism by which one component obtains a reference to another.
 
 **Observer**  
 A pluggable receiver of runtime events. Observers record, export, or react to component interactions for the purposes of monitoring, tracing, and auditing.
 
-**Context**  
-A set of metadata associated with a single request as it travels through the system. Context is propagated automatically by the agent across component boundaries, both within a process and across network hops.
+**Context**
+A set of metadata associated with a single request as it travels through the system. Context is propagated automatically by the wiring agent across component boundaries, both within a process and across network hops.
 
 **Plugin artifact**  
 A loadable artifact (jar, shared library, or equivalent) that implements one of the Itara SPIs (transport, serializer, observer). Each plugin artifact MUST ship a companion `.itara` metadata file that describes its kind, identifier, version, and compatibility requirements.
