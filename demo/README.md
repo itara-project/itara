@@ -34,8 +34,8 @@ typically deployed in practice, and demonstrating Itara's event-driven support.
 ## The four topologies
 
 ### Monolith
-Order, inventory, fulfilment, and notification run in a single JVM.
-Payment runs as a separate Rust process.
+Order, inventory and fulfilment run in a single JVM.
+Payment runs as a separate Rust process and notification runs in a separate JVM.
 
 All calls between the colocated Java components are direct in-process calls —
 no serialization, no network. The traces show near-zero overhead between them.
@@ -104,15 +104,16 @@ mvn install -f java/pom.xml
 cd rust && cargo build --release
 
 # 3. Build all demo components
+mvn install -f demo/fulfilment-events/pom.xml
+mvn install -f demo/order-events/pom.xml
 mvn install -f demo/inventory/pom.xml
 mvn install -f demo/fulfilment/pom.xml
 mvn install -f demo/notification/pom.xml
-mvn install -f demo/order/pom.xml
 mvn install -f demo/payment/java/payment-api/pom.xml
+mvn install -f demo/order/pom.xml
 
 # 3b. Build the flaky transport (for the microservices-flaky scenario)
 mvn install -f demo/flaky-transport/pom.xml
-
 
 # 4. Build the payment Rust binary for Linux (On Windows, run this in WSL):
 cd demo/payment && cargo build --release
@@ -293,7 +294,7 @@ curl -X POST http://localhost:8081/itara/inventory/addItem \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
 
-**Note**: `addItem` uses port 8082 in the microservices topology and 8081 in the monolith and informed topologies. Use the same port for placeOrder as the topology you are running.
+**Note**: `addItem` uses port 8082 in the microservices topology and 8081 in the monolith and informed topologies.
 
 Place an order:
 
