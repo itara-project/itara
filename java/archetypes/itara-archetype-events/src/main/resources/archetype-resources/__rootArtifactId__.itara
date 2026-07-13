@@ -1,0 +1,14 @@
+[artifact]
+kind    = "events"
+id      = "${rootArtifactId}"
+version = "${version}"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"
+
+# TODO: this metadata file is a minimal stub. Full generation is a planned
+# build-tool responsibility — review and adjust these fields, and add a
+# [contracts] section enumerating contract ids if your tooling requires it.

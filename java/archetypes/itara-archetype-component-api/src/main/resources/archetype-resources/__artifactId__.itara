@@ -1,0 +1,13 @@
+[artifact]
+kind    = "api"
+id      = "${artifactId}"
+version = "${version}"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"
+
+# TODO: minimal stub — review these fields, and declare [serializers] and
+# non-idempotent [methods] as needed.

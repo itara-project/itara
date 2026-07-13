@@ -24,6 +24,7 @@
         <module>itara-observability-otel</module>
         <module>itara-transport-kafka</module>
         <module>itara-failure-semantics-builtin</module>
+        <module>archetypes</module>
     </modules>
 
     <properties>
