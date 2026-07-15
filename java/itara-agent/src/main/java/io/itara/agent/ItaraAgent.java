@@ -100,11 +100,11 @@ public class ItaraAgent {
 
         // ── Step 3: Scan for contracts (@ComponentInterface and @EventContractInterface) ───────────────
         log.fine("[Itara] scanning classpath for component contracts");
-        Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
+        Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader); //TODO: review classloader usage here
         if (contracts.isEmpty()) {
             log.warning("[Itara] no component contracts found — check that API jars are on the classpath");
         }
-        Map<String, Class<?>> eventContracts = EventContractScanner.scan(itaraClassLoader);
+        Map<String, Class<?>> eventContracts = EventContractScanner.scan(itaraClassLoader); //TODO: review classloader usage here
         if (!eventContracts.isEmpty()) {
             log.fine("[Itara] found event-contracts count=" + eventContracts.size());
             contracts.putAll(eventContracts);
@@ -112,7 +112,7 @@ public class ItaraAgent {
 
         // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
         log.fine("[Itara] scanning for activator descriptors");
-        Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config);
+        Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config); //TODO: review classloader usage here
 
         // ── Step 5: Load serializers (META-INF/itara/serializer) ─────────────
         log.fine("[Itara] loading serializer implementations");
@@ -132,7 +132,7 @@ public class ItaraAgent {
 
         // ── Step 7c: Load exception factories (META-INF/itara/exception-factory)
         log.fine("[Itara] loading reconstructible exception factories");
-        ReconstructibleExceptionFactoryLoader.load(itaraClassLoader);
+        ReconstructibleExceptionFactoryLoader.load(itaraClassLoader); //TODO: review classloader usage here
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
