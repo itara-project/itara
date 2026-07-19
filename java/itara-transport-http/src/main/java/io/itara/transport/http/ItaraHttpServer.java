@@ -10,6 +10,10 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -40,12 +44,23 @@ public class ItaraHttpServer {
     private static final Logger log = Logger.getLogger(ItaraHttpServer.class.getName());
 
     private final HttpServer server;
+    private final ExecutorService executor;
     private final Map<String, DispatchHandler> dispatchers;
 
     public ItaraHttpServer(int port, Map<String, DispatchHandler> dispatchers) throws IOException {
+        this(port, dispatchers, HttpTransportConfig.DEFAULT_THREAD_POOL_SIZE);
+    }
+
+    public ItaraHttpServer(int port, Map<String, DispatchHandler> dispatchers,
+                           int threadPoolSize) throws IOException {
         this.dispatchers = dispatchers;
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
         this.server.createContext("/itara/", this::handle);
+        // Without an explicit executor the JDK server handles all exchanges
+        // serially on a single internal thread — concurrent requests would
+        // queue behind each other.
+        this.executor = Executors.newFixedThreadPool(threadPoolSize, namedThreadFactory(port));
+        this.server.setExecutor(executor);
     }
 
     public void start() {
@@ -55,7 +70,14 @@ public class ItaraHttpServer {
 
     public void stop() {
         server.stop(1);
+        executor.shutdown();
         log.info("[Itara/HTTP] Server stopped");
+    }
+
+    private static ThreadFactory namedThreadFactory(int port) {
+        AtomicInteger counter = new AtomicInteger(1);
+        return runnable -> new Thread(runnable,
+                "itara-http-" + port + "-" + counter.getAndIncrement());
     }
 
     private void handle(HttpExchange exchange) throws IOException {

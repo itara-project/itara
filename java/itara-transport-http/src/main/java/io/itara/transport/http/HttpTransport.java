@@ -39,11 +39,13 @@ public class HttpTransport implements ItaraTransport {
     private final Map<String, DispatchHandler> dispatchers = new ConcurrentHashMap<>();
 
     private final int port;
+    private final int threadPoolSize;
 
     private ItaraHttpServer activeServer;
 
     public HttpTransport(HttpTransportConfig config) {
         this.port = config.getPort();
+        this.threadPoolSize = config.getThreadPoolSize();
     }
 
     @Override
@@ -131,8 +133,9 @@ public class HttpTransport implements ItaraTransport {
     public void start() throws Exception {
         if (dispatchers.isEmpty()) return;
         log.fine("[Itara/HTTP] starting server on port " + port
-                + " with " + dispatchers.size() + " registered component(s)");
-        activeServer = new ItaraHttpServer(port, dispatchers);
+                + " with " + dispatchers.size() + " registered component(s)"
+                + " and a thread pool of " + threadPoolSize);
+        activeServer = new ItaraHttpServer(port, dispatchers, threadPoolSize);
         activeServer.start();
     }
 

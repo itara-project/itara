@@ -13,8 +13,11 @@ import io.itara.spi.transport.TransportConfig;
  * instances on demand.
  *
  * Expected params:
- *   port  — required for both inbound and outbound connections
- *   host  — required for outbound connections, ignored for inbound
+ *   port           — required for both inbound and outbound connections
+ *   host           — required for outbound connections, ignored for inbound
+ *   threadPoolSize — optional; number of threads the inbound server uses to
+ *                    handle requests concurrently. Defaults to
+ *                    HttpTransportConfig.DEFAULT_THREAD_POOL_SIZE.
  */
 public class HttpTransportFactory implements ItaraTransportFactory {
 
@@ -39,7 +42,25 @@ public class HttpTransportFactory implements ItaraTransportFactory {
         }
 
         String host = config.getParams().get("host");
-        return new HttpTransportConfig(host, port, config.isHandleTimeout());
+
+        int threadPoolSize = HttpTransportConfig.DEFAULT_THREAD_POOL_SIZE;
+        String threadPoolSizeStr = config.getParams().get("threadPoolSize");
+        if (threadPoolSizeStr != null && !threadPoolSizeStr.isBlank()) {
+            try {
+                threadPoolSize = Integer.parseInt(threadPoolSizeStr.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "[Itara/HTTP] Param 'threadPoolSize' must be an integer, got: '"
+                                + threadPoolSizeStr + "'");
+            }
+            if (threadPoolSize < 1) {
+                throw new IllegalArgumentException(
+                        "[Itara/HTTP] Param 'threadPoolSize' must be positive, got: "
+                                + threadPoolSize);
+            }
+        }
+
+        return new HttpTransportConfig(host, port, config.isHandleTimeout(), threadPoolSize);
     }
 
     @Override
