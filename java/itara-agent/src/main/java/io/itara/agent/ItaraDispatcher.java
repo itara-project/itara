@@ -106,6 +106,15 @@ public class ItaraDispatcher implements DispatchHandler {
             // 3. CALL_RECEIVED — callee scope wraps component invocation only
             Object result = null;
             try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportId, exchangePattern)) {
+                Thread currentThread = Thread.currentThread();
+                ClassLoader previousCl = currentThread.getContextClassLoader();
+                ClassLoader componentCl = registry.getComponentClassLoader(componentId);
+                log.info("[Itara][SPIKE][TCCL] dispatch component=" + componentId
+                        + " method=" + methodName
+                        + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
+                        + " tcclBefore=" + previousCl
+                        + " tcclWillSetTo=" + componentCl);
+                if (componentCl != null) currentThread.setContextClassLoader(componentCl);
                 try {
                     // 4. Component invocation
                     result = method.invoke(instance, args);
@@ -124,6 +133,8 @@ public class ItaraDispatcher implements DispatchHandler {
                 } catch (Exception e) {
                     calleeScope.setError(true);
                     throw e;
+                } finally {
+                    currentThread.setContextClassLoader(previousCl);
                 }
             } // 5. calleeScope.close() → RETURN_SENT
 

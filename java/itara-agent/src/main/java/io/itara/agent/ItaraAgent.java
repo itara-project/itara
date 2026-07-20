@@ -24,7 +24,10 @@ import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
 
+import java.io.File;
 import java.lang.instrument.Instrumentation;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -82,13 +85,51 @@ public class ItaraAgent {
     }
 
     private static void setup(Instrumentation instrumentation) throws Exception {
-        // Build the Itara classloader — child-first, loads from itara.lib.dir
-        // Falls back to context classloader if property is not set
+        // The system classloader — the hub. It loads all shared artifacts
+        // (Itara internals, API jars, event contract jars) and is the parent
+        // of every per-component classloader in isolated mode. Captured once,
+        // before itaraClassLoader potentially wraps it.
+        ClassLoader systemClassLoader = Thread.currentThread().getContextClassLoader();
+
+        // Build the Itara classloader — child-first, loads from itara.lib.dir.
+        // For Itara's own plugins (transports, serializers, ...) only —
+        // never for component isolation. Falls back to systemClassLoader
+        // if the property is not set.
         ClassLoader itaraClassLoader = ItaraClassLoader.build(
                 Thread.currentThread().getContextClassLoader());
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
+
+        // ── SPIKE: classloader isolation ────────────────────────────────────
+        // One URLClassLoader per subdirectory of the components root, parent
+        // = systemClassLoader (not itaraClassLoader). Default URLClassLoader
+        // delegation is already parent-first — no custom subclass needed.
+        // Isolated mode: the directory exists and has at least one subdirectory.
+        // Shared mode: it doesn't — componentClassLoaders stays empty and
+        // everything below behaves exactly as it does today.
+        String componentsDirPath = System.getenv("ITARA_COMPONENTS_DIR");
+        File componentsDir = new File(componentsDirPath != null ? componentsDirPath : "lib/components");
+        Map<String, ClassLoader> componentClassLoaders = new HashMap<>();
+        if (componentsDir.exists() && componentsDir.isDirectory()) {
+            File[] subDirs = componentsDir.listFiles(File::isDirectory);
+            if (subDirs != null) {
+                for (File subDir : subDirs) {
+                    File[] jars = subDir.listFiles((d, name) -> name.endsWith(".jar"));
+                    if (jars == null || jars.length == 0) continue;
+                    URL[] urls = new URL[jars.length];
+                    for (int i = 0; i < jars.length; i++) {
+                        urls[i] = jars[i].toURI().toURL();
+                    }
+                    URLClassLoader componentCl = new URLClassLoader(urls, systemClassLoader);
+                    componentClassLoaders.put(subDir.getName(), componentCl);
+                    log.info("[Itara][SPIKE] created component classloader dir=" + subDir.getName()
+                            + " jars=" + jars.length);
+                }
+            }
+        }
+        boolean isolatedMode = !componentClassLoaders.isEmpty();
+        log.info("[Itara][SPIKE] isolation mode=" + (isolatedMode ? "isolated" : "shared"));
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
         log.fine("[Itara] loading wiring config path=" + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
@@ -112,8 +153,23 @@ public class ItaraAgent {
 
         // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
         log.fine("[Itara] scanning for activator descriptors");
+        Map<String, ActivatedComponent> activators;
+        Map<String, ClassLoader> activatorClassLoaders = new HashMap<>();
+        if (isolatedMode) {
+            activators = new HashMap<>();
+            for (Map.Entry<String, ClassLoader> entry : componentClassLoaders.entrySet()) {
+                Map<String, ActivatedComponent> found = ActivatorScanner.scan(entry.getValue(), config);
+                for (String componentId : found.keySet()) {
+                    activatorClassLoaders.put(componentId, entry.getValue());
+                }
+                activators.putAll(found);
+            }
+        } else {
+            activators = ActivatorScanner.scan(itaraClassLoader, config);
+        }
+     /*   log.fine("[Itara] scanning for activator descriptors");
         Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config); //TODO: review classloader usage here
-
+*/
         // ── Step 5: Load serializers (META-INF/itara/serializer) ─────────────
         log.fine("[Itara] loading serializer implementations");
         SerializerLoader.load(itaraClassLoader);
@@ -143,10 +199,12 @@ public class ItaraAgent {
                 ActivatedComponent activated = activators.get(node.getComponent());
 
                 if (activated != null) {
+                    ClassLoader componentCl = activatorClassLoaders.get(node.getComponent());
                     registry.registerActivator(
                             node.getComponent(),
                             activated.getActivatorClass(),
-                            contracts.get(node.getComponent()));
+                            contracts.get(node.getComponent()),
+                            componentCl != null ? componentCl : itaraClassLoader);
 
                     // Register aliases for all event contracts this component
                     // implements, as declared in [implemented-event-contracts]

@@ -1,0 +1,12 @@
+[artifact]
+kind        = "component"
+id          = "order"
+version     = "0.1-SPIKE"
+api-version = "0.1-SPIKE"
+
+[runtime]
+language = "java"
+compiler = "21"
+
+[itara]
+spec-version = "0.1"
