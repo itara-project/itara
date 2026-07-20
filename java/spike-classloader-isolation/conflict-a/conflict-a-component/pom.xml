@@ -1,0 +1,57 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>conflict-a</artifactId>
+        <version>0.1-SPIKE</version>
+    </parent>
+
+    <artifactId>conflict-a-component</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>conflict-a-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <!-- Cross-component call target — the API jar belongs on the
+                 system classloader alongside conflict-a-api at deployment
+                 time, even though conflict-a-component itself is isolated. -->
+            <groupId>com.example</groupId>
+            <artifactId>conflict-b-api</artifactId>
+            <version>0.1-SPIKE</version>
+        </dependency>
+        <dependency>
+            <groupId>io.itara</groupId>
+            <artifactId>itara-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <!-- The private, conflicting dependency — goes in components/conflict-a/ only -->
+            <groupId>com.example.shared</groupId>
+            <artifactId>shared-lib-v1</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

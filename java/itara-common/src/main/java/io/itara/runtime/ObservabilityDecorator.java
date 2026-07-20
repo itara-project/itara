@@ -26,11 +26,12 @@ public class ObservabilityDecorator {
     public static Object wrap(Object instance,
                               String componentId,
                               Class<?> contractClass,
-                              ClassLoader classLoader) {
+                              ClassLoader classLoader,
+                              ClassLoader targetClassLoader) {
         return Proxy.newProxyInstance(
                 classLoader,
                 new Class<?>[]{ contractClass },
-                new ObservabilityHandler(instance, componentId)
+                new ObservabilityHandler(instance, componentId, targetClassLoader)
         );
     }
 
@@ -38,10 +39,12 @@ public class ObservabilityDecorator {
 
         private final Object delegate;
         private final String componentId;
+        private final ClassLoader targetClassLoader;
 
-        ObservabilityHandler(Object delegate, String componentId) {
-            this.delegate    = delegate;
-            this.componentId = componentId;
+        ObservabilityHandler(Object delegate, String componentId, ClassLoader targetClassLoader) {
+            this.delegate           = delegate;
+            this.componentId        = componentId;
+            this.targetClassLoader  = targetClassLoader;
         }
 
         @Override
@@ -59,6 +62,15 @@ public class ObservabilityDecorator {
                 // CALL_RECEIVED — callee scope; close fires RETURN_SENT
                 try (ItaraScope calleeScope = facade.fireCallReceived(componentId, method.getName(), TRANSPORT, ExchangePattern.REQUEST_REPLY)) {
 
+                    Thread currentThread = Thread.currentThread();
+                    ClassLoader previousCl = currentThread.getContextClassLoader();
+                    java.util.logging.Logger.getLogger(ObservabilityDecorator.class.getName()).info(
+                            "[Itara][SPIKE][TCCL] decoratorInvoke component=" + componentId
+                                    + " method=" + method.getName()
+                                    + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
+                                    + " tcclBefore=" + previousCl
+                                    + " tcclWillSetTo=" + targetClassLoader);
+                    if (targetClassLoader != null) currentThread.setContextClassLoader(targetClassLoader);
                     try {
                         return method.invoke(delegate, args);
                     } catch (Throwable t) {
@@ -68,6 +80,8 @@ public class ObservabilityDecorator {
                             throw ite.getCause();
                         }
                         throw t;
+                    } finally {
+                        currentThread.setContextClassLoader(previousCl);
                     }
                 } // RETURN_SENT
             } // RETURN_RECEIVED

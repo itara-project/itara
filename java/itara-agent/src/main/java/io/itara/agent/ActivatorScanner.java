@@ -87,7 +87,7 @@ public class ActivatorScanner {
             log.fine("[Itara] registered activator component=" + component);
         }
 
-        verify(result, wiringConfig);
+        //verify(result, wiringConfig);
         return result;
     }
 

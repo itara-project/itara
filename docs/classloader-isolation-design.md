@@ -156,8 +156,16 @@ at startup, based on the presence of the `components/` directory.
 
 ### Activation and thread context classloader
 
-Components are activated lazily — on first use. When the registry activates
-a component, it:
+Activation timing depends on how the process is driven:
+
+- **Library usage** (application code drives the registry from its own
+  `main()`) — components are activated lazily, on first use, as before.
+- **`ItaraMain` usage** — every local component is activated eagerly,
+  immediately after agent setup completes, via
+  `ItaraRegistry.activateAllLocal()`. Activation failure aborts startup.
+
+Both paths use the same underlying mechanism — only the trigger differs. When
+the registry activates a component, it:
 
 1. Retrieves the activator and its associated classloader
 2. Sets the thread context classloader to the component's classloader
@@ -288,19 +296,13 @@ development and isolated mode for production without any configuration change.
 
 ---
 
-## Open items
+## Resolved items (see FINDINGS.md for full evidence)
 
-- **JVM property isolation** — when two components are colocated, JVM-global
-  properties conflict if both use the same property key for different values.
-  This affects any framework or library that reads configuration from system
-  properties, environment variables, or other JVM-global sources. There is no
-  clean, generic solution identified yet. Candidates explored: routing
-  `Properties` subclass installed via `System.setProperties()` keyed on TCCL;
-  external per-component property files attached to component classloaders.
-  Both have significant edge cases. Deferred until the spike produces concrete
-  evidence of which properties actually conflict in practice and how severe the
-  problem is.
+- **JVM property isolation** — no single generic mechanism was needed.
+  Several concrete JVM-global singletons were identified and characterised
+  during the classloader-isolation spike, each with its own confirmed
+  behaviour and mitigation. See FINDINGS.md.
 
-- **`SpringFactoriesLoader` and `META-INF` scanning** — risk that Itara's own
-  `META-INF` entries are picked up by Spring auto-configuration under
-  parent-first delegation. To be verified during the spike.
+- **`SpringFactoriesLoader` and `META-INF` scanning** — confirmed clean, no
+  cross-component or Itara-metadata leakage, in either direction. See
+  FINDINGS.md.

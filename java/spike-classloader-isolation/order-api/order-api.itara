@@ -1,0 +1,10 @@
+[artifact]
+kind    = "api"
+id      = "order"
+version = "0.1-SPIKE"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.1"

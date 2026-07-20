@@ -1,0 +1,26 @@
+nodes:
+  - id: "conflictANode"
+    component: "conflict-a"
+
+  - id: "conflictBNode"
+    component: "conflict-b"
+
+connections:
+  - from: "conflictANode"
+    to: "conflictBNode"
+    transport:
+      id: "direct"
+  - from:
+    to: "conflictANode"
+    transport:
+      id: http
+      params:
+        port: 8081
+    serializer: "json"
+  - from:
+    to: "conflictBNode"
+    transport:
+      id: http
+      params:
+        port: 8081
+    serializer: "json"
