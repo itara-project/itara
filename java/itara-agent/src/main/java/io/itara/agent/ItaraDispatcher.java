@@ -23,18 +23,24 @@ import java.util.logging.Logger;
  *   1. restoreInboundContext (inbound scope opened — fires onInboundContextReleased on close)
  *   2. deserialize args      ← within inbound context, measurable in future
  *   3. CALL_RECEIVED         ← Itara/component boundary (callee scope opened)
- *   4. component.invoke()
- *   5. callee scope.close()  → RETURN_SENT
- *   6. serialize result      ← within inbound context, measurable in future
- *   7. inbound scope.close() → onInboundContextReleased, context popped
+ *   4. set TCCL to the component's own classloader
+ *   5. component.invoke()
+ *   6. restore TCCL to its previous value (finally — runs on every exit path,
+ *      including exceptions)
+ *   7. callee scope.close()  → RETURN_SENT
+ *   8. serialize result      ← within inbound context, measurable in future
+ *   9. inbound scope.close() → onInboundContextReleased, context popped
  *
- * The callee scope wraps component invocation only. Deserialization and
- * serialization are within the inbound scope but outside the callee scope —
- * their cost is visible as transport overhead and available for future
- * measurement as dedicated spans.
+ * The callee scope wraps component invocation, and the TCCL swap around it —
+ * setting and restoring TCCL is not itself observable overhead worth its own
+ * span, but the invocation it wraps is exactly what the callee scope already
+ * measures. Deserialization and serialization are within the inbound scope
+ * but outside the callee scope — their cost is visible as transport
+ * overhead and available for future measurement as dedicated spans.
  *
  * Constructed once per inbound connection at startup. All dependencies are
- * wired in — nothing is looked up at call time.
+ * wired in, including the component's classloader (fetched once from the
+ * registry at construction) — nothing is looked up at call time.
  */
 public class ItaraDispatcher implements DispatchHandler {
 
@@ -46,6 +52,7 @@ public class ItaraDispatcher implements DispatchHandler {
     private final ItaraRegistry registry;
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
+    private final ClassLoader componentClassLoader;
 
     public ItaraDispatcher(String componentId,
                            String transportId,
@@ -58,6 +65,16 @@ public class ItaraDispatcher implements DispatchHandler {
         this.registry        = registry;
         this.facade          = ObservabilityFacade.instance();
         this.exchangePattern = exchangePattern;
+
+        // Fetched once, here, rather than on every dispatch() call — the
+        // component's classloader never changes after activation, and this
+        // dispatcher instance always serves exactly this one component.
+        this.componentClassLoader = registry.getComponentClassLoader(componentId);
+        if (this.componentClassLoader == null) {
+            throw new IllegalStateException(
+                    "[Itara] No classloader registered for component '" + componentId
+                            + "' — its activator must be registered before wiring a dispatcher for it.");
+        }
     }
 
     @Override
@@ -108,13 +125,9 @@ public class ItaraDispatcher implements DispatchHandler {
             try (ItaraScope calleeScope = facade.fireCallReceived(componentId, methodName, transportId, exchangePattern)) {
                 Thread currentThread = Thread.currentThread();
                 ClassLoader previousCl = currentThread.getContextClassLoader();
-                ClassLoader componentCl = registry.getComponentClassLoader(componentId);
-                log.info("[Itara][SPIKE][TCCL] dispatch component=" + componentId
-                        + " method=" + methodName
-                        + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                        + " tcclBefore=" + previousCl
-                        + " tcclWillSetTo=" + componentCl);
-                if (componentCl != null) currentThread.setContextClassLoader(componentCl);
+                log.fine("[Itara] dispatch component=" + componentId + " method=" + methodName
+                        + " classLoader=" + componentClassLoader);
+                currentThread.setContextClassLoader(componentClassLoader);
                 try {
                     // 4. Component invocation
                     result = method.invoke(instance, args);

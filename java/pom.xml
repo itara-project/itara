@@ -25,6 +25,7 @@
         <module>itara-transport-kafka</module>
         <module>itara-failure-semantics-builtin</module>
         <module>archetypes</module>
+        <module>test-fixtures</module>
     </modules>
 
     <properties>

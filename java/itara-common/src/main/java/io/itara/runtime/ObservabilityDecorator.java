@@ -3,6 +3,7 @@ package io.itara.runtime;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.logging.Logger;
 
 /**
  * Wraps a component instance in an observability decorator.
@@ -20,18 +21,19 @@ import java.lang.reflect.Proxy;
  */
 public class ObservabilityDecorator {
 
+    private static final Logger log = Logger.getLogger(ObservabilityDecorator.class.getName());
+
     private static final String TRANSPORT = "direct";
 
     @SuppressWarnings("unchecked")
     public static Object wrap(Object instance,
                               String componentId,
                               Class<?> contractClass,
-                              ClassLoader classLoader,
-                              ClassLoader targetClassLoader) {
+                              ClassLoader componentClassLoader) {
         return Proxy.newProxyInstance(
-                classLoader,
+                componentClassLoader,
                 new Class<?>[]{ contractClass },
-                new ObservabilityHandler(instance, componentId, targetClassLoader)
+                new ObservabilityHandler(instance, componentId, componentClassLoader)
         );
     }
 
@@ -39,12 +41,12 @@ public class ObservabilityDecorator {
 
         private final Object delegate;
         private final String componentId;
-        private final ClassLoader targetClassLoader;
+        private final ClassLoader componentClassLoader;
 
-        ObservabilityHandler(Object delegate, String componentId, ClassLoader targetClassLoader) {
-            this.delegate           = delegate;
-            this.componentId        = componentId;
-            this.targetClassLoader  = targetClassLoader;
+        ObservabilityHandler(Object delegate, String componentId, ClassLoader componentClassLoader) {
+            this.delegate             = delegate;
+            this.componentId          = componentId;
+            this.componentClassLoader = componentClassLoader;
         }
 
         @Override
@@ -63,14 +65,10 @@ public class ObservabilityDecorator {
                 try (ItaraScope calleeScope = facade.fireCallReceived(componentId, method.getName(), TRANSPORT, ExchangePattern.REQUEST_REPLY)) {
 
                     Thread currentThread = Thread.currentThread();
-                    ClassLoader previousCl = currentThread.getContextClassLoader();
-                    java.util.logging.Logger.getLogger(ObservabilityDecorator.class.getName()).info(
-                            "[Itara][SPIKE][TCCL] decoratorInvoke component=" + componentId
-                                    + " method=" + method.getName()
-                                    + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                                    + " tcclBefore=" + previousCl
-                                    + " tcclWillSetTo=" + targetClassLoader);
-                    if (targetClassLoader != null) currentThread.setContextClassLoader(targetClassLoader);
+                    ClassLoader previousClassLoader = currentThread.getContextClassLoader();
+                    log.fine("[Itara] direct call component=" + componentId + " method=" + method.getName()
+                            + " classLoader=" + componentClassLoader);
+                    currentThread.setContextClassLoader(componentClassLoader);
                     try {
                         return method.invoke(delegate, args);
                     } catch (Throwable t) {
@@ -81,7 +79,7 @@ public class ObservabilityDecorator {
                         }
                         throw t;
                     } finally {
-                        currentThread.setContextClassLoader(previousCl);
+                        currentThread.setContextClassLoader(previousClassLoader);
                     }
                 } // RETURN_SENT
             } // RETURN_RECEIVED
