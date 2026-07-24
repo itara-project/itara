@@ -3,7 +3,7 @@ package io.itara.runtime;
 import io.itara.api.ItaraActivator;
 
 import java.util.Map;
-import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -102,6 +102,12 @@ public class ItaraRegistry {
                                   Class<? extends ItaraActivator> activatorClass,
                                   Class<?> contractClass,
                                   ClassLoader classLoader) {
+        if (classLoader == null) {
+            throw new NullPointerException(
+                    "[Itara] classLoader must not be null when registering activator for component '" + id
+                            + "'. Use the 3-arg registerActivator(...) overload instead if the current "
+                            + "thread's context classloader is what you want used.");
+        }
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
         classLoaders.put(id, classLoader);
@@ -187,28 +193,19 @@ public class ItaraRegistry {
                                 + "Check your wiring config.");
             }
 
-            log.fine("[Itara] activating component=" + id);
-            ClassLoader componentCl = classLoaders.get(id);
+            ClassLoader componentClassLoader = classLoaders.get(id);
             Thread currentThread = Thread.currentThread();
-            ClassLoader previousCl = currentThread.getContextClassLoader();
-            log.info("[Itara][SPIKE][TCCL] activateRaw ENTER component=" + id
-                    + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                    + " tcclBefore=" + describeClassLoader(previousCl)
-                    + " willSetTo=" + describeClassLoader(componentCl));
-            if (componentCl != null) currentThread.setContextClassLoader(componentCl);
+            ClassLoader previousClassLoader = currentThread.getContextClassLoader();
+            log.fine("[Itara] activating component=" + id
+                    + " classLoader=" + describeClassLoader(componentClassLoader));
+            currentThread.setContextClassLoader(componentClassLoader);
             try {
                 ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
                 Object instance = activator.activate(this);
                 log.fine("[Itara] activated component=" + id + " class=" + instance.getClass().getSimpleName());
-                log.info("[Itara][SPIKE][TCCL] activateRaw BEFORE-RESTORE component=" + id
-                        + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                        + " tcclNow=" + describeClassLoader(currentThread.getContextClassLoader()));
                 return instance;
             } finally {
-                currentThread.setContextClassLoader(previousCl);
-                log.info("[Itara][SPIKE][TCCL] activateRaw EXIT component=" + id
-                        + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                        + " tcclRestoredTo=" + describeClassLoader(previousCl));
+                currentThread.setContextClassLoader(previousClassLoader);
             }
 
         } catch (IllegalStateException e) {
@@ -224,20 +221,24 @@ public class ItaraRegistry {
 
     private Object decorate(Object raw, String id) {
         Class<?> contractClass = contracts.get(id);
-        Thread currentThread = Thread.currentThread();
-        log.info("[Itara][SPIKE][TCCL] decorate component=" + id
-                + " thread=" + currentThread.getName() + "(" + currentThread.getId() + ")"
-                + " tcclAtDecorateTime=" + describeClassLoader(currentThread.getContextClassLoader())
-                + " definingProxyUnder=" + describeClassLoader(currentThread.getContextClassLoader())
-                + " targetOwnClassLoader=" + describeClassLoader(classLoaders.get(id)));
-        //TODO: with the classloader isolation, the local proxy can no longer be skipped, it is a must-have even if there are no observers
-        if (ObserverRegistry.instance().size() > 0 && contractClass != null) {
-            return ObservabilityDecorator.wrap(
-                    raw, id, contractClass,
-                    Thread.currentThread().getContextClassLoader(),
-                    classLoaders.get(id));
+        if (contractClass == null) {
+            // No known contract for this id — nothing to build a proxy
+            // interface array from, so there is nothing to decorate.
+            return raw;
         }
-        return raw;
+
+        ClassLoader componentClassLoader = classLoaders.get(id);
+        log.fine("[Itara] decorating component=" + id
+                + " classLoader=" + describeClassLoader(componentClassLoader));
+
+        // Both the proxy's defining classloader and its TCCL-at-invoke-time
+        // target are the component's own classloader — not whatever TCCL
+        // happens to be ambient when decorate() runs. Decoration always
+        // happens now; observer presence is irrelevant to whether a
+        // component gets a proxy, only to whether that proxy has anything
+        // to notify at invoke time.
+        return ObservabilityDecorator.wrap(
+                raw, id, contractClass, componentClassLoader);
     }
 
     private String describeClassLoader(ClassLoader cl) {
@@ -261,9 +262,22 @@ public class ItaraRegistry {
      * means this JVM slice has no business staying up.
      */
     public void activateAllLocal() {
-        for (String id : Set.copyOf(activators.keySet())) {
+        for (String id : new TreeSet<>(activators.keySet())) {
             log.info("[Itara] eagerly activating component=" + id);
             get(id, Object.class);
         }
+    }
+
+    /**
+     * Visible for testing — clears all registry state.
+     */
+    public void reset() {
+        proxies.clear();
+        rawInstances.clear();
+        activators.clear();
+        classLoaders.clear();
+        contracts.clear();
+        activating.clear();
+        aliases.clear();
     }
 }

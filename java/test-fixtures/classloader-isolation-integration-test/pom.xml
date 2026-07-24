@@ -1,0 +1,81 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.itara.test-fixtures</groupId>
+        <artifactId>itara-test-fixtures</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>classloader-isolation-integration-test</artifactId>
+    <name>Classloader Isolation Integration Test</name>
+
+    <!--
+        Deliberately minimal: only what classloader isolation itself needs.
+        No Kafka, no testcontainers, no unrelated demo fixtures — anything
+        else on this module's classpath is something ActivatorScanner's
+        isolated-mode scanning could see and be confused by, since a real
+        system classloader in production only ever contains genuinely
+        shared artifacts. Keeping this module narrow is what lets the test
+        below treat the ambient test classloader as a faithful stand-in
+        for the real one, with no workaround needed.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>io.itara</groupId>
+            <artifactId>itara-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara</groupId>
+            <artifactId>itara-agent</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.test-fixtures</groupId>
+            <artifactId>conflict-a-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.itara.test-fixtures</groupId>
+            <artifactId>conflict-b-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-isolation-fixtures</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>io.itara.test-fixtures</groupId>
+                                    <artifactId>conflict-a-component</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${project.build.directory}/isolation-fixtures/conflict-a</outputDirectory>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>io.itara.test-fixtures</groupId>
+                                    <artifactId>conflict-b-component</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${project.build.directory}/isolation-fixtures/conflict-b</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
