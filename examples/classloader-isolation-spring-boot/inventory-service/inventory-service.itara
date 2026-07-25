@@ -1,0 +1,12 @@
+[artifact]
+kind        = "component"
+id          = "inventory"
+version     = "1.0-SNAPSHOT"
+api-version = "1.0-SNAPSHOT"
+
+[runtime]
+language = "java"
+compiler = "21"
+
+[itara]
+spec-version = "0.2"
