@@ -25,7 +25,6 @@ import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
 
 import java.lang.instrument.Instrumentation;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -82,10 +81,18 @@ public class ItaraAgent {
     }
 
     private static void setup(Instrumentation instrumentation) throws Exception {
-        // Build the Itara classloader — child-first, loads from itara.lib.dir
-        // Falls back to context classloader if property is not set
-        ClassLoader itaraClassLoader = ItaraClassLoader.build(
-                Thread.currentThread().getContextClassLoader());
+        // The system classloader — the hub. Loads all shared artifacts
+        // (Itara internals, API jars, event contract jars) and is the
+        // parent of every per-component classloader in isolated mode.
+        // Captured before itaraClassLoader wraps it.
+        ClassLoader systemClassLoader = Thread.currentThread().getContextClassLoader();
+
+        // Build the Itara classloader — child-first, loads from itara.lib.dir.
+        // For Itara's own plugins (transports, serializers, observers,
+        // failure semantics) only — never for scanning shared contracts,
+        // component activators, or proxy creation. Falls back to
+        // systemClassLoader if the property is not set.
+        ClassLoader itaraClassLoader = ItaraClassLoader.build(systemClassLoader);
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
@@ -100,19 +107,21 @@ public class ItaraAgent {
 
         // ── Step 3: Scan for contracts (@ComponentInterface and @EventContractInterface) ───────────────
         log.fine("[Itara] scanning classpath for component contracts");
-        Map<String, Class<?>> contracts = ContractScanner.scan(itaraClassLoader);
+        Map<String, Class<?>> contracts = ContractScanner.scan(systemClassLoader);
         if (contracts.isEmpty()) {
             log.warning("[Itara] no component contracts found — check that API jars are on the classpath");
         }
-        Map<String, Class<?>> eventContracts = EventContractScanner.scan(itaraClassLoader);
+        Map<String, Class<?>> eventContracts = EventContractScanner.scan(systemClassLoader);
         if (!eventContracts.isEmpty()) {
             log.fine("[Itara] found event-contracts count=" + eventContracts.size());
             contracts.putAll(eventContracts);
         }
 
         // ── Step 4: Scan for activators (META-INF/itara/activator) ─────────
+        // ActivatorScanner owns isolated-vs-shared detection, per-component
+        // classloader creation, and verification — see ActivatorScanner.
         log.fine("[Itara] scanning for activator descriptors");
-        Map<String, ActivatedComponent> activators = ActivatorScanner.scan(itaraClassLoader, config);
+        ActivatorScanner.instance().scan(systemClassLoader, config);
 
         // ── Step 5: Load serializers (META-INF/itara/serializer) ─────────────
         log.fine("[Itara] loading serializer implementations");
@@ -132,41 +141,42 @@ public class ItaraAgent {
 
         // ── Step 7c: Load exception factories (META-INF/itara/exception-factory)
         log.fine("[Itara] loading reconstructible exception factories");
-        ReconstructibleExceptionFactoryLoader.load(itaraClassLoader);
+        ReconstructibleExceptionFactoryLoader.load(systemClassLoader);
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
 
         // ── Step 9: Register activators for local components ───────────────
-        if (config.getNodes() != null) {
-            for (ComponentNode node : config.componentNodes()) {
-                ActivatedComponent activated = activators.get(node.getComponent());
+        // Iterates local nodes only — ActivatorScanner.scan() already
+        // guarantees every one of these has an activator and a classloader,
+        // so there is no need to guard against a missing entry here.
+        for (ComponentNode node : config.getLocalNodes()) {
+            String componentId = node.getComponent();
+            ActivatedComponent activated = ActivatorScanner.instance().getActivatedComponent(componentId);
+            ClassLoader componentClassLoader = ActivatorScanner.instance().getClassLoader(componentId);
 
-                if (activated != null) {
-                    registry.registerActivator(
-                            node.getComponent(),
-                            activated.getActivatorClass(),
-                            contracts.get(node.getComponent()));
+            registry.registerActivator(
+                    componentId,
+                    activated.getActivatorClass(),
+                    contracts.get(componentId),
+                    componentClassLoader);
 
-                    // Register aliases for all event contracts this component
-                    // implements, as declared in [implemented-event-contracts]
-                    // in its .itara metadata file.
-                    // Aliases are registered here — before any listeners start
-                    // in step 10 — so the registry is ready the moment the
-                    // first message arrives.
-                    ItaraMetadataIndex.instance()
-                            .lookupByComponentId(node.getComponent())
-                            .ifPresent(metadata -> {
-                                for (var contract : metadata.getImplementedEventContracts().getContracts()) {
-                                    registry.registerAlias(
-                                            contract.getId(), node.getComponent());
-                                    log.fine("[Itara] registered event-contract-alias id="
-                                            + contract.getId()
-                                            + " component=" + node.getComponent());
-                                }
-                            });
-                }
-            }
+            // Register aliases for all event contracts this component
+            // implements, as declared in [implemented-event-contracts]
+            // in its .itara metadata file.
+            // Aliases are registered here — before any listeners start
+            // in step 10 — so the registry is ready the moment the
+            // first message arrives.
+            ItaraMetadataIndex.instance()
+                    .lookupByComponentId(componentId)
+                    .ifPresent(metadata -> {
+                        for (var contract : metadata.getImplementedEventContracts().getContracts()) {
+                            registry.registerAlias(contract.getId(), node.getComponent());
+                            log.fine("[Itara] registered event-contract-alias id="
+                                    + contract.getId()
+                                    + " component=" + node.getComponent());
+                        }
+                    });
         }
 
         // ── Step 10: Process connections ────────────────────────────────────
@@ -253,7 +263,7 @@ public class ItaraAgent {
                                     .orElse(null);
 
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
-                            itaraClassLoader,
+                            systemClassLoader,
                             new Class<?>[]{ contractClass },
                             new ItaraProxyHandler(contractId, serializer, transport, transportId,
                                     transportConfig, pattern, failureSemantics, apiMetadata, exceptionFactory)

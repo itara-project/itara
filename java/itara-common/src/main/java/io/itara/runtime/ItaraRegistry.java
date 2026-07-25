@@ -3,6 +3,7 @@ package io.itara.runtime;
 import io.itara.api.ItaraActivator;
 
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -47,6 +48,12 @@ public class ItaraRegistry {
     private final Map<String, Class<? extends ItaraActivator>> activators =
             new ConcurrentHashMap<>();
 
+    // Classloader to activate each local component under, and to set as
+    // TCCL for every inbound call to it. Defaults to the classloader that
+    // was current when registerActivator() was called (shared mode: the
+    // system classloader) unless explicitly overridden for isolated mode.
+    private final Map<String, ClassLoader> classLoaders = new ConcurrentHashMap<>();
+
     // Contract classes per component id — needed to create the observability proxy
     private final Map<String, Class<?>> contracts = new ConcurrentHashMap<>();
 
@@ -83,9 +90,29 @@ public class ItaraRegistry {
     public void registerActivator(String id,
                                   Class<? extends ItaraActivator> activatorClass,
                                   Class<?> contractClass) {
+        registerActivator(id, activatorClass, contractClass, Thread.currentThread().getContextClassLoader());
+    }
+
+    /**
+     * Isolated-mode variant — explicitly pins the component to the
+     * classloader it should be activated under and dispatched to on
+     * every inbound call (see ItaraDispatcher).
+     */
+    public void registerActivator(String id,
+                                  Class<? extends ItaraActivator> activatorClass,
+                                  Class<?> contractClass,
+                                  ClassLoader classLoader) {
+        if (classLoader == null) {
+            throw new NullPointerException(
+                    "[Itara] classLoader must not be null when registering activator for component '" + id
+                            + "'. Use the 3-arg registerActivator(...) overload instead if the current "
+                            + "thread's context classloader is what you want used.");
+        }
         activators.put(id, activatorClass);
         contracts.put(id, contractClass);
-        log.fine("[Itara] registered activator component=" + id + " class=" + activatorClass.getName());
+        classLoaders.put(id, classLoader);
+        log.fine("[Itara] registered activator component=" + id + " class=" + activatorClass.getName()
+                + " classLoader=" + classLoader);
     }
 
     /**
@@ -96,6 +123,16 @@ public class ItaraRegistry {
     public void registerAlias(String aliasId, String canonicalId) {
         aliases.put(aliasId, canonicalId);
         log.fine("[Itara] registered alias id=" + aliasId + " canonical=" + canonicalId);
+    }
+
+    /**
+     * Returns the classloader a local component was registered under, or
+     * null if none was recorded (component not registered, or registered
+     * via a path that predates this — treat null as "leave TCCL alone").
+     */
+    public ClassLoader getComponentClassLoader(String id) {
+        String resolvedId = aliases.getOrDefault(id, id);
+        return classLoaders.get(resolvedId);
     }
 
     // ── Application API ───────────────────────────────────────────────────────
@@ -156,11 +193,20 @@ public class ItaraRegistry {
                                 + "Check your wiring config.");
             }
 
-            log.fine("[Itara] activating component=" + id);
-            ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
-            Object instance = activator.activate(this);
-            log.fine("[Itara] activated component=" + id + " class=" + instance.getClass().getSimpleName());
-            return instance;
+            ClassLoader componentClassLoader = classLoaders.get(id);
+            Thread currentThread = Thread.currentThread();
+            ClassLoader previousClassLoader = currentThread.getContextClassLoader();
+            log.fine("[Itara] activating component=" + id
+                    + " classLoader=" + describeClassLoader(componentClassLoader));
+            currentThread.setContextClassLoader(componentClassLoader);
+            try {
+                ItaraActivator activator = activatorClass.getDeclaredConstructor().newInstance();
+                Object instance = activator.activate(this);
+                log.fine("[Itara] activated component=" + id + " class=" + instance.getClass().getSimpleName());
+                return instance;
+            } finally {
+                currentThread.setContextClassLoader(previousClassLoader);
+            }
 
         } catch (IllegalStateException e) {
             throw e;
@@ -175,11 +221,63 @@ public class ItaraRegistry {
 
     private Object decorate(Object raw, String id) {
         Class<?> contractClass = contracts.get(id);
-        if (ObserverRegistry.instance().size() > 0 && contractClass != null) {
-            return ObservabilityDecorator.wrap(
-                    raw, id, contractClass,
-                    Thread.currentThread().getContextClassLoader());
+        if (contractClass == null) {
+            // No known contract for this id — nothing to build a proxy
+            // interface array from, so there is nothing to decorate.
+            return raw;
         }
-        return raw;
+
+        ClassLoader componentClassLoader = classLoaders.get(id);
+        log.fine("[Itara] decorating component=" + id
+                + " classLoader=" + describeClassLoader(componentClassLoader));
+
+        // Both the proxy's defining classloader and its TCCL-at-invoke-time
+        // target are the component's own classloader — not whatever TCCL
+        // happens to be ambient when decorate() runs. Decoration always
+        // happens now; observer presence is irrelevant to whether a
+        // component gets a proxy, only to whether that proxy has anything
+        // to notify at invoke time.
+        return ObservabilityDecorator.wrap(
+                raw, id, contractClass, componentClassLoader);
+    }
+
+    private String describeClassLoader(ClassLoader cl) {
+        if (cl == null) return "null";
+        for (Map.Entry<String, ClassLoader> entry : classLoaders.entrySet()) {
+            if (entry.getValue() == cl) return entry.getKey() + "@" + System.identityHashCode(cl);
+        }
+        return cl.getClass().getSimpleName() + "@" + System.identityHashCode(cl) + "(unregistered/system)";
+    }
+
+    /**
+     * Eagerly activates every local component registered in this JVM
+     * slice. Called once, by ItaraMain, right after agent setup completes
+     * — turns every dependency chain and cross-component connection into
+     * something either fully working or a clear boot-time failure, rather
+     * than something discovered lazily on whichever request happens to
+     * arrive first.
+     *
+     * Fails fast: the first activation failure propagates immediately,
+     * aborting the rest of the loop. A component that can't activate
+     * means this JVM slice has no business staying up.
+     */
+    public void activateAllLocal() {
+        for (String id : new TreeSet<>(activators.keySet())) {
+            log.info("[Itara] eagerly activating component=" + id);
+            get(id, Object.class);
+        }
+    }
+
+    /**
+     * Visible for testing — clears all registry state.
+     */
+    public void reset() {
+        proxies.clear();
+        rawInstances.clear();
+        activators.clear();
+        classLoaders.clear();
+        contracts.clear();
+        activating.clear();
+        aliases.clear();
     }
 }
