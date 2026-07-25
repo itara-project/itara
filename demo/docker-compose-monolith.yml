@@ -1,6 +1,8 @@
 name: itara-demo-monolith
  
-# Monolith topology: inventory, fulfilment, notification, order in one JVM.
+# Monolith topology: inventory, fulfilment, order colocated in one JVM,
+# using classloader isolation — each component gets its own private
+# classloader, so their dependency trees no longer need to be compatible.
 # Payment runs as a separate Rust process.
 #
 # Prerequisite: itara-demo-otel stack must be running.
@@ -19,16 +21,16 @@ services:
       - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
       - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
       - ./inventory/inventory-api/target/inventory-api-1.0-SNAPSHOT.jar:/app/inventory-api.jar:ro
-      - ./inventory/inventory-component/target/inventory-component-1.0-SNAPSHOT.jar:/app/inventory-component.jar:ro
-      - ./inventory/inventory-component/target/lib/sqlite-jdbc-3.45.3.0.jar:/app/sqlite-jdbc.jar:ro
-      - ./inventory/inventory-component/target/lib/slf4j-api-1.7.36.jar:/app/slf4j-api.jar:ro
       - ./fulfilment/fulfilment-api/target/fulfilment-api-1.0-SNAPSHOT.jar:/app/fulfilment-api.jar:ro
-      - ./fulfilment/fulfilment-component/target/fulfilment-component-1.0-SNAPSHOT.jar:/app/fulfilment-component.jar:ro
       - ./order/order-api/target/order-api-1.0-SNAPSHOT.jar:/app/order-api.jar:ro
-      - ./order/order-component/target/order-component-1.0-SNAPSHOT.jar:/app/order-component.jar:ro
       - ./payment/java/payment-api/target/payment-api-1.0-SNAPSHOT.jar:/app/payment-api.jar:ro
       - ./order-events/target/order-events-1.0-SNAPSHOT.jar:/app/order-events.jar:ro
       - ./fulfilment-events/target/fulfilment-events-1.0-SNAPSHOT.jar:/app/fulfilment-events.jar:ro
+      - ./inventory/inventory-component/target/inventory-component-1.0-SNAPSHOT.jar:/app/components/inventory/inventory-component.jar:ro
+      - ./inventory/inventory-component/target/lib/sqlite-jdbc-3.45.3.0.jar:/app/components/inventory/sqlite-jdbc.jar:ro
+      - ./inventory/inventory-component/target/lib/slf4j-api-1.7.36.jar:/app/components/inventory/slf4j-api.jar:ro
+      - ./fulfilment/fulfilment-component/target/fulfilment-component-1.0-SNAPSHOT.jar:/app/components/fulfilment/fulfilment-component.jar:ro
+      - ./order/order-component/target/order-component-1.0-SNAPSHOT.jar:/app/components/order/order-component.jar:ro
       - ./wiring-monolith.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./metafiles:/app/metafiles:ro
@@ -47,6 +49,7 @@ services:
       - OTEL_TRACES_SAMPLER=always_on
       - OTEL_BSP_EXPORT_TIMEOUT=10000
       - OTEL_BSP_SCHEDULE_DELAY=1000
+      - ITARA_COMPONENTS_DIR=/app/components
     command:
       - "-Ditara.config=/app/config/wiring.yaml"
       - "-Ditara.lib.dir=/app/libs"
@@ -54,7 +57,7 @@ services:
       - "-Ditara.nodes=inventoryNode,fulfilmentNode,orderNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/inventory-api.jar:/app/inventory-component.jar:/app/sqlite-jdbc.jar:/app/slf4j-api.jar:/app/fulfilment-api.jar:/app/fulfilment-component.jar:/app/order-api.jar:/app/order-component.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "/app/itara-common.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/order-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
       - "io.itara.runtime.ItaraMain"
     networks:
       - itara-net
