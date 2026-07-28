@@ -1,7 +1,7 @@
 # ADR 0012 — Static Serializer Dispatch in Rust
 
 **Date:** May 2026  
-**Status:** Accepted  
+**Status:** Accepted — identifier model refined; see spec §5.4 (Serializer Artifacts), §7.2, §8.2. Dispatch mechanism unaffected.
 **Applies to:** Rust implementation only
 
 ## Context
@@ -40,3 +40,11 @@ Companies providing a custom serializer declare it by its string identifier in t
 ## Relationship to ADR 0007
 
 This decision refines ADR 0007 for the Rust implementation. The byte array boundary between serializer and transport is preserved. The change is in how typed values reach that boundary: via generated dispatch rather than a runtime trait object. The principle is unchanged; the mechanism is language-appropriate.
+
+## Addendum: identifier model refined
+
+The identifier model described above predates the type/artifact-id split. At the time this ADR was written, a serializer's identifier served as both its type and its unique implementation identity.
+
+Serializers now have two identifiers: a `serializer.type` (the serialization category — `json`, `protobuf`, etc.) and a distinct `artifact.id`. Where this ADR says "a plain string, the same identifier used by all other language implementations," that string is the serializer's `type`. The generated Rust dispatch code now resolves against specific serializer artifacts — id and version — declared in the consuming API artifact's `[serializers] supported` list, each of which declares that same `type`.
+
+The static, compile-time nature of Rust's dispatch mechanism, and every consequence recorded above, is unaffected by this refinement. Only the identifier model it operates on has been generalized, the same way transports already were, to allow more than one implementation to exist per type without ambiguity.
