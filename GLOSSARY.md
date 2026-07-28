@@ -43,6 +43,31 @@ it is invisible to them, and so is the topology.
 
 ---
 
+## Message Format
+
+**A structural encoding scheme whose code generation tooling produces a
+contract's types, declared once for the whole contract.**
+
+Some contracts define their parameter and return types by hand, in the
+implementation language, as ordinary classes or structs. Others declare a
+message format — such as Protocol Buffers — and generate those types from a
+schema instead. Either way, the contract is still just an interface: it says
+what a component does, not how it is transmitted. A message format
+constrains the shape of the data; it says nothing about serialization,
+transport, or topology.
+
+A contract commits to a message format entirely or not at all — an API
+artifact does not mix hand-written and generated types across its methods.
+Given an API artifact, one fact answers whether its types are plain or
+generated, for every method it declares.
+
+Message format is independent of serializer choice. A serializer converts a
+contract's types to and from bytes; a message format determines what those
+types are. The two vary independently — which serializers can handle a
+given message format is a separate, per-serializer question.
+
+---
+
 ## Topology
 
 **The structure of a system: which components exist, how they connect, and
