@@ -1,6 +1,10 @@
 package io.itara.runtime;
 
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.ItaraSerializerFactory;
+import io.itara.spi.serializer.ItaraSerializerGroupingKey;
+import io.itara.spi.serializer.SerializerConfig;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,7 +25,11 @@ public class SerializerRegistry {
 
     private static final SerializerRegistry INSTANCE = new SerializerRegistry();
 
-    private final Map<String, ItaraSerializer> serializers = new ConcurrentHashMap<>();
+    /** One factory per serializer id. */
+    private final Map<String, ItaraSerializerFactory> factories = new ConcurrentHashMap<>();
+
+    /** Active instances: id → (grouping key → instance). */
+    private final Map<String, Map<ItaraSerializerGroupingKey, ItaraSerializer>> instances = new ConcurrentHashMap<>();
 
     private SerializerRegistry() {}
 
@@ -29,37 +37,63 @@ public class SerializerRegistry {
         return INSTANCE;
     }
 
-    /**
-     * Register a serializer implementation.
-     * Called by the agent during startup after discovering serializer jars.
-     */
-    public void register(ItaraSerializer serializer) {
-        serializers.put(serializer.type().toLowerCase(), serializer);
-        log.fine("[Itara] registered serializer type=" + serializer.type()
-                + " class=" + serializer.getClass().getName());
+    public void registerFactory(ItaraSerializerFactory factory) {
+        factories.put(factory.id().toLowerCase(), factory);
+        log.fine("[Itara] registered serializer factory id=" + factory.id()
+                + " class=" + factory.getClass().getName());
     }
 
-    /**
-     * Look up a serializer by type string.
-     *
-     * @throws IllegalStateException if no serializer is registered for the type,
-     *         indicating the serializer jar is missing from the classpath
-     */
-    public ItaraSerializer get(String type) {
-        ItaraSerializer serializer = serializers.get(type.toLowerCase());
-        if (serializer == null) {
+    public ItaraSerializerConfig parseConfig(String id, SerializerConfig config) throws Exception {
+        String normalizedId = id.toLowerCase();
+        ItaraSerializerFactory factory = factories.get(normalizedId);
+        if (factory == null) {
             throw new IllegalStateException(
-                    "[Itara] No serializer registered for type '" + type + "'. "
+                    "[Itara] No serializer factory registered for id '" + id + "'. "
                             + "Add the appropriate serializer jar to the classpath. "
-                            + "Available serializers: " + serializers.keySet());
+                            + "Available ids: " + factories.keySet());
         }
-        return serializer;
+        return factory.parseConfig(config);
+    }
+
+    public ItaraSerializer getOrCreate(String id, ItaraSerializerConfig config) throws Exception {
+        String normalizedId = id.toLowerCase();
+        ItaraSerializerFactory factory = factories.get(normalizedId);
+        if (factory == null) {
+            throw new IllegalStateException(
+                    "[Itara] No serializer factory registered for id '" + id + "'. "
+                            + "Available ids: " + factories.keySet());
+        }
+
+        Map<ItaraSerializerGroupingKey, ItaraSerializer> byKey =
+                instances.computeIfAbsent(normalizedId, k -> new ConcurrentHashMap<>());
+
+        ItaraSerializerGroupingKey groupingKey = config.groupingKey();
+
+        try {
+            return byKey.computeIfAbsent(groupingKey, k -> {
+                try {
+                    ItaraSerializer serializer = factory.create(config);
+                    log.fine("[Itara] created serializer instance id=" + id
+                            + " key=" + groupingKey
+                            + " class=" + serializer.getClass().getName());
+                    return serializer;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            throw new Exception(
+                    "[Itara] Failed to create serializer instance id='" + id
+                            + "': " + e.getCause().getMessage(), e.getCause());
+        }
     }
 
     /**
-     * Returns true if a serializer is registered for the given type.
+     * Resets all registered factories and instances.
+     * For testing only — do not call in production code.
      */
-    public boolean has(String type) {
-        return serializers.containsKey(type.toLowerCase());
+    public void reset() {
+        factories.clear();
+        instances.clear();
     }
 }

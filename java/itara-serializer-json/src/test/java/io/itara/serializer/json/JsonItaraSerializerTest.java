@@ -1,12 +1,12 @@
 package io.itara.serializer.json;
 
-import io.itara.exceptions.ItaraRemoteException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,11 +14,12 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("JsonItaraSerializer")
 public class JsonItaraSerializerTest {
 
+    private JsonSerializerConfig config = new JsonSerializerConfig(new HashMap<>());
     private JsonItaraSerializer serializer;
 
     @BeforeEach
     void setUp() {
-        serializer = new JsonItaraSerializer();
+        serializer = new JsonItaraSerializer(config);
     }
 
     @Test
@@ -37,7 +38,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {3, 4};
             Class<?>[] types = {int.class, int.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(new Object[]{3, 4}, result);
         }
 
@@ -47,7 +48,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {"hello", "world"};
             Class<?>[] types = {String.class, String.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(args, result);
         }
 
@@ -58,7 +59,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {now};
             Class<?>[] types = {Instant.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertEquals(now, result[0]);
         }
 
@@ -69,7 +70,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {map};
             Class<?>[] types = {Map.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             @SuppressWarnings("unchecked")
             Map<String, Object> deserialized = (Map<String, Object>) result[0];
             assertEquals("value", deserialized.get("key"));
@@ -83,7 +84,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {};
             Class<?>[] types = {};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(new Object[]{}, result);
         }
 
@@ -93,7 +94,7 @@ public class JsonItaraSerializerTest {
             Object[] args = {null};
             Class<?>[] types = {String.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertNull(result[0]);
         }
 
@@ -101,7 +102,7 @@ public class JsonItaraSerializerTest {
         @DisplayName("produces human-readable JSON array")
         void humanReadable() throws Exception {
             Object[] args = {3, 4};
-            byte[] bytes = serializer.serializeArgs(args);
+            byte[] bytes = serializer.serializeArgs(args, config);
             String json = new String(bytes);
             assertEquals("[3,4]", json);
         }
@@ -114,16 +115,16 @@ public class JsonItaraSerializerTest {
         @Test
         @DisplayName("roundtrips a normal return value")
         void normalResult() throws Exception {
-            byte[] bytes = serializer.serializeResult(42);
-            Object result = serializer.deserializeResult(bytes, int.class);
+            byte[] bytes = serializer.serializeResult(42, config);
+            Object result = serializer.deserializeResult(bytes, int.class, config);
             assertEquals(42, result);
         }
 
         @Test
         @DisplayName("roundtrips a String return value")
         void stringResult() throws Exception {
-            byte[] bytes = serializer.serializeResult("hello");
-            Object result = serializer.deserializeResult(bytes, String.class);
+            byte[] bytes = serializer.serializeResult("hello", config);
+            Object result = serializer.deserializeResult(bytes, String.class, config);
             assertEquals("hello", result);
         }
 
@@ -131,16 +132,16 @@ public class JsonItaraSerializerTest {
         @DisplayName("roundtrips an Instant return value")
         void instantResult() throws Exception {
             Instant now = Instant.now();
-            byte[] bytes = serializer.serializeResult(now);
-            Object result = serializer.deserializeResult(bytes, Instant.class);
+            byte[] bytes = serializer.serializeResult(now, config);
+            Object result = serializer.deserializeResult(bytes, Instant.class, config);
             assertEquals(now, result);
         }
 
         @Test
         @DisplayName("returns null for void return type")
         void voidReturn() throws Exception {
-            byte[] bytes = serializer.serializeResult(null);
-            Object result = serializer.deserializeResult(bytes, Void.TYPE);
+            byte[] bytes = serializer.serializeResult(null, config);
+            Object result = serializer.deserializeResult(bytes, Void.TYPE, config);
             assertNull(result);
         }
     }

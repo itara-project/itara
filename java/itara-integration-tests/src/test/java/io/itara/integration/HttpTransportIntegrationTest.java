@@ -13,8 +13,10 @@ import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.serializer.json.JsonItaraSerializer;
-import io.itara.spi.ItaraSerializer;
+import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.SerializerConfig;
 import io.itara.transport.http.HttpTransport;
 import io.itara.transport.http.HttpTransportConfig;
 import io.itara.transport.http.ItaraHttpServer;
@@ -58,11 +60,16 @@ class HttpTransportIntegrationTest {
     private static CalculatorService proxy;
     private static int port;
 
+    private static ItaraSerializer serializer;
+    private static ItaraSerializerConfig serializerConfig;
+
     @BeforeAll
     static void startServer() throws IOException {
         port = findFreePort();
 
-        ItaraSerializer serializer = new JsonItaraSerializer();
+        JsonSerializerFactory serializerFactory = new JsonSerializerFactory();
+        serializerConfig = serializerFactory.parseConfig(SerializerConfig.builder().build());
+        serializer = serializerFactory.create(serializerConfig);
         HttpTransportConfig config = new HttpTransportConfig("localhost", port, false);
         HttpTransport transport = new HttpTransport(config);
 
@@ -77,7 +84,7 @@ class HttpTransportIntegrationTest {
 
         // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
         ItaraDispatcher dispatcher = new ItaraDispatcher(
-                COMPONENT_ID, "http", serializer, registry, ExchangePattern.REQUEST_REPLY
+                COMPONENT_ID, "http", serializer, serializerConfig, registry, ExchangePattern.REQUEST_REPLY
         );
         Map<String, DispatchHandler> dispatchers = new HashMap<>();
         dispatchers.put(COMPONENT_ID, dispatcher);
@@ -88,7 +95,7 @@ class HttpTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, transport, "http",
+                        COMPONENT_ID, serializer, serializerConfig, transport, "http",
                         config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
@@ -164,7 +171,8 @@ class HttpTransportIntegrationTest {
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
                         "nonexistent-component",
-                        new JsonItaraSerializer(),
+                        serializer,
+                        serializerConfig,
                         new HttpTransport(config),
                         "http",
                         config,
@@ -192,7 +200,8 @@ class HttpTransportIntegrationTest {
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
                         COMPONENT_ID,
-                        new JsonItaraSerializer(),
+                        serializer,
+                        serializerConfig,
                         new HttpTransport(config),
                         "http",
                         config,
@@ -244,7 +253,7 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
@@ -259,7 +268,7 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
@@ -318,7 +327,7 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
@@ -371,7 +380,7 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
-                            COMPONENT_ID, new JsonItaraSerializer(), new HttpTransport(config), "http",
+                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),

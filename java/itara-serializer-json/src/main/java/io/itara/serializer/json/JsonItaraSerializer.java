@@ -5,7 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
 
 /**
  * JSON serializer implementation using Jackson.
@@ -48,7 +49,7 @@ public class JsonItaraSerializer implements ItaraSerializer {
 
     private final ObjectMapper mapper;
 
-    public JsonItaraSerializer() {
+    JsonItaraSerializer(JsonSerializerConfig config) {
         this.mapper = JsonMapper.builder()
                 .addModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -65,9 +66,15 @@ public class JsonItaraSerializer implements ItaraSerializer {
      *
      * Null arguments are preserved as JSON null. An empty argument list
      * produces an empty array [].
+     *
+     * The config parameter is currently unused by this method — the
+     * Jackson mapper's behaviour does not yet vary per connection —
+     * though it does carry each connection's raw serializer params
+     * (see JsonSerializerConfig) for whenever a real configurable
+     * option is added here.
      */
     @Override
-    public byte[] serializeArgs(Object[] args) throws Exception {
+    public byte[] serializeArgs(Object[] args, ItaraSerializerConfig config) throws Exception {
         return mapper.writeValueAsBytes(args);
     }
 
@@ -78,9 +85,15 @@ public class JsonItaraSerializer implements ItaraSerializer {
      * the contract method signature. This is necessary because JSON loses
      * type information — without the target type, Jackson cannot distinguish
      * a Long from an Integer, or a custom object from a Map.
+     *
+     * The config parameter is currently unused by this method — the
+     * Jackson mapper's behaviour does not yet vary per connection —
+     * though it does carry each connection's raw serializer params
+     * (see JsonSerializerConfig) for whenever a real configurable
+     * option is added here.
      */
     @Override
-    public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes) throws Exception {
+    public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes, ItaraSerializerConfig config) throws Exception {
         Object[] rawArgs = mapper.readValue(bytes, Object[].class);
         Object[] typedArgs = new Object[paramTypes.length];
         for (int i = 0; i < paramTypes.length; i++) {
@@ -98,9 +111,19 @@ public class JsonItaraSerializer implements ItaraSerializer {
      * The caller is responsible for preparing the correct object before
      * serialization — error payloads arrive as ItaraErrorPayload, not as
      * Throwables. Null (void method) serializes as JSON null.
+     *
+     * This same generic path handles ItaraErrorPayload correctly — Jackson
+     * serializes it as an ordinary POJO, so no special-casing is needed
+     * to satisfy the unconditional error-payload obligation (ADR 0020).
+     *
+     * The config parameter is currently unused by this method — the
+     * Jackson mapper's behaviour does not yet vary per connection —
+     * though it does carry each connection's raw serializer params
+     * (see JsonSerializerConfig) for whenever a real configurable
+     * option is added here.
      */
     @Override
-    public byte[] serializeResult(Object result) throws Exception {
+    public byte[] serializeResult(Object result, ItaraSerializerConfig config) throws Exception {
         return mapper.writeValueAsBytes(result);
     }
 
@@ -108,9 +131,17 @@ public class JsonItaraSerializer implements ItaraSerializer {
      * Deserializes a return value from JSON using the declared return type.
      *
      * For void methods (Void.TYPE), returns null regardless of payload.
+     * This same generic path is also used to deserialize ItaraErrorPayload
+     * (see serializeResult) — no special-casing needed.
+     *
+     * The config parameter is currently unused by this method — the
+     * Jackson mapper's behaviour does not yet vary per connection —
+     * though it does carry each connection's raw serializer params
+     * (see JsonSerializerConfig) for whenever a real configurable
+     * option is added here.
      */
     @Override
-    public Object deserializeResult(byte[] bytes, Class<?> returnType) throws Exception {
+    public Object deserializeResult(byte[] bytes, Class<?> returnType, ItaraSerializerConfig config) throws Exception {
         if (returnType == Void.TYPE || returnType == Void.class) {
             return null;
         }

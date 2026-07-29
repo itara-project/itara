@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+// Test-only fixture, compiled by the build for this module's own test
+// suite. Not a shipped example — a real "using proto" example, with its
+// own API artifact and .itara metadata, is a separate, later piece of
+// work. This exists solely to prove ProtoItaraSerializer works against a
+// hand-written .proto-generated type with zero artifact-specific
+// serializer code, per this sub-issue's acceptance criterion — the
+// wrapper-type-based unit tests (StringValue, Int32Value) prove the
+// reflection mechanism is generic, but they're bundled types, not
+// something protoc generated for us.
+package itara.test.fixtures;
+
+option java_package = "io.itara.serializer.protobuf.fixtures";
+option java_multiple_files = true;
+
+// A single-argument request, matching ProtoItaraSerializer's "at most one
+// parameter" constraint (see its class javadoc) — this is what a real
+// proto-format contract method's sole parameter would look like.
+message CalculatorRequest {
+  int32 a = 1;
+  int32 b = 2;
+}
+
+message CalculatorResponse {
+  int32 result = 1;
+}

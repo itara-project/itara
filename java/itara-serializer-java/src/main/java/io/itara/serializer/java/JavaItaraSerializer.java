@@ -1,6 +1,7 @@
 package io.itara.serializer.java;
 
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
 
 import java.io.*;
 
@@ -53,7 +54,7 @@ public class JavaItaraSerializer implements ItaraSerializer {
      * All argument types must implement java.io.Serializable.
      */
     @Override
-    public byte[] serializeArgs(Object[] args) throws Exception {
+    public byte[] serializeArgs(Object[] args, ItaraSerializerConfig config) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
             oos.writeObject(args);
@@ -72,7 +73,7 @@ public class JavaItaraSerializer implements ItaraSerializer {
      * exactly as serialized by the caller.
      */
     @Override
-    public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes) throws Exception {
+    public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes, ItaraSerializerConfig config) throws Exception {
         try (ObjectInputStream ois = new ObjectInputStream(
                 new ByteArrayInputStream(bytes))) {
             return (Object[]) ois.readObject();
@@ -87,7 +88,7 @@ public class JavaItaraSerializer implements ItaraSerializer {
      * passed here must implement java.io.Serializable.
      */
     @Override
-    public byte[] serializeResult(Object result) throws Exception {
+    public byte[] serializeResult(Object result, ItaraSerializerConfig config) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
             oos.writeObject(result);
@@ -105,7 +106,7 @@ public class JavaItaraSerializer implements ItaraSerializer {
      * For void methods (Void.TYPE), returns null regardless of payload.
      */
     @Override
-    public Object deserializeResult(byte[] bytes, Class<?> returnType) throws Exception {
+    public Object deserializeResult(byte[] bytes, Class<?> returnType, ItaraSerializerConfig config) throws Exception {
         if (returnType == Void.TYPE || returnType == Void.class) {
             return null;
         }

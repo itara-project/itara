@@ -24,28 +24,32 @@ connections:
       params:
         host: "order-producer"
         port: 8081
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderProducerNode"
     to: "orderPlacedChannel"
     transport:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderProducerNode"
     to: "orderCancelledChannel"
     transport:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderProducerNode"
     to: "paymentMadeChannel"
     transport:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderPlacedChannel"
     to: "orderConsumerNode"
     transport:
@@ -53,7 +57,8 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderCancelledChannel"
     to: "orderConsumerNode"
     transport:
@@ -61,7 +66,8 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "paymentMadeChannel"
     to: "orderConsumerNode"
     transport:
@@ -69,4 +75,5 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"
