@@ -7,7 +7,10 @@ import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
-import io.itara.spi.ItaraSerializer;
+import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.SerializerConfig;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.failuresemantics.TransportCall;
@@ -45,6 +48,7 @@ public class ItaraProxyHandlerIntegrationTest {
     private TransportCall capturedWork;
 
     private ItaraSerializer serializer;
+    private ItaraSerializerConfig serializerConfig;
     private ItaraTransport noopTransport;
     private ItaraFailureSemantics capturingFailureSemantics;
 
@@ -55,7 +59,9 @@ public class ItaraProxyHandlerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        serializer = new JsonItaraSerializer();
+        JsonSerializerFactory factory = new JsonSerializerFactory();
+        serializerConfig = factory.parseConfig(SerializerConfig.builder().build());
+        serializer = factory.create(serializerConfig);
         capturedIdempotent = true;
         executeCallCount = 0;
         capturedWork = null;
@@ -77,7 +83,7 @@ public class ItaraProxyHandlerIntegrationTest {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
-                new ItaraProxyHandler(COMPONENT_ID, serializer, noopTransport, "noop",
+                new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, noopTransport, "noop",
                         PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null)
         );
     }
@@ -154,7 +160,7 @@ public class ItaraProxyHandlerIntegrationTest {
             CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
-                    new ItaraProxyHandler(COMPONENT_ID, serializer, checkingTransport, "noop",
+                    new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, checkingTransport, "noop",
                             PROPS, ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(), null, null)
             );

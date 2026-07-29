@@ -5,8 +5,10 @@ import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.DispatchHandler;
-import io.itara.serializer.json.JsonItaraSerializer;
-import io.itara.spi.ItaraSerializer;
+import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.SerializerConfig;
 import io.itara.transport.kafka.KafkaFailureAction;
 import io.itara.transport.kafka.KafkaTransport;
 import io.itara.transport.kafka.KafkaTransportConfig;
@@ -78,7 +80,10 @@ public class KafkaTransportIntegrationTest {
     static void setup() throws Exception {
         ObservabilityFacade.initialize();
 
-        ItaraSerializer serializer = new JsonItaraSerializer();
+        JsonSerializerFactory serializerFactory = new JsonSerializerFactory();
+        ItaraSerializerConfig serializerConfig = serializerFactory.parseConfig(SerializerConfig.builder().build());
+        ItaraSerializer serializer = serializerFactory.create(serializerConfig);
+
         String bootstrapServers = kafka.getBootstrapServers();
 
         KafkaTransportConfig consumerConfig = new KafkaTransportConfig(
@@ -102,7 +107,7 @@ public class KafkaTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ OrderPlacedContractProxy.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, producerTransport, "kafka",
+                        COMPONENT_ID, serializer, serializerConfig, producerTransport, "kafka",
                         producerConfig, ExchangePattern.FIRE_AND_FORGET,
                         new NoopFailureSemantics(),
                         null,

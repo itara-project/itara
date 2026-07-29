@@ -6,7 +6,8 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -49,6 +50,7 @@ public class ItaraDispatcher implements DispatchHandler {
     private final String componentId;
     private final String transportId;
     private final ItaraSerializer serializer;
+    private final ItaraSerializerConfig serializerConfig;
     private final ItaraRegistry registry;
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
@@ -57,14 +59,16 @@ public class ItaraDispatcher implements DispatchHandler {
     public ItaraDispatcher(String componentId,
                            String transportId,
                            ItaraSerializer serializer,
+                           ItaraSerializerConfig serializerConfig,
                            ItaraRegistry registry,
                            ExchangePattern exchangePattern) {
-        this.componentId     = componentId;
-        this.transportId     = transportId;
-        this.serializer      = serializer;
-        this.registry        = registry;
-        this.facade          = ObservabilityFacade.instance();
-        this.exchangePattern = exchangePattern;
+        this.componentId      = componentId;
+        this.transportId      = transportId;
+        this.serializer       = serializer;
+        this.serializerConfig = serializerConfig;
+        this.registry         = registry;
+        this.facade           = ObservabilityFacade.instance();
+        this.exchangePattern  = exchangePattern;
 
         // Fetched once, here, rather than on every dispatch() call — the
         // component's classloader never changes after activation, and this
@@ -110,7 +114,7 @@ public class ItaraDispatcher implements DispatchHandler {
             // 2. Deserialize args — within inbound context
             Object[] args;
             try {
-                args = serializer.deserializeArgs(requestBytes, method.getParameterTypes());
+                args = serializer.deserializeArgs(requestBytes, method.getParameterTypes(), serializerConfig);
             } catch (Exception e) {
                 throw serialized(new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
@@ -153,7 +157,7 @@ public class ItaraDispatcher implements DispatchHandler {
 
             // 6. Serialize result — within inbound context, after RETURN_SENT
             try {
-                return serializer.serializeResult(result);
+                return serializer.serializeResult(result, serializerConfig);
             } catch (Exception e) {
                 throw serialized(new ItaraRemoteException(
                         ItaraRemoteException.ErrorKind.TRANSPORT,
@@ -179,7 +183,7 @@ public class ItaraDispatcher implements DispatchHandler {
      */
     private ItaraRemoteException serialized(ItaraRemoteException ex, String methodName) {
         try {
-            ex.withSerializedPayload(serializer.serializeResult(ex.toPayload()));
+            ex.withSerializedPayload(serializer.serializeResult(ex.toPayload(), serializerConfig));
         } catch (Exception e) {
             log.log(Level.WARNING, "[Itara] failed to serialize error payload component=" + componentId
                     + " method=" + methodName + " — caller will receive empty error body", e);

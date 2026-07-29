@@ -102,7 +102,10 @@ class ItaraMetadataIndexTest {
                     core-version = "0.1+"
 
                     [serializers]
-                    supported = ["json", "protobuf"]
+                    supported = [
+                      { id = "json", version = "1.x" },
+                      { id = "protobuf", version = "1.x" },
+                    ]
                     """);
 
             System.setProperty(ItaraMetadataIndex.METADATA_DIR_PROPERTY, dir.toString());
@@ -113,7 +116,11 @@ class ItaraMetadataIndexTest {
             assertEquals("21", metadata.getRuntime().getCompiler());
             assertEquals("0.1", metadata.getItara().getSpecVersion());
             assertEquals("0.1+", metadata.getItara().getCoreVersion());
-            assertEquals(List.of("json", "protobuf"), metadata.getSerializers().getSupported());
+
+            List<SupportedSerializer> supported = metadata.getSerializers().getSupported();
+            assertEquals(2, supported.size());
+            assertEquals("json", supported.get(0).getId());
+            assertEquals("protobuf", supported.get(1).getId());
         }
 
         @Test

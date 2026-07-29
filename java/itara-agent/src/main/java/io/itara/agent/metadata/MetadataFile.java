@@ -7,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * Parsed contents of a single `.itara` metadata file.
  *
  * Mirrors the Rust `MetadataFile` struct (itara-libdir crate / ADR 0008).
- * Only the [artifact] section is required; [runtime], [itara], and
- * [serializers] are optional. Unknown sections and fields are ignored
- * for forward compatibility.
+ * Only the [artifact] section is required; [runtime], [itara],
+ * [serializers], [contract], and [serializer] are optional. Unknown
+ * sections and fields are ignored for forward compatibility.
  *
  *   [artifact]
  *   kind = "component"
@@ -39,6 +39,8 @@ public class MetadataFile {
     private FailureSemanticsMeta failureSemantics;
     @JsonProperty("api-dependencies")
     private ApiDependenciesMeta apiDependencies;
+    private ContractMeta contract;
+    private SerializerMeta serializer;
 
 
     public ArtifactMeta getArtifact() { return artifact; }
@@ -74,10 +76,18 @@ public class MetadataFile {
     public ApiDependenciesMeta getApiDependencies()                 { return apiDependencies; }
     public void setApiDependencies(ApiDependenciesMeta a)           { this.apiDependencies = a; }
 
+    public ContractMeta getContract()               { return contract; }
+    public void setContract(ContractMeta contract)  { this.contract = contract; }
+
+    public SerializerMeta getSerializer()               { return serializer; }
+    public void setSerializer(SerializerMeta serializer){ this.serializer = serializer; }
+
     @Override
     public String toString() {
         return "MetadataFile{artifact=" + artifact + ", runtime=" + runtime
                 + ", itara=" + itara + ", serializers=" + serializers
+                + ", contract=" + contract
+                + ", serializer=" + serializer
                 + ", transport=" + transport
                 + ", failureSemantics=" + failureSemantics
                 + ", apiDependencies=" + apiDependencies

@@ -5,7 +5,9 @@ import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.ItaraSerializerGroupingKey;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +65,26 @@ class ItaraDispatcherTest {
         }
     }
 
+    static class TestGroupingKey implements ItaraSerializerGroupingKey {
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof TestGroupingKey;
+        }
+        @Override
+        public int hashCode() {
+            return TestGroupingKey.class.hashCode();
+        }
+    }
+
+    static class TestSerializerConfig implements ItaraSerializerConfig {
+        @Override
+        public ItaraSerializerGroupingKey groupingKey() {
+            return new TestGroupingKey();
+        }
+    }
+
+    private static final ItaraSerializerConfig TEST_SERIALIZER_CONFIG = new TestSerializerConfig();
+
     /** Passes byte payloads through untouched — args/results are simple strings in these tests. */
     static class PassthroughSerializer implements ItaraSerializer {
         @Override
@@ -71,12 +93,12 @@ class ItaraDispatcherTest {
         }
 
         @Override
-        public byte[] serializeArgs(Object[] args) {
+        public byte[] serializeArgs(Object[] args, ItaraSerializerConfig config) {
             return new byte[0];
         }
 
         @Override
-        public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes) {
+        public Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes, ItaraSerializerConfig config) {
             // Sized to match the target method's actual parameter count —
             // null is a valid value for the reference-typed params used
             // in these tests (captureTccl ignores its argument; explode
@@ -85,12 +107,12 @@ class ItaraDispatcherTest {
         }
 
         @Override
-        public byte[] serializeResult(Object result) {
+        public byte[] serializeResult(Object result, ItaraSerializerConfig config) {
             return String.valueOf(result).getBytes();
         }
 
         @Override
-        public Object deserializeResult(byte[] bytes, Class<?> returnType) {
+        public Object deserializeResult(byte[] bytes, Class<?> returnType, ItaraSerializerConfig config) {
             return new String(bytes);
         }
     }
@@ -110,7 +132,7 @@ class ItaraDispatcherTest {
         void throwsWhenComponentClassLoaderNotRegistered() {
             assertThrows(IllegalStateException.class, () ->
                     new ItaraDispatcher("unregistered", "test-transport", new PassthroughSerializer(),
-                            ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY));
+                            TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY));
         }
     }
 
@@ -131,7 +153,7 @@ class ItaraDispatcherTest {
                     "capture", CaptureActivator.class, CaptureContract.class, componentClassLoader);
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
-                    "capture", "test-transport", new PassthroughSerializer(),
+                    "capture", "test-transport", new PassthroughSerializer(), TEST_SERIALIZER_CONFIG,
                     ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
 
             Thread.currentThread().setContextClassLoader(ambientClassLoader);
@@ -153,7 +175,7 @@ class ItaraDispatcherTest {
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
                     "throwing", "test-transport", new PassthroughSerializer(),
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
 
             ClassLoader ambientClassLoader = Thread.currentThread().getContextClassLoader();
 

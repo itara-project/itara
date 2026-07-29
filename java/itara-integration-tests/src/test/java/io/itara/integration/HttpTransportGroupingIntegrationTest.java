@@ -9,8 +9,10 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.TransportRegistry;
-import io.itara.serializer.json.JsonItaraSerializer;
-import io.itara.spi.ItaraSerializer;
+import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.SerializerConfig;
 import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.transport.http.HttpTransport;
 import io.itara.transport.http.HttpTransportConfig;
@@ -138,7 +140,9 @@ public class HttpTransportGroupingIntegrationTest {
         @Test
         @DisplayName("two components on the same port are both reachable and route correctly")
         void twoComponentsOnSamePortBothReachable() throws Exception {
-            ItaraSerializer serializer = new JsonItaraSerializer();
+            JsonSerializerFactory serializerFactory = new JsonSerializerFactory();
+            ItaraSerializerConfig serializerConfig = serializerFactory.parseConfig(SerializerConfig.builder().build());
+            ItaraSerializer serializer = serializerFactory.create(serializerConfig);
 
             // Both dispatchers share one transport instance
             ItaraTransportConfig config = TransportRegistry.instance()
@@ -147,10 +151,10 @@ public class HttpTransportGroupingIntegrationTest {
                     .getOrCreate("http", config);
 
             ItaraDispatcher dispatcherA = new ItaraDispatcher(
-                    COMPONENT_A, "http", serializer,
+                    COMPONENT_A, "http", serializer, serializerConfig,
                     ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
             ItaraDispatcher dispatcherB = new ItaraDispatcher(
-                    COMPONENT_B, "http", serializer,
+                    COMPONENT_B, "http", serializer, serializerConfig,
                     ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
 
             transport.registerListener(COMPONENT_A, config, dispatcherA);
@@ -158,9 +162,9 @@ public class HttpTransportGroupingIntegrationTest {
             transport.start();
 
             // Proxy to component A
-            CalculatorService proxyA = proxyFor(COMPONENT_A, portA, transport, "http", serializer);
+            CalculatorService proxyA = proxyFor(COMPONENT_A, portA, transport, "http", serializer, serializerConfig);
             // Proxy to component B
-            CalculatorService proxyB = proxyFor(COMPONENT_B, portA, transport, "http", serializer);
+            CalculatorService proxyB = proxyFor(COMPONENT_B, portA, transport, "http", serializer, serializerConfig);
 
             // Both route correctly through the same server
             assertEquals(7,  proxyA.add(3, 4));
@@ -178,12 +182,12 @@ public class HttpTransportGroupingIntegrationTest {
 
     private static CalculatorService proxyFor(String componentId, int port,
                                               HttpTransport transport, String transportId,
-                                              ItaraSerializer serializer) {
+                                              ItaraSerializer serializer, ItaraSerializerConfig serializerConfig) {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        componentId, serializer, transport, transportId,
+                        componentId, serializer, serializerConfig, transport, transportId,
                         new HttpTransportConfig("localhost", port, false),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),

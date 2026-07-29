@@ -353,7 +353,8 @@ class ConfigLoaderTest {
                           params:
                             host: "localhost"
                             port: 8081
-                        serializer: json
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("gateway",    conn.getFrom());
@@ -361,7 +362,7 @@ class ConfigLoaderTest {
             assertEquals("http",       conn.getTransport().getId());
             assertEquals("localhost",  conn.getTransport().getParams().get("host"));
             assertEquals("8081",       conn.getTransport().getParams().get("port"));
-            assertEquals("json",       conn.getSerializer());
+            assertEquals("json",       conn.getSerializer().getId());
         }
 
         @Test
@@ -407,6 +408,8 @@ class ConfigLoaderTest {
                         to: calculator
                         transport:
                           id: http
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("http", conn.getTransport().getId());
@@ -424,6 +427,8 @@ class ConfigLoaderTest {
                           params:
                             host: localhost
                             port: "8081"
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("localhost", conn.getTransport().getParams().get("host"));
@@ -439,6 +444,8 @@ class ConfigLoaderTest {
                         to: calculator
                         transport:
                           id: http
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertNotNull(conn.getTransport().getParams());
@@ -454,6 +461,8 @@ class ConfigLoaderTest {
                         to: calculator
                         transport:
                           id: http
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertFalse(conn.getTransport().isHandleTimeout());
@@ -472,6 +481,8 @@ class ConfigLoaderTest {
                           params:
                             host: localhost
                             port: "8081"
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertTrue(conn.getTransport().isHandleTimeout());
@@ -498,6 +509,8 @@ class ConfigLoaderTest {
                         to: calculator
                         transport:
                           handleTimeout: true
+                        serializer:
+                          id: json
                     """;
             assertThrows(ConfigurationException.class,
                     () -> ConfigLoader.parseString(yaml));
@@ -513,6 +526,8 @@ class ConfigLoaderTest {
                         transport:
                           id: http
                           unknownFutureField: somevalue
+                        serializer:
+                          id: json
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
         }
@@ -529,6 +544,8 @@ class ConfigLoaderTest {
                           params:
                             host: "${CALC_HOST:-myhost}"
                             port: "8081"
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("myhost", conn.getTransport().getParams().get("host"));
@@ -563,6 +580,8 @@ class ConfigLoaderTest {
                             host: localhost
                             port: "8081"
                             customKey: customValue
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             var transport = conn.getTransport();
@@ -626,6 +645,8 @@ class ConfigLoaderTest {
                           params:
                             host: "${CALC_HOST:-myhost}"
                             port: "8081"
+                        serializer:
+                          id: json
                     """;
             assertEquals("myhost", ConfigLoader.parseString(yaml)
                     .getConnections().get(0).getTransport().getParams().get("host"));
@@ -643,6 +664,8 @@ class ConfigLoaderTest {
                           params:
                             host: "localhost"
                             port: "${CALC_PORT:-9999}"
+                        serializer:
+                          id: json
                     """;
             assertEquals("9999", ConfigLoader.parseString(yaml)
                     .getConnections().get(0).getTransport().getParams().get("port"));
@@ -732,7 +755,8 @@ class ConfigLoaderTest {
                   params:
                     host: "calculator"
                     port: "8081"
-                serializer: "json"
+                serializer:
+                  id: json
               - from: "gatewayNode"
                 to: "notifierNode"
                 transport:
@@ -740,14 +764,16 @@ class ConfigLoaderTest {
                   params:
                     host: "notifier"
                     port: "8082"
-                serializer: "json"
+                serializer:
+                  id: json
               - from:
                 to: "gatewayNode"
                 transport:
                   id: http
                   params:
                     port: "8080"
-                serializer: "json"
+                serializer:
+                  id: json
             """;
 
     @Nested
@@ -947,21 +973,24 @@ class ConfigLoaderTest {
             to: "orderCreatedChannel"
             transport:
               id: kafka
-            serializer: "json"
+            serializer:
+              id: json
           - from: "orderCreatedChannel"
             to: "inventoryServiceNode"
             transport:
               id: kafka
               params:
                 consumerGroup: "inventory-consumer-group"
-            serializer: "json"
+            serializer:
+              id: json
           - from: "orderCreatedChannel"
             to: "notificationServiceNode"
             transport:
               id: kafka
               params:
                 consumerGroup: "notification-consumer-group"
-            serializer: "json"
+            serializer:
+              id: json
         """;
 
     @Nested
@@ -1045,11 +1074,14 @@ class ConfigLoaderTest {
                       params:
                         host: "order-service"
                         port: "8081"
+                    serializer:
+                      id: json
                   - from: "orderServiceNode"
                     to: "orderCreatedChannel"
                     transport:
                       id: kafka
-                    serializer: "json"
+                    serializer:
+                      id: json
                 """;
             WiringConfig full = ConfigLoader.parseString(yaml);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
@@ -1067,7 +1099,8 @@ class ConfigLoaderTest {
                     to: "orderCreatedChannel"
                     transport:
                       id: kafka
-                    serializer: "json"
+                    serializer:
+                      id: json
                 """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
         }
@@ -1083,7 +1116,8 @@ class ConfigLoaderTest {
                       id: kafka
                       params:
                         consumerGroup: "inventory-consumer-group"
-                    serializer: "json"
+                    serializer:
+                      id: json
                 """;
             WiringConfig config = ConfigLoader.parseString(yaml);
             assertEquals("inventory-consumer-group",
@@ -1196,6 +1230,8 @@ class ConfigLoaderTest {
                           params:
                             host: localhost
                             port: "8081"
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1216,6 +1252,8 @@ class ConfigLoaderTest {
                             port: "8081"
                         failureSemantics:
                           id: built-in
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1237,6 +1275,8 @@ class ConfigLoaderTest {
                         failureSemantics:
                           id: built-in
                           maxRetry: 3
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1258,6 +1298,8 @@ class ConfigLoaderTest {
                         failureSemantics:
                           id: built-in
                           timeout: 2s
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1280,6 +1322,8 @@ class ConfigLoaderTest {
                         failureSemantics:
                           id: built-in
                           absoluteTimeout: 10s
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1302,6 +1346,8 @@ class ConfigLoaderTest {
                         failureSemantics:
                           id: built-in
                           handleTimeout: true
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1325,6 +1371,8 @@ class ConfigLoaderTest {
                           params:
                             waitDuration: 500ms
                             retryNonIdempotent: "true"
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             var params = conn.getFailureSemanticsConfig().getParams();
@@ -1347,6 +1395,8 @@ class ConfigLoaderTest {
                             port: "8081"
                         failureSemantics:
                           id: built-in
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1367,6 +1417,8 @@ class ConfigLoaderTest {
                             port: "8081"
                         failureSemantics:
                           id: built-in
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
@@ -1393,6 +1445,8 @@ class ConfigLoaderTest {
                           absoluteTimeout: 10s
                           params:
                             waitDuration: 500ms
+                        serializer:
+                          id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             var config = conn.getFailureSemanticsConfig();
@@ -1422,6 +1476,8 @@ class ConfigLoaderTest {
                         failureSemantics:
                           id: built-in
                           unknownFutureField: somevalue
+                        serializer:
+                          id: json
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
         }
@@ -1447,6 +1503,8 @@ class ConfigLoaderTest {
                       params:
                         host: *calcHost
                         port: "8081"
+                    serializer:
+                      id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("localhost", conn.getTransport().getParams().get("host"));
@@ -1465,6 +1523,8 @@ class ConfigLoaderTest {
                       params:
                         host: localhost
                         port: "8081"
+                    serializer:
+                      id: json
                   - *baseConn
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
@@ -1494,6 +1554,8 @@ class ConfigLoaderTest {
                         port: 8081
                     failureSemantics:
                       <<: *defaultFs
+                    serializer:
+                      id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals("built-in", conn.getFailureSemanticsType());
@@ -1522,6 +1584,8 @@ class ConfigLoaderTest {
                     failureSemantics:
                       <<: *defaultFs
                       timeout: 5s
+                    serializer:
+                      id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals(java.time.Duration.ofSeconds(5),
@@ -1548,12 +1612,16 @@ class ConfigLoaderTest {
                       id: http
                       params:
                         <<: *calcParams
+                    serializer:
+                      id: json
                   - from: gateway
                     to:   notifier
                     transport:
                       id: http
                       params:
                         <<: *notifParams
+                    serializer:
+                      id: json
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
             assertEquals(2, conns.size());

@@ -80,12 +80,189 @@ class MetadataFileTest {
                 api-version = "1.x"
                 
                 [serializers]
-                supported = ["json", "protobuf"]
+                supported = [
+                  { id = "json", version = "1.x" },
+                  { id = "protobuf", version = "1.x" },
+                ]
                 """;
 
         MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
 
-        assertEquals(List.of("json", "protobuf"), metadata.getSerializers().getSupported());
+        List<SupportedSerializer> supported = metadata.getSerializers().getSupported();
+        assertEquals(2, supported.size());
+        assertEquals("json", supported.get(0).getId());
+        assertEquals("1.x", supported.get(0).getVersion());
+        assertEquals("protobuf", supported.get(1).getId());
+        assertEquals("1.x", supported.get(1).getVersion());
+    }
+
+    @Test
+    @DisplayName("serializers.supported defaults to empty when the section is absent")
+    void serializersSupportedDefaultsToEmptyWhenAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNull(metadata.getSerializers());
+    }
+
+    @Test
+    @DisplayName("unknown fields in a serializers.supported entry are ignored")
+    void unknownFieldsInSupportedSerializerIgnored() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            
+            [serializers]
+            supported = [
+              { id = "json", version = "1.x", future-field = "ignored" },
+            ]
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        List<SupportedSerializer> supported = metadata.getSerializers().getSupported();
+        assertEquals(1, supported.size());
+        assertEquals("json", supported.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("parses contract message-format for api artifacts")
+    void parsesContractMessageFormat() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            
+            [contract]
+            message-format = "protobuf"
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNotNull(metadata.getContract());
+        assertEquals("protobuf", metadata.getContract().getMessageFormat());
+        assertTrue(metadata.getContract().hasMessageFormat());
+    }
+
+    @Test
+    @DisplayName("contract is null when [contract] section is absent")
+    void contractNullWhenSectionAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNull(metadata.getContract());
+    }
+
+    @Test
+    @DisplayName("message-format defaults to empty string when absent from a declared [contract] section")
+    void contractMessageFormatDefaultsToEmpty() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            
+            [contract]
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNotNull(metadata.getContract());
+        assertEquals("", metadata.getContract().getMessageFormat());
+        assertFalse(metadata.getContract().hasMessageFormat());
+    }
+
+    @Test
+    @DisplayName("explicit empty-string message-format is treated identically to absent")
+    void contractMessageFormatExplicitEmptyString() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "api"
+            id = "inventory-api"
+            version = "1.0.0"
+            
+            [contract]
+            message-format = ""
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertEquals("", metadata.getContract().getMessageFormat());
+        assertFalse(metadata.getContract().hasMessageFormat());
+    }
+
+    @Test
+    @DisplayName("parses serializer type and capabilities for serializer artifacts")
+    void parsesSerializerTypeAndCapabilities() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "serializer"
+            id = "protobuf"
+            version = "0.1.0"
+            
+            [serializer]
+            type = "protobuf"
+            
+            [serializer.capabilities]
+            message-formats = ["protobuf"]
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNotNull(metadata.getSerializer());
+        assertEquals("protobuf", metadata.getSerializer().getType());
+        assertEquals(List.of("protobuf"), metadata.getSerializer().getCapabilities().getMessageFormats());
+    }
+
+    @Test
+    @DisplayName("serializer.capabilities.message-formats defaults to empty when capabilities section absent")
+    void serializerCapabilitiesDefaultToEmptyWhenAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "serializer"
+            id = "json"
+            version = "0.1.0"
+            
+            [serializer]
+            type = "json"
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNotNull(metadata.getSerializer().getCapabilities());
+        assertTrue(metadata.getSerializer().getCapabilities().getMessageFormats().isEmpty());
+    }
+
+    @Test
+    @DisplayName("serializer section is null for non-serializer artifacts")
+    void serializerSectionNullForNonSerializerArtifacts() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "inventory"
+            version = "1.0.0"
+            """;
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+        assertNull(metadata.getSerializer());
+    }
+
+    @Test
+    @DisplayName("unknown fields in serializer and serializer.capabilities sections are ignored")
+    void unknownFieldsInSerializerSectionIgnored() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "serializer"
+            id = "protobuf"
+            version = "0.1.0"
+            
+            [serializer]
+            type = "protobuf"
+            future-field = "ignored"
+            
+            [serializer.capabilities]
+            message-formats = ["protobuf"]
+            future-capability = "ignored"
+            """;
+        assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
     }
 
     @Test

@@ -18,7 +18,9 @@ import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.ReconstructibleExceptionRegistry;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
+import io.itara.spi.serializer.SerializerConfig;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.transport.ItaraTransportConfig;
@@ -194,7 +196,11 @@ public class ItaraAgent {
                 String transportId = conn.getTransport().getId();
                 ItaraTransportConfig transportConfig = transportRegistry.parseConfig(transportId, rawConfig);
                 ItaraTransport transport = transportRegistry.getOrCreate(transportId, transportConfig);
-                ItaraSerializer serializer = serializerRegistry.get(conn.getSerializer());
+
+                SerializerConfig rawSerializerConfig = buildSerializerConfig(conn);
+                String serializerId = conn.getSerializer().getId();
+                ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
+                ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
 
                 Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                 Node fromNode = conn.getFrom() != null
@@ -224,7 +230,7 @@ public class ItaraAgent {
                     }
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            componentId, transportId, serializer, registry, pattern);
+                            componentId, transportId, serializer, serializerConfig, registry, pattern);
                     transport.registerListener(componentId, transportConfig, dispatcher);
 
                     log.info("[Itara] connection established id=" + transportId
@@ -265,7 +271,7 @@ public class ItaraAgent {
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(contractId, serializer, transport, transportId,
+                            new ItaraProxyHandler(contractId, serializer, serializerConfig, transport, transportId,
                                     transportConfig, pattern, failureSemantics, apiMetadata, exceptionFactory)
                     );
                     registry.preRegister(contractId, proxy);
@@ -307,6 +313,19 @@ public class ItaraAgent {
                 .handleTimeout(conn.getTransport().isHandleTimeout())
                 .params(conn.getTransport().getParams())
                 .virtualNodeAddress(virtualNodeAddress)
+                .build();
+    }
+
+    /**
+     * Builds a SerializerConfig for a connection.
+     *
+     * The wiring config's serializer field is currently a bare id string with
+     * no params block — this returns an empty params map as a stopgap until
+     * the wiring config gains a serializer.params block mirroring transport's.
+     */
+    private static SerializerConfig buildSerializerConfig(ConnectionEntry conn) {
+        return SerializerConfig.builder()
+                .params(conn.getSerializer().getParams())
                 .build();
     }
 }

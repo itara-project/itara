@@ -26,6 +26,7 @@
         <module>itara-failure-semantics-builtin</module>
         <module>archetypes</module>
         <module>test-fixtures</module>
+        <module>itara-serializer-protobuf</module>
     </modules>
 
     <properties>
@@ -80,6 +81,11 @@
                 <groupId>io.github.resilience4j</groupId>
                 <artifactId>resilience4j-timelimiter</artifactId>
                 <version>2.2.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>3.25.3</version>
             </dependency>
 
             <!-- Test dependencies — OTel SDK with in-memory exporters -->
