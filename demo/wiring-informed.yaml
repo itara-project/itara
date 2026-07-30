@@ -30,7 +30,8 @@ connections:
       params:
         host: "order_and_inventory"
         port: 8081
-    serializer: "json"
+    serializer:
+      id: "json"
   - from:
     to: "inventoryNode"
     transport:
@@ -38,7 +39,8 @@ connections:
       params:
         host: "order_and_inventory"
         port: 8081
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderNode"
     to: "paymentNode"
     transport:
@@ -47,7 +49,8 @@ connections:
       params:
         host: "payment"
         port: 8083
-    serializer: "json"
+    serializer:
+      id: "json"
     failureSemantics:
       id: built-in
       maxRetry: 3
@@ -67,7 +70,8 @@ connections:
       params:
         host: "fulfilment"
         port: 8085
-    serializer: "json"
+    serializer:
+      id: "json"
     failureSemantics:
       id: built-in
       maxRetry: 3
@@ -81,21 +85,24 @@ connections:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderNode"
     to: orderFulfilledChannel
     transport:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderNode"
     to: orderCancelledChannel
     transport:
       id: kafka
       params:
         bootstrapServers: "kafka:29092"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderReservedChannel"
     to: "notificationNode"
     transport:
@@ -103,7 +110,8 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderFulfilledChannel"
     to: "notificationNode"
     transport:
@@ -111,7 +119,8 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"
   - from: "orderCancelledChannel"
     to: "notificationNode"
     transport:
@@ -119,4 +128,5 @@ connections:
       params:
         bootstrapServers: "kafka:29092"
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: "json"

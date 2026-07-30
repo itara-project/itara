@@ -13,7 +13,7 @@ spec-version = "0.1"
 core-version = "0.1+"
 
 [serializers]
-supported = ["json"]
+supported = [ {id = "json", version = "0.1.0"}]
 
 [methods]
 non-idempotent = ["process_payment"]

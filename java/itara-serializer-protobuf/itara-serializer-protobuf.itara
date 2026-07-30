@@ -1,6 +1,6 @@
 [artifact]
 kind = "serializer"
-id = "java"
+id = "protobuf"
 version = "0.1.0"
 api-version = "0.x"
 
@@ -13,7 +13,7 @@ spec-version = "0.1"
 core-version = "0.1+"
 
 [serializer]
-type = "java"
+type = "protobuf"
 
 [serializer.capabilities]
-message-formats = []
+message-formats = ["protobuf"]

@@ -974,6 +974,13 @@ only satisfies the capability path, and vice versa. Neither `supported` nor
 connection at the agent level — both are advisory metadata for tooling, not
 an enforcement gate.
 
+This check only applies when the API artifact declares at least one of
+`message-format` (non-empty) or `[serializers] supported` (non-empty). If
+the API declares neither, there is no compatibility question to evaluate,
+and tooling MUST NOT produce a warning for this check regardless of which
+serializer is configured — this is the expected, common case for APIs
+using plain language types with no serializer restriction.
+
 ---
 
 ## 9. Observer Interface
@@ -1172,7 +1179,7 @@ The verify command MUST check for and report the following conditions:
 | Orphaned nodes | ERROR | A node is declared but not referenced in any connection |
 | Orphaned connections | ERROR | A connection references a node identifier not declared in the nodes list |
 | Unknown transport type | ERROR | A connection declares a transport type not known to this tooling installation |
-| Serializer not known compatible with API | WARNING | A connection's configured serializer satisfies neither compatibility path in §8.6: its `artifact.id`/`artifact.version` is not covered by any entry in the callee API's `[serializers] supported` list (id match with version in range), and it does not declare the callee API's non-empty `message-format` in `[serializer.capabilities] message-formats` |
+| Serializer not known compatible with API | WARNING | Only checked when the callee API declares a non-empty `message-format` or a non-empty `[serializers] supported`. When checked: satisfies neither compatibility path in §8.6 |
 
 The verify command MUST exit with a non-zero exit code if any ERROR is present.
 Warnings MUST NOT affect the exit code. This makes the verify command suitable
