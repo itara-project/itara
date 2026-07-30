@@ -17,6 +17,7 @@ const VALID_CHECKS: &[&str] = &[
     "api-version-compatibility",
     "timeout-capability",
     "transport-interrupt-safety",
+    "serializer-compatibility",
 ];
 
 enum CheckFilter {
@@ -50,7 +51,8 @@ pub struct Args {
     ///               self-connections, unknown-transport, virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
-    ///               timeout-capability, transport-interrupt-safety
+    ///               timeout-capability, transport-interrupt-safety,
+    ///               serializer-compatibility
     #[arg(long, value_name = "check", conflicts_with = "only")]
     pub skip: Vec<String>,
     /// Run only the specified check. Can be repeated. Mutually exclusive with --skip.
@@ -58,7 +60,8 @@ pub struct Args {
     ///               self-connections, unknown-transport, virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
-    ///               timeout-capability, transport-interrupt-safety
+    ///               timeout-capability, transport-interrupt-safety,
+    ///               serializer-compatibility
     #[arg(long, value_name = "check", conflicts_with = "skip")]
     pub only: Vec<String>,
 }
@@ -169,6 +172,7 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter, meta: Option<&Met
         if filter.should_run("api-version-compatibility")  { check_api_version_compatibility(config, meta, &mut issues); }
         if filter.should_run("timeout-capability")         { check_timeout_capability(config, meta, &mut issues); }
         if filter.should_run("transport-interrupt-safety") { check_transport_interrupt_safety(config, meta, &mut issues); }
+        if filter.should_run("serializer-compatibility")   { check_serializer_compatibility(config, meta, &mut issues); }
     }
 
     issues
@@ -653,6 +657,131 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
         }
     }
 }
+
+/// Flags a connection whose configured serializer is not confirmed
+/// compatible with the callee API — WARNING severity, never ERROR, per
+/// the same non-blocking posture message-format compatibility already
+/// has (spec §8.6): the agent does not enforce this either, so the CLI
+/// says "we don't know this is safe," not "this is broken."
+///
+/// Two independent paths make a connection's serializer considered
+/// compatible with its callee API — either is sufficient:
+///
+///   Explicit path: the serializer's own artifact.id/artifact.version is
+///   covered by an entry in the callee API's [serializers] supported list.
+///
+///   Capability path: the callee API's non-empty [contract] message-format
+///   appears in the serializer's [serializer.capabilities] message-formats.
+///
+/// Operates on `.itara` metadata directly (via MetadataIndex), so it
+/// produces the same result regardless of which language produced either
+/// artifact.
+///
+/// Skips direct connections (no serializer applies) and connections whose
+/// callee does not resolve to a component (virtual/event nodes are not
+/// request/response API artifacts here). Unlike api-version-compatibility,
+/// this check does not skip external connections — it only depends on the
+/// callee side, which is checkable regardless of who the caller is.
+fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
+    use semver::{Version, VersionReq};
+
+    for conn in &config.connections {
+        if conn.transport.id.eq_ignore_ascii_case("direct") {
+            continue; // no serializer applies to a direct connection
+        }
+
+        let callee_component = match config.component_of_node(&conn.to) {
+            Some(c) => c,
+            None => continue, // virtual/event node — not an API artifact
+        };
+
+        let caller_label = conn.from.as_deref()
+            .filter(|f| !f.trim().is_empty())
+            .unwrap_or("(external)");
+
+        // In real usage validate() guarantees a non-direct connection has a
+        // serializer block with a non-empty id — but this function accepts
+        // any WiringConfig, and a hand-built one (as in this file's own
+        // tests) can bypass validate() entirely. Never panic on that; skip
+        // with a warning instead, same as any other "can't check this"
+        // outcome below.
+        let serializer_id = match conn.serializer.as_ref() {
+            Some(s) => &s.id,
+            None => {
+                issues.push(Issue::warning(format!(
+                    "connection '{}' -> '{}': no serializer configured for this connection \
+                     — serializer-compatibility check skipped for this connection",
+                    caller_label, conn.to
+                )));
+                continue;
+            }
+        };
+
+        let api_meta = match meta.api(callee_component) {
+            Some(m) => m,
+            None => {
+                issues.push(Issue::warning(format!(
+                    "connection '{}' -> '{}': no API metadata found for '{}' \
+                     — serializer-compatibility check skipped for this connection",
+                    caller_label, conn.to, callee_component
+                )));
+                continue;
+            }
+        };
+
+        let serializer_meta = match meta.serializer(serializer_id) {
+            Some(m) => m,
+            None => {
+                issues.push(Issue::warning(format!(
+                    "connection '{}' -> '{}': no metadata found for serializer '{}' \
+                     — serializer-compatibility check skipped for this connection",
+                    caller_label, conn.to, serializer_id
+                )));
+                continue;
+            }
+        };
+
+        // Explicit path.
+        let explicit_match = api_meta.serializers.as_ref()
+            .map(|s| s.supported.iter().any(|entry| {
+                if !entry.id.eq_ignore_ascii_case(serializer_id) {
+                    return false;
+                }
+                match (VersionReq::parse(&entry.version), Version::parse(&serializer_meta.artifact.version)) {
+                    (Ok(req), Ok(v)) => req.matches(&v),
+                    _ => false, // unparseable range/version — not a confirmed match
+                }
+            }))
+            .unwrap_or(false);
+
+        if explicit_match {
+            continue;
+        }
+
+        // Capability path.
+        let message_format = api_meta.contract.as_ref()
+            .map(|c| c.message_format.as_str())
+            .unwrap_or("");
+
+        let capability_match = !message_format.is_empty()
+            && serializer_meta.serializer.as_ref()
+                .map(|s| s.capabilities.message_formats.iter()
+                    .any(|f| f.eq_ignore_ascii_case(message_format)))
+                .unwrap_or(false);
+
+        if capability_match {
+            continue;
+        }
+
+        issues.push(Issue::warning(format!(
+            "connection '{}' -> '{}': serializer '{}' is not confirmed compatible with API '{}' \
+             — not listed in the API's [serializers] supported entries, and its declared \
+             message format (if any) is not in the serializer's \
+             [serializer.capabilities] message-formats",
+            caller_label, conn.to, serializer_id, callee_component
+        )));
+    }
+}
  
 // ── Output ────────────────────────────────────────────────────────────────────
  
@@ -709,7 +838,7 @@ fn plural<'a>(n: usize, singular: &'a str, plural: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itara_config::{WiringConfig, Node, ComponentNode, VirtualNode, ConnectionEntry};
+    use itara_config::{WiringConfig, Node, ComponentNode, VirtualNode, ConnectionEntry, SerializerEntry};
  
     // ── Test helpers ──────────────────────────────────────────────────────────
  
@@ -737,13 +866,17 @@ mod tests {
             params,
         }
     }
+
+    fn default_serializer() -> Option<SerializerEntry> {
+        Some(SerializerEntry { id: "json".into(), params: Default::default() })
+    }
  
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("http", Some(port)),
-            serializer: "".into(),
+            serializer: default_serializer(),
             failure_semantics: None,
         }
     }
@@ -753,7 +886,7 @@ mod tests {
             from: Some(from.into()),
             to: to.into(),
             transport: transport_entry("direct", None),
-            serializer: "".into(),
+            serializer: None,
             failure_semantics: None,
         }
     }
@@ -763,7 +896,7 @@ mod tests {
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("kafka", None),
-            serializer: "json".into(),
+            serializer: default_serializer(),
             failure_semantics: None,
         }
     }
@@ -773,9 +906,17 @@ mod tests {
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry(transport, Some(port)),
-            serializer: "".into(),
+            serializer: default_serializer(),
             failure_semantics: None,
         }
+    }
+
+    /// Overrides the serializer id on an already-built connection.
+    /// Used by tests that need a specific serializer id rather than the
+    /// "json" default the other helpers use.
+    fn with_serializer_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
+        conn.serializer = Some(SerializerEntry { id: id.into(), params: Default::default() });
+        conn
     }
  
     fn config(nodes: Vec<Node>, connections: Vec<ConnectionEntry>) -> WiringConfig {
@@ -1074,7 +1215,7 @@ mod tests {
                     from: Some("channel".into()),
                     to: "consumerNode".into(),
                     transport: transport_entry("http", Some(8081)),
-                    serializer: "json".into(),
+                    serializer: default_serializer(),
                     failure_semantics: None,
                 },
             ],
@@ -1151,7 +1292,7 @@ mod tests {
                 handle_timeout: transport_handle_timeout,
                 params: Default::default(),
             },
-            serializer: "json".into(),
+            serializer: default_serializer(),
             failure_semantics: Some(itara_config::FailureSemanticsEntry {
                 id: fs_id.into(),
                 timeout: timeout.map(Into::into),
@@ -1202,7 +1343,7 @@ api-version = "{api_version}"
             &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
-        assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
+        assert!(errors(&issues).is_empty(), "unexpected issues: {:?}", issues);
     }
 
     #[test]
@@ -1217,7 +1358,7 @@ api-version = "{api_version}"
             &transport_meta("http", true, true),
         ]);
         let issues = collect_issues(&cfg, &CheckFilter::All, Some(&meta));
-        assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
+        assert!(errors(&issues).is_empty(), "unexpected issues: {:?}", issues);
     }
 
     #[test]
@@ -1969,6 +2110,188 @@ version = "0.1.0"
         // Expect: 1 orphaned node + 1 undeclared connection + 1 self-connection = 3
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
         assert_eq!(errors(&issues).len(), 3);
+    }
+
+    // ── check_serializer_compatibility ────────────────────────────────────────
+
+    /// Scopes collect_issues to only this check — CheckFilter::All would also
+    /// run check_unknown_transports and check_api_version_compatibility, which
+    /// need transport/component metadata these minimal fixtures don't provide,
+    /// producing unrelated errors unrelated to what these tests exercise.
+    fn only_serializer_compat() -> CheckFilter {
+        CheckFilter::Only(["serializer-compatibility".to_string()].into_iter().collect())
+    }
+
+    fn api_meta_with_supported(api_id: &str, message_format: &str, supported: &[(&str, &str)]) -> String {
+        let entries: String = supported.iter()
+            .map(|(id, version)| format!(r#"  {{ id = "{id}", version = "{version}" }},"#))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(r#"
+[artifact]
+kind = "api"
+id = "{api_id}"
+version = "1.0.0"
+
+[contract]
+message-format = "{message_format}"
+
+[serializers]
+supported = [
+{entries}
+]
+"#)
+    }
+
+    fn api_meta_no_serializers(api_id: &str) -> String {
+        format!(r#"
+[artifact]
+kind = "api"
+id = "{api_id}"
+version = "1.0.0"
+"#)
+    }
+
+    fn serializer_meta(id: &str, version: &str, message_formats: &[&str]) -> String {
+        let formats: String = message_formats.iter()
+            .map(|f| format!(r#""{f}""#))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(r#"
+[artifact]
+kind = "serializer"
+id = "{id}"
+version = "{version}"
+
+[serializer]
+type = "{id}"
+
+[serializer.capabilities]
+message-formats = [{formats}]
+"#)
+    }
+
+    #[test]
+    fn serializer_compatible_via_explicit_supported_entry() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "", &[("protobuf", "^1.0")]),
+            &serializer_meta("protobuf", "1.2.0", &[]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
+    }
+
+    #[test]
+    fn serializer_compatible_via_capability_path() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "protobuf", &[]),
+            &serializer_meta("protobuf", "1.0.0", &["protobuf"]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
+    }
+
+    #[test]
+    fn serializer_incompatible_neither_path_warns() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "", &[("json", "^1.0")]),
+            &serializer_meta("protobuf", "1.0.0", &[]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("not confirmed compatible"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(!matches[0].is_error(), "must be a warning, not an error");
+    }
+
+    #[test]
+    fn serializer_explicit_version_out_of_range_falls_back_to_capability_path() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "protobuf", &[("protobuf", "^2.0")]),
+            &serializer_meta("protobuf", "1.0.0", &["protobuf"]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        // Explicit path fails (version out of range), but capability path saves it.
+        assert!(issues.iter().all(|i| !i.message.contains("not confirmed compatible")));
+    }
+
+    #[test]
+    fn serializer_direct_connection_skipped() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![direct("caller", "callee")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "", &[]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        assert!(issues.iter().all(|i| !i.message.contains("serializer")));
+    }
+
+    #[test]
+    fn serializer_missing_api_metadata_warns_skip() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &serializer_meta("protobuf", "1.0.0", &[]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("no API metadata found"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(!matches[0].is_error());
+    }
+
+    #[test]
+    fn serializer_missing_serializer_metadata_warns_skip() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_no_serializers("comp-b"),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("no metadata found for serializer"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(!matches[0].is_error());
+    }
+
+    #[test]
+    fn serializer_compatibility_never_affects_exit_code() {
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_with_supported("comp-b", "", &[("json", "^1.0")]),
+            &serializer_meta("protobuf", "1.0.0", &[]),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        assert!(issues.iter().any(|i| i.message.contains("not confirmed compatible")));
+        assert!(errors(&issues).is_empty(), "must never produce an error");
     }
  
     // ── summary_line ──────────────────────────────────────────────────────────
