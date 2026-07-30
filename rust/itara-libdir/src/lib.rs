@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ArtifactMeta {
-    /// kind = "component" | "api" | "transport" | "serializer" | "observer"
+    /// kind = "component" | "api" | "events" | "transport" | "serializer" | "observer"
     pub kind: String,
 
     /// Component id for components and apis (e.g. "calculator").
@@ -41,16 +41,109 @@ pub struct ItaraMeta {
     #[serde(rename = "core-version", default)]
     pub core_version: String,
 }
+
+/// A single entry in the [serializers] section of an API artifact's
+/// `.itara` metadata file.
+///
+/// Declares one serializer this API artifact was compiled with support
+/// for. The id matches a serializer's artifact.id (e.g. "json",
+/// "protobuf"); the version is a semver range checked against that
+/// serializer's own artifact.version.
+///
+/// Neither field is validated here — this struct only carries the
+/// declared data. Checking a version range's syntax, and evaluating it
+/// against an actual serializer's version, is tooling's job (the CLI,
+/// which already depends on the semver crate for exactly this) — this
+/// crate does not need one.
+///
+/// Mirrors ApiDependency exactly.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SupportedSerializer {
+    /// Matches the artifact.id of a serializer implementation.
+    pub id: String,
+
+    /// Version range this artifact was compiled/verified against.
+    pub version: String,
+}
  
 /// Serializer declarations for api artifacts.
-/// Lists the serializer ids the artifact was compiled with support for.
+/// Lists the serializers the artifact was compiled with support for,
+/// each as an id + version range.
 /// Used by tooling to validate wiring config connections at configuration time.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SerializersMeta {
-    /// Serializer ids supported by this artifact (e.g. ["json", "protobuf"]).
+    /// Serializers supported by this artifact.
     /// Populated for kind = "api" artifacts only.
     #[serde(default)]
-    pub supported: Vec<String>,
+    pub supported: Vec<SupportedSerializer>,
+}
+
+/// Capability declarations for a serializer artifact.
+///
+/// Declares which message formats this serializer implementation
+/// handles beyond plain, hand-written types — e.g. a protobuf serializer
+/// declares "protobuf" here, meaning it can generically handle
+/// proto-generated types via reflection (ADR 0019).
+///
+/// Unlike TransportCapabilities, which defaults permissively (true)
+/// since a transport is assumed capable unless it says otherwise, this
+/// defaults to an empty list when the section is absent — a serializer
+/// is assumed to handle plain types only until it explicitly declares a
+/// structural message format it supports.
+///
+/// This has no bearing on error-payload handling, which is unconditional
+/// for every serializer regardless of declared message-formats (ADR 0020).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SerializerCapabilities {
+    #[serde(default, rename = "message-formats")]
+    pub message_formats: Vec<String>,
+}
+
+/// The [serializer] section of a serializer `.itara` metadata file.
+/// Only meaningful when artifact.kind = "serializer" — mirrors
+/// TransportMeta's shape, including its same non-enforcement: `type` is
+/// not required at parse time here either, exactly like transport_type
+/// isn't enforced on TransportMeta. Enforcing "this section belongs only
+/// to this kind" is left to tooling (the CLI), same as everywhere else
+/// in this crate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SerializerMeta {
+    /// The serialization category — describes what this implementation
+    /// serializes to/from, e.g. "json", "protobuf". Distinct from
+    /// artifact.id, which is the unique identifier of a specific
+    /// implementation.
+    #[serde(default, rename = "type")]
+    pub serializer_type: Option<String>,
+
+    #[serde(default)]
+    pub capabilities: SerializerCapabilities,
+}
+
+/// The [contract] section of an API artifact's `.itara` metadata file.
+/// Only meaningful when artifact.kind = "api" or artifact.kind = "events".
+///
+/// Declares the message format the contract's method parameter and
+/// return types are generated from — e.g. "protobuf" (ADR 0019). This is
+/// a structural property of the contract's own types, unrelated to
+/// which serializer ids the artifact is compatible with (see
+/// SerializersMeta) — message format and serializer choice vary
+/// independently.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ContractMeta {
+    /// The declared message format, e.g. "protobuf". Empty string is
+    /// treated identically to the section being absent entirely — both
+    /// mean the contract uses plain, hand-written types.
+    #[serde(default, rename = "message-format")]
+    pub message_format: String,
+}
+
+impl ContractMeta {
+    /// Returns true if this contract declares a message format other
+    /// than plain hand-written types. False for both an absent
+    /// [contract] section and an explicit empty-string declaration.
+    pub fn has_message_format(&self) -> bool {
+        !self.message_format.trim().is_empty()
+    }
 }
 
 /// Capability declarations for a transport artifact.
@@ -166,10 +259,19 @@ pub struct MetadataFile {
 
     #[serde(default)]
     pub itara: Option<ItaraMeta>,
- 
-    /// Declared serializers — present on kind = "api" artifacts.
+
+    /// Declared serializers — present on kind = "api" and kind = "events" artifacts.
     #[serde(default)]
     pub serializers: Option<SerializersMeta>,
+
+    /// The [contract] section — present on kind = "api" and kind = "events" artifacts that
+    /// declare a message format (ADR 0019).
+    #[serde(default)]
+    pub contract: Option<ContractMeta>,
+
+    /// The [serializer] section — present on kind = "serializer" artifacts.
+    #[serde(default)]
+    pub serializer: Option<SerializerMeta>,
 
     #[serde(default)]
     pub transport: Option<TransportMeta>,
@@ -297,13 +399,13 @@ impl LibIndex {
             .map(|e| e.lib_path.as_path())
     }
  
-    /// Return the serializer ids declared as supported by an API artifact.
+    /// Return the serializers declared as supported by an API artifact.
     /// Returns an empty slice if the artifact is not in the index or
     /// declares no serializers.
     ///
     /// Used by tooling to validate that the serializer declared in a wiring
     /// config connection is supported by both ends before the system starts.
-    pub fn supported_serializers(&self, api_id: &str) -> &[String] {
+    pub fn supported_serializers(&self, api_id: &str) -> &[SupportedSerializer] {
         self.entries
             .get(&("api".to_string(), api_id.to_lowercase()))
             .and_then(|e| e.meta.serializers.as_ref())
@@ -432,6 +534,11 @@ impl MetadataIndex {
     /// Look up a transport artifact by its artifact.id.
     pub fn transport(&self, id: &str) -> Option<&MetadataFile> {
         self.entries.get(&("transport".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up a serializer artifact by its artifact.id.
+    pub fn serializer(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("serializer".to_string(), id.to_lowercase()))
     }
 
     /// Look up a failure-semantics artifact by its artifact.id.
@@ -625,11 +732,18 @@ api-version = "1.x"
 language = "rust"
  
 [serializers]
-supported = ["json", "protobuf"]
+supported = [
+  { id = "json", version = "1.x" },
+  { id = "protobuf", version = "1.x" },
+]
 "#;
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         let serializers = meta.serializers.unwrap();
-        assert_eq!(serializers.supported, vec!["json", "protobuf"]);
+        assert_eq!(serializers.supported.len(), 2);
+        assert_eq!(serializers.supported[0].id, "json");
+        assert_eq!(serializers.supported[0].version, "1.x");
+        assert_eq!(serializers.supported[1].id, "protobuf");
+        assert_eq!(serializers.supported[1].version, "1.x");
     }
  
     #[test]
@@ -644,6 +758,73 @@ language = "rust"
 "#;
         let meta: MetadataFile = toml::from_str(toml).unwrap();
         assert!(meta.serializers.is_none());
+    }
+
+    #[test]
+    fn parses_serializer_type_and_capabilities() {
+        let toml = r#"
+[artifact]
+kind = "serializer"
+id = "protobuf"
+version = "0.1.0"
+
+[serializer]
+type = "protobuf"
+
+[serializer.capabilities]
+message-formats = ["protobuf"]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let serializer = meta.serializer.unwrap();
+        assert_eq!(serializer.serializer_type.as_deref(), Some("protobuf"));
+        assert_eq!(serializer.capabilities.message_formats, vec!["protobuf"]);
+    }
+
+    #[test]
+    fn serializer_capabilities_default_to_empty_when_capabilities_section_absent() {
+        let toml = r#"
+[artifact]
+kind = "serializer"
+id = "json"
+version = "0.1.0"
+
+[serializer]
+type = "json"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.serializer.unwrap().capabilities.message_formats.is_empty());
+    }
+
+    #[test]
+    fn serializer_section_is_none_for_non_serializer_artifacts() {
+        let toml = r#"
+[artifact]
+kind = "component"
+id = "calculator"
+version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.serializer.is_none());
+    }
+
+    #[test]
+    fn unknown_fields_in_serializer_section_ignored() {
+        let toml = r#"
+[artifact]
+kind = "serializer"
+id = "protobuf"
+version = "0.1.0"
+
+[serializer]
+type = "protobuf"
+future-field = "ignored"
+
+[serializer.capabilities]
+message-formats = ["protobuf"]
+future-capability = "ignored"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert_eq!(meta.serializer.unwrap().capabilities.message_formats, vec!["protobuf"]);
     }
  
     #[test]
@@ -918,6 +1099,86 @@ future-section-field = "also ignored"
         assert_eq!(calls[0].id, "calculator");
     }
 
+    #[test]
+    fn parses_contract_message_format() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+
+[contract]
+message-format = "protobuf"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let contract = meta.contract.unwrap();
+        assert_eq!(contract.message_format, "protobuf");
+        assert!(contract.has_message_format());
+    }
+
+    #[test]
+    fn parses_contract_message_format_on_events_artifact() {
+        // Events artifacts are contract types too — just without an
+        // implementation of their own — so [contract] applies to them
+        // exactly as it does to api artifacts.
+        let toml = r#"
+[artifact]
+kind = "events"
+id = "order-events/order-placed"
+version = "1.0.0"
+
+[contract]
+message-format = "protobuf"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let contract = meta.contract.unwrap();
+        assert_eq!(contract.message_format, "protobuf");
+        assert!(contract.has_message_format());
+    }
+
+    #[test]
+    fn contract_is_none_when_section_absent() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(meta.contract.is_none());
+    }
+
+    #[test]
+    fn message_format_defaults_to_empty_when_absent_from_declared_contract_section() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+
+[contract]
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        let contract = meta.contract.unwrap();
+        assert_eq!(contract.message_format, "");
+        assert!(!contract.has_message_format());
+    }
+
+    #[test]
+    fn explicit_empty_string_message_format_treated_identically_to_absent() {
+        let toml = r#"
+[artifact]
+kind = "api"
+id = "calculator"
+version = "1.0.0"
+
+[contract]
+message-format = ""
+"#;
+        let meta: MetadataFile = toml::from_str(toml).unwrap();
+        assert!(!meta.contract.unwrap().has_message_format());
+    }
+
     // ── MetadataIndex ─────────────────────────────────────────────────────────
 
     #[test]
@@ -1051,5 +1312,40 @@ api-version = "2.0.0"
         let dir = tempfile::tempdir().unwrap();
         let result = MetadataIndex::scan(dir.path()).unwrap();
         assert!(result.index.component("nonexistent").is_none());
+    }
+
+    #[test]
+    fn scan_serializer_lookup_by_artifact_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "itara-protobuf.itara", r#"
+[artifact]
+kind = "serializer"
+id = "protobuf"
+version = "0.1.0"
+
+[serializer]
+type = "protobuf"
+
+[serializer.capabilities]
+message-formats = ["protobuf"]
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        let meta = result.index.serializer("protobuf").unwrap();
+        assert_eq!(meta.artifact.id, "protobuf");
+        assert_eq!(
+            meta.serializer.as_ref().unwrap().capabilities.message_formats,
+            vec!["protobuf"]
+        );
+    }
+
+    #[test]
+    fn serializer_not_found_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = MetadataIndex::scan(dir.path()).unwrap();
+        assert!(result.index.serializer("nonexistent").is_none());
     }
 }

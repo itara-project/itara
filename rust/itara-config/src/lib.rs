@@ -321,6 +321,26 @@ where
     d.deserialize_map(ParamsVisitor)
 }
 
+/// The serializer block of a connection entry in the wiring configuration.
+///
+/// Mirrors TransportEntry's shape exactly.
+///
+/// Example YAML:
+///   serializer:
+///     id: json
+///     params:
+///       schemaRegistryUrl: "${SCHEMA_REGISTRY_URL:-http://localhost:8081}"
+#[derive(Debug, Clone, Deserialize)]
+pub struct SerializerEntry {
+    /// The serializer id. Required.
+    pub id: String,
+
+    /// Serializer-specific connection parameters.
+    /// Keys and values are serializer-defined.
+    #[serde(default, deserialize_with = "deserialize_params")]
+    pub params: std::collections::HashMap<String, String>,
+}
+
 /// The failureSemantics block of a connection entry in the wiring configuration.
 ///
 /// Mirrors the Java `FailureSemanticsEntry` exactly — same fields, same defaults.
@@ -383,7 +403,8 @@ pub struct FailureSemanticsEntry {
 ///         params:
 ///           host: "${CALC_HOST:-localhost}"
 ///           port: 8081
-///       serializer: json
+///       serializer:
+///         id: json
 #[derive(Debug, Clone)]
 pub struct ConnectionEntry {
     /// The calling node id. None or empty = external caller.
@@ -395,8 +416,9 @@ pub struct ConnectionEntry {
     /// Transport configuration for this connection.
     pub transport: TransportEntry,
 
-    /// The serializer type for this connection. Defaults to "json".
-    pub serializer: String,
+    /// Required serializer configuration for this connection, except for
+    /// direct (colocated) connections.
+    pub serializer: Option<SerializerEntry>,
 
     /// Optional failure semantics configuration for this connection.
     /// None means the noop implementation is used (§14.1).
@@ -409,8 +431,8 @@ struct ConnectionHelper {
     from: Option<String>,
     to: String,
     transport: TransportEntry,
-    #[serde(default = "default_serializer")]
-    serializer: String,
+    #[serde(default)]
+    serializer: Option<SerializerEntry>,
     #[serde(default, rename = "failureSemantics")]
     failure_semantics: Option<FailureSemanticsEntry>,
 }
@@ -426,10 +448,6 @@ impl<'de> serde::Deserialize<'de> for ConnectionEntry {
             failure_semantics:  h.failure_semantics,
         })
     }
-}
-
-fn default_serializer() -> String {
-    "json".to_string()
 }
 
 impl ConnectionEntry {
@@ -472,6 +490,18 @@ impl ConnectionEntry {
                 "Connection to='{}' is missing required field 'transport.id'.",
                 self.to
             )));
+        }
+        if !self.is_direct() {
+            let missing_id = match &self.serializer {
+                None => true,
+                Some(s) => s.id.trim().is_empty(),
+            };
+            if missing_id {
+                return Err(ConfigError::Invalid(format!(
+                    "Connection to='{}' is missing required field 'serializer.id'.",
+                    self.to
+                )));
+            }
         }
         Ok(())
     }
@@ -742,7 +772,8 @@ connections:
       params:
         host: "calculator"
         port: "8081"
-    serializer: "json"
+    serializer:
+      id: json
 
   - from:
     to: "gatewayNode"
@@ -750,7 +781,8 @@ connections:
       id: http
       params:
         port: "8082"
-    serializer: "json"
+    serializer:
+      id: json
 "#;
 
     #[test]
@@ -774,7 +806,7 @@ connections:
         assert_eq!(conn.transport.id, "http");
         assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("calculator"));
         assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
-        assert_eq!(conn.serializer, "json");
+        assert_eq!(conn.serializer.as_ref().unwrap().id, "json");
     }
 
     #[test]
@@ -834,14 +866,16 @@ connections:
     to: "orderPlacedChannel"
     transport:
       id: kafka
-    serializer: "json"
+    serializer:
+      id: json
   - from: "orderPlacedChannel"
     to: "orderServiceNode"
     transport:
       id: kafka
       params:
         consumerGroup: "order-consumer-group"
-    serializer: "json"
+    serializer:
+      id: json
 "#;
 
     #[test]
@@ -894,7 +928,8 @@ connections:
     to: "b"
     transport:
       id: kafka
-    serializer: "json"
+    serializer:
+      id: json
 "#;
         assert!(parse_string(yaml).is_ok());
     }
@@ -914,6 +949,8 @@ connections:
       params:
         host: *calcHost
         port: "8081"
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert_eq!(
@@ -934,6 +971,8 @@ connections:
       params:
         host: localhost
         port: "8081"
+    serializer:
+      id: json
   - *baseConn
 "#;
         let config = parse_string(yaml).unwrap();
@@ -956,6 +995,8 @@ connections:
     to: calculator
     transport:
       <<: *httpDefaults
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let conn = &config.connections[0];
@@ -980,6 +1021,8 @@ connections:
       params:
         host: localhost
         port: "9090"
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let conn = &config.connections[0];
@@ -1009,12 +1052,16 @@ connections:
       id: http
       params:
         <<: *calcParams
+    serializer:
+      id: json
   - from: gateway
     to: notifier
     transport:
       id: http
       params:
         <<: *notifParams
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let calc = &config.connections[0];
@@ -1040,6 +1087,8 @@ connections:
       params:
         host: localhost
         port: "8081"
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let conn = &config.connections[0];
@@ -1060,6 +1109,8 @@ connections:
       params:
         host: localhost
         port: "8081"
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(config.connections[0].transport.handle_timeout);
@@ -1073,6 +1124,8 @@ connections:
     to: calculator
     transport:
       id: http
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(!config.connections[0].transport.handle_timeout);
@@ -1086,6 +1139,8 @@ connections:
     to: calculator
     transport:
       id: http
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(config.connections[0].transport.params.is_empty());
@@ -1116,6 +1171,89 @@ connections:
         assert!(config.connections[0].is_direct());
     }
 
+    #[test]
+    fn direct_connection_does_not_require_serializer() {
+        // A direct connection has no serializer block at all — must not fail validation.
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: direct
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].serializer.is_none());
+    }
+
+    #[test]
+    fn serializer_block_missing_fails_validation_for_non_direct_connection() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("serializer.id"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn serializer_id_empty_fails_validation_for_non_direct_connection() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: ""
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("serializer.id"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn serializer_params_parsed_correctly() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: protobuf
+      params:
+        schemaRegistryUrl: "http://localhost:8081"
+"#;
+        let config = parse_string(yaml).unwrap();
+        let serializer = config.connections[0].serializer.as_ref().unwrap();
+        assert_eq!(serializer.id, "protobuf");
+        assert_eq!(
+            serializer.params.get("schemaRegistryUrl").map(|s| s.as_str()),
+            Some("http://localhost:8081")
+        );
+    }
+
+    #[test]
+    fn serializer_absent_params_yields_empty_map() {
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].serializer.as_ref().unwrap().params.is_empty());
+    }
+
     // ── FailureSemanticsEntry ─────────────────────────────────────────────────
 
     #[test]
@@ -1126,6 +1264,8 @@ connections:
     to: calculator
     transport:
       id: http
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(config.connections[0].failure_semantics.is_none());
@@ -1141,6 +1281,8 @@ connections:
       id: http
     failureSemantics:
       id: built-in
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let fs = config.connections[0].failure_semantics.as_ref().unwrap();
@@ -1162,6 +1304,8 @@ connections:
       id: http
     failureSemantics:
       timeout: 2s
+    serializer:
+      id: json
 "#;
         assert!(parse_string(yaml).is_err());
     }
@@ -1183,6 +1327,8 @@ connections:
       params:
         waitDuration: 500ms
         slidingWindowSize: "10"
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let fs = config.connections[0].failure_semantics.as_ref().unwrap();
@@ -1207,6 +1353,8 @@ connections:
       id: built-in
       timeout: 5s
       handleTimeout: true
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         let fs = config.connections[0].failure_semantics.as_ref().unwrap();
@@ -1224,6 +1372,8 @@ connections:
     failureSemantics:
       id: built-in
       timeout: 2s
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(config.connections[0].has_timeout());
@@ -1237,6 +1387,8 @@ connections:
     to: calculator
     transport:
       id: http
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(!config.connections[0].has_timeout());
@@ -1252,6 +1404,8 @@ connections:
       id: http
     failureSemantics:
       id: built-in
+    serializer:
+      id: json
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(!config.connections[0].has_timeout());

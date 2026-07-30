@@ -8,9 +8,13 @@ connections:
       id: http
       params:
         port: "8080"
+    serializer:
+      id: json
   - from: nodeA
     to: nodeA
     transport:
       id: http
       params:
         port: "8081"
+    serializer:
+      id: json

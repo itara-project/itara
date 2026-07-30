@@ -4,10 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * The [contract] section of an API artifact's `.itara` metadata file.
+ * The [contract] section of a contract-bearing artifact's `.itara`
+ * metadata file.
  *
- * Only meaningful when artifact.kind = "api" — ignored for all other
- * artifact kinds, by convention only. Nothing in this class or in
+ * Meaningful for artifact.kind = "api" and artifact.kind = "events" —
+ * ignored for all other artifact kinds. Nothing in this class or in
  * ItaraMetadataIndex enforces that restriction; it is a documentation
  * contract, same as TransportMeta being "only meaningful for kind =
  * transport". Enforcing it is left to tooling (the CLI).

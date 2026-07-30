@@ -253,9 +253,17 @@ fn wire_inbound(
     let component_id = config.component_of_node(&conn.to)
         .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
 
-    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport.id, port, component_id, conn.serializer);
+    // wire_inbound is only ever called for non-direct connections (see wire()) —
+    // validate() guarantees a non-direct connection has a serializer block with
+    // a non-empty id, so this is safe.
+    let serializer_id = conn.serializer.as_ref()
+        .map(|s| s.id.as_str())
+        .expect("[Itara] non-direct connection missing serializer — \
+                 should have been caught by WiringConfig::validate()");
 
-    validate_serializer(index, component_id, &conn.serializer);
+    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport.id, port, component_id, serializer_id);
+
+    validate_serializer(index, component_id, serializer_id);
 
     let transport = load_transport_for(index, &conn.transport.id, "", port);
 
@@ -269,7 +277,7 @@ fn wire_inbound(
                         "[Itara] Loaded API cdylib for '{}' — deferring dispatcher registration",
                         component_id
                     );
-                    let serializer_cstring = CString::new(conn.serializer.as_str())
+                    let serializer_cstring = CString::new(serializer_id)
                         .expect("[Itara] serializer id contains null byte");
                     transport_handled.insert(component_id.to_string());
                     deferred.push((component_id.to_string(), dispatcher_fn, serializer_cstring, transport));
@@ -311,9 +319,17 @@ fn wire_outbound(
         .unwrap_or(8080);
     let base_url = format!("http://{}:{}", host, port);
 
-    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport.id, component_id, base_url, conn.serializer);
+    // wire_outbound is only ever called for non-direct connections (see wire()) —
+    // validate() guarantees a non-direct connection has a serializer block with
+    // a non-empty id, so this is safe.
+    let serializer_id = conn.serializer.as_ref()
+        .map(|s| s.id.as_str())
+        .expect("[Itara] non-direct connection missing serializer — \
+                 should have been caught by WiringConfig::validate()");
 
-    validate_serializer(index, component_id, &conn.serializer);
+    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport.id, component_id, base_url, serializer_id);
+
+    validate_serializer(index, component_id, serializer_id);
 
     // Load the API cdylib and call itara_create_proxy with the configured transport.
     let api_lib = index.api_lib(component_id)
@@ -334,7 +350,7 @@ fn wire_outbound(
     // The serializer id is passed to the proxy factory as a null-terminated C string.
     // The proxy copies it into a Rust String internally, so the CString only needs
     // to live for the duration of this call.
-    let serializer_cstring = CString::new(conn.serializer.as_str())
+    let serializer_cstring = CString::new(serializer_id)
         .expect("[Itara] serializer id contains null byte");
 
     // SAFETY: proxy_fn is itara_create_proxy from the API cdylib.
@@ -413,10 +429,11 @@ fn validate_serializer(index: &LibIndex, component_id: &str, serializer_id: &str
         );
         return;
     }
-    if !supported.iter().any(|s| s == serializer_id) {
+    if !supported.iter().any(|s| s.id == serializer_id) {
+        let supported_ids: Vec<&str> = supported.iter().map(|s| s.id.as_str()).collect();
         panic!(
             "[Itara] Serializer mismatch for component '{}':              wiring config declares '{}' but the API artifact only supports {:?}.              Fix the wiring config or recompile the API with '{}' support.",
-            component_id, serializer_id, supported, serializer_id
+            component_id, serializer_id, supported_ids, serializer_id
         );
     }
 }
