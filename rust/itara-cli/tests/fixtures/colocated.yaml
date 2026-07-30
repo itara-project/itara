@@ -12,6 +12,8 @@ connections:
       id: http
       params:
         port: "8080"
+    serializer:
+      id: json
   - from: gatewayNode
     to: calculatorNode
     transport:
@@ -22,3 +24,5 @@ connections:
       id: http
       params:
         port: "8090"
+    serializer:
+      id: json

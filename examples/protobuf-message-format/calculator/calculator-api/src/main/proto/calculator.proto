@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+// The message types for the calculator API's contract. protoc generates
+// CalculatorRequest and CalculatorResponse from this file at build time
+// (see calculator-api/pom.xml) — these become the actual parameter and
+// return types of CalculatorService.add() below, nothing hand-written.
+package itara.examples.protobufserializer.calculator;
+
+option java_package = "com.example.calculator.api";
+option java_multiple_files = true;
+
+// CalculatorService.add()'s sole parameter. The proto serializer supports
+// at most one parameter per method (see ProtoItaraSerializer's class
+// javadoc in itara-serializer-protobuf) — this mirrors how proto/RPC APIs
+// are conventionally designed: one request message in, one response
+// message out.
+message CalculatorRequest {
+  int32 a = 1;
+  int32 b = 2;
+}
+
+message CalculatorResponse {
+  int32 result = 1;
+}

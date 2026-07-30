@@ -9,7 +9,8 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.failuresemantics.ItaraFailureSemantics;
 import io.itara.spi.failuresemantics.TransportCall;
@@ -58,16 +59,18 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final String componentId;
     private final String transportId;
     private final ItaraSerializer serializer;
+    private final ItaraSerializerConfig serializerConfig;
     private final ItaraTransport transport;
     private final ItaraTransportConfig transportConfig;
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
     private final ItaraFailureSemantics failureSemantics;
     private final Set<String> nonIdempotentMethods;
-    private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registere
+    private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registered
 
     public ItaraProxyHandler(String componentId,
                              ItaraSerializer serializer,
+                             ItaraSerializerConfig serializerConfig,
                              ItaraTransport transport,
                              String transportId,
                              ItaraTransportConfig transportConfig,
@@ -78,6 +81,7 @@ public class ItaraProxyHandler implements InvocationHandler {
         this.componentId          = componentId;
         this.transportId          = transportId;
         this.serializer           = serializer;
+        this.serializerConfig     = serializerConfig;
         this.transport            = transport;
         this.transportConfig      = transportConfig;
         this.facade               = ObservabilityFacade.instance();
@@ -105,7 +109,7 @@ public class ItaraProxyHandler implements InvocationHandler {
             Object[] safeArgs = (args == null) ? new Object[0] : args;
             byte[] payload;
             try {
-                payload = serializer.serializeArgs(safeArgs);
+                payload = serializer.serializeArgs(safeArgs, serializerConfig);
             } catch (Exception e) {
                 scope.setError(true);
                 throw new ItaraRemoteException(
@@ -142,7 +146,7 @@ public class ItaraProxyHandler implements InvocationHandler {
                     if (e.getSerializedPayload() != null) {
                         try {
                             ItaraErrorPayload errorPayload = (ItaraErrorPayload) serializer.deserializeResult(
-                                    e.getSerializedPayload(), ItaraErrorPayload.class);
+                                    e.getSerializedPayload(), ItaraErrorPayload.class, serializerConfig);
                             throw ItaraRemoteException.from(errorPayload);
                         } catch (ItaraRemoteException re) {
                             throw re;
@@ -198,7 +202,7 @@ public class ItaraProxyHandler implements InvocationHandler {
 
             // 5. Deserialize result
             try {
-                return serializer.deserializeResult(responseBytes, method.getReturnType());
+                return serializer.deserializeResult(responseBytes, method.getReturnType(), serializerConfig);
             } catch (Exception e) {
                 scope.setError(true);
                 throw new ItaraRemoteException(

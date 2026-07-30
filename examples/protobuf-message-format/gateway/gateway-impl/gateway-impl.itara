@@ -1,0 +1,17 @@
+[artifact]
+kind        = "component"
+id          = "gateway"
+version     = "1.0"
+api-version = "1.0"
+
+[runtime]
+language = "java"
+compiler = "21"
+
+[itara]
+spec-version = "0.2"
+
+[api-dependencies]
+calls = [
+    { id = "calculator", version = "1.0.0" },
+]

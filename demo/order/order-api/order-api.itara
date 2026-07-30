@@ -12,8 +12,5 @@ compiler = "1.78+"
 spec-version = "0.1"
 core-version = "0.1+"
 
-[serializers]
-supported = ["json"]
-
 [methods]
 non-idempotent = ["placeOrder", "cancelOrder"]

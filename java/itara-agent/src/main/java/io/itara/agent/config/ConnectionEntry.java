@@ -5,7 +5,9 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 import io.itara.spi.failuresemantics.FailureSemanticsConfig;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A connection declared in the wiring configuration.
@@ -49,13 +51,15 @@ public class ConnectionEntry {
     private TransportEntry transport;
 
     /**
-     * The serializer type for this connection.
-     * Defaults to "json" if not specified.
-     * Must match the type() identifier of an ItaraSerializer
-     * implementation present in itara.lib.dir.
+     * Required serializer configuration for this connection, except for
+     * direct (colocated) connections — a direct connection never crosses
+     * a process boundary, so nothing ever serializes anything on it, and
+     * validate() does not demand a serializer block for it. For every
+     * other connection there is no serializer choice that is safe to
+     * assume silently, so a missing block or a missing id within it is a
+     * configuration error (see validate()).
      */
-    @JsonSetter(nulls = Nulls.SKIP)  // keep field default if YAML value is null
-    private String serializer = "json";
+    private SerializerEntry serializer;
 
     /**
      * Optional failure semantics configuration for this connection.
@@ -72,11 +76,8 @@ public class ConnectionEntry {
     public TransportEntry getTransport()             { return transport; }
     public void setTransport(TransportEntry transport){ this.transport = transport; }
 
-    public String getSerializer() { return serializer; }
-    public void setSerializer(String serializer) {
-        this.serializer = (serializer == null || serializer.isBlank())
-                ? "json" : serializer.strip();
-    }
+    public SerializerEntry getSerializer()              { return serializer; }
+    public void setSerializer(SerializerEntry serializer){ this.serializer = serializer; }
 
     public FailureSemanticsEntry getFailureSemantics() { return failureSemantics; }
     public void setFailureSemantics(FailureSemanticsEntry failureSemantics) {
@@ -119,7 +120,7 @@ public class ConnectionEntry {
     public String toString() {
         return "ConnectionEntry{from='" + from + "', to='" + to
                 + "', transport.id='" + (transport != null ? transport.getId() : null)
-                + "', serializer='" + serializer + "'}";
+                + "', serializer.id='" + (serializer != null ? serializer.getId() : null) + "'}";
     }
 
     public void validate() {
@@ -130,6 +131,10 @@ public class ConnectionEntry {
         if (transport == null || transport.getId() == null || transport.getId().isBlank()) {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'transport.id'.");
+        }
+        if (!isDirect() && (serializer == null || serializer.getId() == null || serializer.getId().isBlank())) {
+            throw new ConfigurationException(
+                    "[Itara] Connection to='" + to + "' is missing required field 'serializer.id'.");
         }
     }
 

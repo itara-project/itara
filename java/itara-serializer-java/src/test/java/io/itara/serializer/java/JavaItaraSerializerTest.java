@@ -1,6 +1,6 @@
 package io.itara.serializer.java;
 
-import io.itara.exceptions.ItaraRemoteException;
+import io.itara.spi.serializer.ItaraSerializerConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class JavaItaraSerializerTest {
 
     private JavaItaraSerializer serializer;
+    private ItaraSerializerConfig config = JavaSerializerConfig.getINSTANCE();
 
     @BeforeEach
     void setUp() {
@@ -36,7 +37,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {3, 4};
             Class<?>[] types = {int.class, int.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(new Object[]{3, 4}, result);
         }
 
@@ -46,7 +47,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {"hello", "world"};
             Class<?>[] types = {String.class, String.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(args, result);
         }
 
@@ -56,7 +57,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {};
             Class<?>[] types = {};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertArrayEquals(new Object[]{}, result);
         }
 
@@ -66,7 +67,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {null};
             Class<?>[] types = {String.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             assertNull(result[0]);
         }
 
@@ -77,7 +78,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {point};
             Class<?>[] types = {SerializablePoint.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), types);
+                    serializer.serializeArgs(args, config), types, config);
             SerializablePoint deserialized = (SerializablePoint) result[0];
             assertEquals(3, deserialized.x);
             assertEquals(7, deserialized.y);
@@ -91,7 +92,7 @@ public class JavaItaraSerializerTest {
             Object[] args = {42, "hello"};
             Class<?>[] wrongTypes = {String.class, Integer.class};
             Object[] result = serializer.deserializeArgs(
-                    serializer.serializeArgs(args), wrongTypes);
+                    serializer.serializeArgs(args, config), wrongTypes, config);
             assertEquals(42, result[0]);
             assertEquals("hello", result[1]);
         }
@@ -104,16 +105,16 @@ public class JavaItaraSerializerTest {
         @Test
         @DisplayName("roundtrips a normal integer return value")
         void intResult() throws Exception {
-            byte[] bytes = serializer.serializeResult(42);
-            Object result = serializer.deserializeResult(bytes, int.class);
+            byte[] bytes = serializer.serializeResult(42, config);
+            Object result = serializer.deserializeResult(bytes, int.class, config);
             assertEquals(42, result);
         }
 
         @Test
         @DisplayName("roundtrips a String return value")
         void stringResult() throws Exception {
-            byte[] bytes = serializer.serializeResult("hello");
-            Object result = serializer.deserializeResult(bytes, String.class);
+            byte[] bytes = serializer.serializeResult("hello", config);
+            Object result = serializer.deserializeResult(bytes, String.class, config);
             assertEquals("hello", result);
         }
 
@@ -121,9 +122,9 @@ public class JavaItaraSerializerTest {
         @DisplayName("roundtrips a serializable custom object")
         void customObjectResult() throws Exception {
             SerializablePoint point = new SerializablePoint(5, 10);
-            byte[] bytes = serializer.serializeResult(point);
+            byte[] bytes = serializer.serializeResult(point, config);
             SerializablePoint result = (SerializablePoint)
-                    serializer.deserializeResult(bytes, SerializablePoint.class);
+                    serializer.deserializeResult(bytes, SerializablePoint.class, config);
             assertEquals(5, result.x);
             assertEquals(10, result.y);
         }
@@ -131,8 +132,8 @@ public class JavaItaraSerializerTest {
         @Test
         @DisplayName("returns null for Void.TYPE regardless of payload")
         void voidReturn() throws Exception {
-            byte[] bytes = serializer.serializeResult(null);
-            Object result = serializer.deserializeResult(bytes, Void.TYPE);
+            byte[] bytes = serializer.serializeResult(null, config);
+            Object result = serializer.deserializeResult(bytes, Void.TYPE, config);
             assertNull(result);
         }
     }

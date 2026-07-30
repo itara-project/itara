@@ -11,3 +11,9 @@ compiler = "21"
 [itara]
 spec-version = "0.1"
 core-version = "0.1+"
+
+[serializer]
+type = "java"
+
+[serializer.capabilities]
+message-formats = []

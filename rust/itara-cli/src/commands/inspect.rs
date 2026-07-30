@@ -428,7 +428,7 @@ mod tests {
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("http", Some(port)),
-            serializer: "".into(),
+            serializer: None,
             failure_semantics: None,
         }
     }
@@ -438,7 +438,7 @@ mod tests {
             from: Some(from.into()),
             to: to.into(),
             transport: transport_entry("direct", None),
-            serializer: "".into(),
+            serializer: None,
             failure_semantics: None,
         }
     }

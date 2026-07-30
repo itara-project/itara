@@ -1,8 +1,7 @@
 package io.itara.agent;
 
-
 import io.itara.runtime.SerializerRegistry;
-import io.itara.spi.ItaraSerializer;
+import io.itara.spi.serializer.ItaraSerializerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -22,7 +21,7 @@ import java.util.logging.Logger;
  *
  * Example (in itara-serializer-json.jar):
  *   # JSON serializer for Itara
- *   itara.serializer.json.JsonSerializer
+ *   itara.serializer.json.JsonSerializerFactory
  *
  * The agent calls SerializerLoader.load() during premain, before any
  * connections are processed. Discovered serializers are registered in
@@ -68,18 +67,18 @@ public class SerializerLoader {
 
                 try {
                     Class<?> cls = classLoader.loadClass(line);
-                    if (!ItaraSerializer.class.isAssignableFrom(cls)) {
-                        log.warning("[Itara] skipping serializer class=" + line
-                                + " reason=does not implement ItaraSerializer");
+                    if (!ItaraSerializerFactory.class.isAssignableFrom(cls)) {
+                        log.warning("[Itara] skipping serializer factory class=" + line
+                                + " reason=does not implement ItaraSerializerFactory");
                         continue;
                     }
-                    ItaraSerializer serializer =
-                            (ItaraSerializer) cls.getDeclaredConstructor().newInstance();
-                    SerializerRegistry.instance().register(serializer);
+                    ItaraSerializerFactory factory =
+                            (ItaraSerializerFactory) cls.getDeclaredConstructor().newInstance();
+                    SerializerRegistry.instance().registerFactory(factory);
                 } catch (ClassNotFoundException e) {
-                    log.warning("[Itara] serializer class not found class=" + line);
+                    log.warning("[Itara] serializer factory class not found class=" + line);
                 } catch (Exception e) {
-                    log.warning("[Itara] failed to instantiate serializer class="
+                    log.warning("[Itara] failed to instantiate serializer factory class="
                             + line + " error=" + e.getMessage());
                 }
             }

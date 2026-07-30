@@ -13,4 +13,5 @@ connections:
       params:
         host: "localhost"
         port: 8081
-    serializer: "json"
+    serializer:
+      id: "json"

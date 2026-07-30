@@ -1,4 +1,4 @@
-package io.itara.spi;
+package io.itara.spi.serializer;
 
 /**
  * Service Provider Interface for Itara serializers.
@@ -10,10 +10,13 @@ package io.itara.spi;
  *
  * Implementations live in separate jars (itara-serializer-json,
  * itara-serializer-java, etc.) and are discovered by the agent at startup
- * via META-INF/itara/serializer on the classpath.
+ * via META-INF/itara/serializer on the classpath. Each descriptor entry
+ * names an {@link ItaraSerializerFactory} implementation, not this interface
+ * directly — the factory is what the agent instantiates, and it in turn
+ * produces instances of this interface via {@link ItaraSerializerFactory#create}.
  *
- * The serializer type string (e.g. "json", "java") must match the
- * serializer field in the wiring config connection entries. If no
+ * The serializer type string (e.g. "json", "java") must match the id field
+ * in the serializer block of a connection's wiring config entry. If no
  * serializer is specified for a connection, the agent defaults to "json".
  *
  * A serializer is resolved once per connection at startup and held as a
@@ -22,7 +25,14 @@ package io.itara.spi;
  * concerns, not runtime concerns.
  *
  * Multiple serializer implementations may be active simultaneously if
- * different connections declare different serializer types.
+ * different connections declare different serializer types. A single
+ * instance may also serve multiple connections at once when their configs
+ * share the same grouping key (see {@link ItaraSerializerFactory}).
+ *
+ * Every implementation must additionally be capable of serializing and
+ * deserializing the fixed error payload structure ({@code ItaraErrorPayload}),
+ * unconditionally — this is a baseline obligation independent of whatever
+ * business-payload strategy the implementation otherwise uses. See ADR 0020.
  */
 public interface ItaraSerializer {
 
@@ -40,13 +50,17 @@ public interface ItaraSerializer {
      * The args array corresponds directly to the method parameter list —
      * order and length are preserved.
      *
-     * @param args  The method arguments to serialize. May be empty but
-     *              never null. Individual elements may be null if the
-     *              method parameter type permits it.
-     * @return      A byte array representing the serialized arguments
+     * @param args   The method arguments to serialize. May be empty but
+     *               never null. Individual elements may be null if the
+     *               method parameter type permits it.
+     * @param config The parsed, connection-specific serializer config —
+     *               the same instance is shared by every call on this
+     *               connection, and by every other connection with an
+     *               equal grouping key.
+     * @return       A byte array representing the serialized arguments
      * @throws Exception if serialization fails for any argument
      */
-    byte[] serializeArgs(Object[] args) throws Exception;
+    byte[] serializeArgs(Object[] args, ItaraSerializerConfig config) throws Exception;
 
     /**
      * Deserialize method arguments on the receiving side.
@@ -62,12 +76,16 @@ public interface ItaraSerializer {
      * @param bytes       The serialized argument bytes produced by serializeArgs
      * @param paramTypes  The declared parameter types of the contract method,
      *                    in the same order as the original args array
+     * @param config      The parsed, connection-specific serializer config —
+     *                    the same instance is shared by every call on this
+     *                    connection, and by every other connection with an
+     *                    equal grouping key.
      * @return            The reconstructed argument array, ready for method
      *                    invocation. Must match paramTypes in length and
      *                    assignability.
      * @throws Exception  if deserialization fails for any argument
      */
-    Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes) throws Exception;
+    Object[] deserializeArgs(byte[] bytes, Class<?>[] paramTypes, ItaraSerializerConfig config) throws Exception;
 
     /**
      * Serialize a return value for transport back to the caller.
@@ -79,10 +97,14 @@ public interface ItaraSerializer {
      *
      * @param result  The return value to serialize. May be null for void
      *                methods that completed normally.
+     * @param config  The parsed, connection-specific serializer config —
+     *                the same instance is shared by every call on this
+     *                connection, and by every other connection with an
+     *                equal grouping key.
      * @return        A byte array representing the serialized result
      * @throws Exception if serialization fails
      */
-    byte[] serializeResult(Object result) throws Exception;
+    byte[] serializeResult(Object result, ItaraSerializerConfig config) throws Exception;
 
     /**
      * Deserialize a return value on the caller side.
@@ -96,9 +118,13 @@ public interface ItaraSerializer {
      * @param returnType  The type to deserialize into. The declared return
      *                    type of the contract method on success, an exception
      *                    class on error. Void.TYPE for void methods — return null.
+     * @param config      The parsed, connection-specific serializer config —
+     *                    the same instance is shared by every call on this
+     *                    connection, and by every other connection with an
+     *                    equal grouping key.
      * @return            The reconstructed object, assignable to returnType,
      *                    or null for void methods
      * @throws Exception  if deserialization fails
      */
-    Object deserializeResult(byte[] bytes, Class<?> returnType) throws Exception;
+    Object deserializeResult(byte[] bytes, Class<?> returnType, ItaraSerializerConfig config) throws Exception;
 }

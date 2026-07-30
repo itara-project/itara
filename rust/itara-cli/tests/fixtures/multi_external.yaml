@@ -10,14 +10,20 @@ connections:
       id: http
       params:
         port: "8080"
+    serializer:
+      id: json
   - to: apiNode
     transport:
       id: http
       params:
         port: "9090"
+    serializer:
+      id: json
   - from: apiNode
     to: workerNode
     transport:
       id: http
       params:
         port: "8081"
+    serializer:
+      id: json

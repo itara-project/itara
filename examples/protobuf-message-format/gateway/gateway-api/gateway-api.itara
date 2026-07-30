@@ -1,0 +1,11 @@
+[artifact]
+kind        = "api"
+id          = "gateway"
+version     = "1.0"
+api-version = "1.0"
+
+[runtime]
+language = "java"
+
+[itara]
+spec-version = "0.2"
