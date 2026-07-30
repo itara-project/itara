@@ -664,8 +664,17 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
 /// has (spec §8.6): the agent does not enforce this either, so the CLI
 /// says "we don't know this is safe," not "this is broken."
 ///
-/// Two independent paths make a connection's serializer considered
-/// compatible with its callee API — either is sufficient:
+/// This check only applies at all when the API artifact declares at least
+/// one of a non-empty [contract] message-format or a non-empty
+/// [serializers] supported list. An API declaring neither has no
+/// compatibility question to evaluate — this is the common case for
+/// plain-DTO APIs with no serializer restriction (e.g. most Java
+/// runtime-plugin-style components), and produces no issue at all, not
+/// even a downgraded warning (spec §8.6).
+///
+/// Where the check does apply, two independent paths make a connection's
+/// serializer considered compatible with its callee API — either is
+/// sufficient:
 ///
 ///   Explicit path: the serializer's own artifact.id/artifact.version is
 ///   covered by an entry in the callee API's [serializers] supported list.
@@ -728,6 +737,26 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
                 continue;
             }
         };
+
+        // Spec §8.6: this check only applies when the API artifact declares
+        // at least one of message-format (non-empty) or [serializers]
+        // supported (non-empty). A plain-DTO API declaring neither has no
+        // compatibility question to evaluate — not even a missing-metadata
+        // warning for the configured serializer, since there is nothing
+        // this check needs that metadata for in that case. This is the
+        // expected, common case for APIs with no serializer restriction at
+        // all (e.g. most Java runtime-plugin-style components), so it must
+        // stay silent, not just downgraded to a warning.
+        let message_format = api_meta.contract.as_ref()
+            .map(|c| c.message_format.as_str())
+            .unwrap_or("");
+        let declares_supported = api_meta.serializers.as_ref()
+            .map(|s| !s.supported.is_empty())
+            .unwrap_or(false);
+
+        if message_format.is_empty() && !declares_supported {
+            continue;
+        }
 
         let serializer_meta = match meta.serializer(serializer_id) {
             Some(m) => m,
@@ -2269,7 +2298,7 @@ message-formats = [{formats}]
             vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
         );
         let meta = index_from_toml(&[
-            &api_meta_no_serializers("comp-b"),
+            &api_meta_with_supported("comp-b", "", &[("protobuf", "^1.0")]),
         ]);
         let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
         let matches: Vec<_> = issues.iter()
@@ -2277,6 +2306,23 @@ message-formats = [{formats}]
             .collect();
         assert_eq!(matches.len(), 1);
         assert!(!matches[0].is_error());
+    }
+
+    #[test]
+    fn serializer_api_declaring_neither_field_produces_no_issue() {
+        // Spec §8.6: an API declaring neither message-format nor supported
+        // serializers has no compatibility question to evaluate — this is
+        // the common plain-DTO case and must stay completely silent, not
+        // just downgraded to a warning.
+        let cfg = config(
+            vec![node("caller", "comp-a"), node("callee", "comp-b")],
+            vec![with_serializer_id(http(Some("caller"), "callee", 8081), "protobuf")],
+        );
+        let meta = index_from_toml(&[
+            &api_meta_no_serializers("comp-b"),
+        ]);
+        let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
+        assert!(issues.is_empty(), "unexpected issues: {:?}", issues);
     }
 
     #[test]
