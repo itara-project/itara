@@ -648,14 +648,20 @@ Every error that occurs during a component interaction MUST be classified into o
 | `CHECKED` | The component executed and rejected the request through its declared error path. This is a contract condition the caller is expected to handle. |
 | `RUNTIME` | The component executed but failed in an uncontrolled way — an undeclared exception or error. |
 | `TRANSPORT` | The Itara infrastructure failed. The component may or may not have been invoked. Registry lookup, serialization, or the network layer failed. |
+| `PERMISSION` | The caller was not permitted to make this call — authentication failed or authorization denied it. |
  
 Classification is the responsibility of the agent's dispatcher layer, not the transport.
+
+Additional `ErrorKind` values MAY be introduced by future versions of this
+specification. A conforming implementation encountering an `ErrorKind` it
+does not recognise MUST handle it in a well-defined way rather than fail
+unpredictably.
  
 #### 6.6.2 Error Payload
  
 When an error occurs on the callee side, the agent MUST produce a structured error payload before the error reaches the transport. The payload MUST carry:
  
-- The error kind — one of `CHECKED`, `RUNTIME`, `TRANSPORT`
+- The error kind — one of `CHECKED`, `RUNTIME`, `TRANSPORT`, `PERMISSION`
 - A platform-specific identifier for the original error type, sufficient to identify it on the caller side. The format of this identifier is defined by each language implementation.
 - The message from the original error
 
@@ -671,6 +677,7 @@ The dispatcher MUST:
 - Construct an `ItaraErrorPayload` from the classified error
 - Serialize the payload using the connection's configured serializer before the error propagates to the transport
 - Attach the serialized bytes to the error signal passed to the transport
+
 Every error that leaves the dispatcher MUST carry a serialized payload. The transport MUST NOT receive an error with an empty or absent payload.
  
 #### 6.6.4 Proxy Responsibilities
@@ -682,7 +689,7 @@ The proxy MUST:
 - Reconstruct the caller-side error representation from the payload
 - If deserialization of the error payload fails for any reason, treat the failure as a `TRANSPORT` error
 
-For `RUNTIME` and `TRANSPORT` errors, the proxy MUST surface the error as the platform's `ItaraRemoteException` equivalent. For `CHECKED` errors, the proxy MUST attempt reconstruction into the original error type if the error type supports it (§6.6.6). If reconstruction is not supported or fails, the proxy MUST fall back to the platform's `ItaraRemoteException` equivalent. The proxy MUST NOT silently discard any error.
+For `RUNTIME`, `TRANSPORT` and `PERMISSION` errors, the proxy MUST surface the error as the platform's `ItaraRemoteException` equivalent. For `CHECKED` errors, the proxy MUST attempt reconstruction into the original error type if the error type supports it (§6.6.6). If reconstruction is not supported or fails, the proxy MUST fall back to the platform's `ItaraRemoteException` equivalent. The proxy MUST NOT silently discard any error.
  
 #### 6.6.5 Transport Responsibilities
  
@@ -695,6 +702,7 @@ The transport MAY map error kinds to transport-level status signals. For HTTP tr
 | `CHECKED` | 422 Unprocessable Entity |
 | `RUNTIME` | 500 Internal Server Error |
 | `TRANSPORT` | 503 Service Unavailable |
+| `PERMISSION` | 403 Forbidden |
  
 Protocol-level failures that prevent payload delivery — such as HTTP 400 or 405 — carry no error payload and MUST be treated as `TRANSPORT` errors by the proxy.
 
@@ -723,7 +731,7 @@ If the error type does not declare support for reconstruction, or if reconstruct
  
 **Scope**
  
-Reconstruction applies to `CHECKED` errors only. `RUNTIME` and `TRANSPORT` errors are always surfaced as the platform's `ItaraRemoteException` equivalent. These are not declared on the contract and the caller is not expected to handle them as typed errors.
+Reconstruction applies to `CHECKED` errors only. `RUNTIME`, `TRANSPORT` and `PERMISSION` errors are always surfaced as the platform's `ItaraRemoteException` equivalent. These are not declared on the contract and the caller is not expected to handle them as typed errors.
  
 **Language neutrality**
  
@@ -831,6 +839,12 @@ starting a listener that:
 A transport instance MAY serve multiple components simultaneously. The agent
 MAY register multiple dispatchers on the same transport instance before
 starting it, provided all registrations share the same grouping key.
+
+A transport MUST convey the information needed to route and identify an
+inbound call — at minimum the node, component, and method being invoked —
+independently of the serialized payload bytes, so that this information is
+available before the payload is deserialized. A transport MUST NOT require
+deserializing the payload to determine where or what is being called.
 
 ### 7.6 Listener Lifecycle
 
@@ -1839,6 +1853,248 @@ principle across the Itara tooling model:
   MUST NOT block deployment.
 The ability to distinguish these statically — without running the system — is
 a core value of the Itara tooling model.
+
+---
+ 
+## 15. Authentication SPI
+ 
+### 15.1 Summary
+ 
+The authentication SPI verifies that a caller's claimed identity is
+genuine, at the topology layer. A single implementation owns the complete
+verification strategy for a connection — reading whatever identity signal
+is available (a transport-surfaced credential, a header, a token) and
+producing a verified identity, or rejecting the call outright. Component
+code is unaware of it.
+ 
+This concerns node identity, not end-user identity (see Identity,
+Authentication in the glossary).
+ 
+A conforming Itara implementation MUST provide a built-in no-op
+authentication implementation. In the absence of authentication
+configuration on a connection, no verification is performed and no
+identity is asserted. This is the default behaviour.
+ 
+### 15.2 Authentication Type Identifier
+ 
+Every authentication implementation MUST declare a type identifier — a
+non-empty, case-insensitive string — by which it is referenced in the
+wiring configuration. The following identifier is reserved:
+ 
+| Identifier | Meaning |
+|------------|---------|
+| `noop` | No authentication. No identity is verified or asserted. This is the default. |
+ 
+This specification does not reserve identifiers for specific authentication
+mechanisms (mTLS, shared secret, JWT, or otherwise), and does not model
+these mechanisms into categories. Selecting, operating, and securing the
+underlying mechanism is the implementation's and the deployment's concern,
+not this specification's. Implementations MAY define additional type
+identifiers under any non-reserved name.
+ 
+### 15.3 Plugin Discovery
+ 
+Authentication implementations are discovered via their companion `.itara`
+metadata file, which MUST declare `kind = "authentication"` and an
+`[authentication]` section, mirroring the pattern established for
+transports (§7.3) and serializers (§8.3).
+ 
+An authentication artifact MUST export a factory that the agent uses to
+parse connection configurations and create authentication instances. The
+factory MUST accept the raw authentication configuration from the wiring
+config (`params` map) and return a typed, implementation-specific
+configuration object. The factory MAY provide a grouping key determining
+whether two connections share an authentication instance, mirroring §7.3
+and §8.3, where doing so is meaningful for a given implementation (for
+example, one shared client for a JWKS endpoint rather than one per
+connection).
+ 
+### 15.4 Wiring Configuration
+ 
+An authentication implementation is selected per connection by referencing
+its type identifier in the wiring configuration, in the same `{ id, params
+}` block shape already established for transport, serializer, and failure
+semantics. Authentication configuration is per-connection, not global and
+not per-node — the same two nodes may require different authentication on
+different connections (for example, a connection within a trusted subnet
+versus a connection accepting traffic from a less trusted one).
+ 
+An authentication reference without a type identifier is a configuration
+error. The agent MUST NOT start in this state.
+
+### 15.5 Caller Side
+
+Before dispatch, an authentication implementation configured on the
+caller side MUST produce an identity assertion and attach it to the
+call's propagated header information (§7.4), under a well-known key,
+alongside anything else attached there. This applies only when the
+identity is not already conveyed by the transport connection itself —
+for example, an mTLS peer certificate presented during the TLS
+handshake requires no caller-side action here; the transport already
+carries it, and an authentication implementation configured for that
+case has nothing further to do on the caller side.
+
+Where the caller side does have work to do, it is exactly this: produce
+the identity, attach it to the propagated headers. The transport carries
+it exactly as it carries every other header — opaque, unread, unmodified.
+No transport-level change is required to support this.
+ 
+### 15.6 Callee Side
+ 
+An authentication implementation is given whatever identity signal is
+available for the call — this MAY include a transport-surfaced,
+connection-level credential (for example, a TLS peer certificate the
+transport terminated and surfaced; see §7.4) and MAY include message-level
+signals already present in context or headers, independent of the
+transport used. The implementation is responsible for verifying the signal
+and producing a verified identity, or determining that verification
+failed.
+ 
+An identity MUST be represented as a structured type carrying at least:
+
+- Subject identification sufficient to identify the caller (for example, a
+  principal and a short display name)
+- Issuer and trust metadata — what vouched for this identity and by what
+  mechanism
+- Security scope and claims — whatever additional claims the
+  authentication mechanism produced, as an open, extensible set
+
+Implementations MUST be able to extend this representation with
+additional fields beyond the minimum. The exact representation — data
+types, field names, how much detail beyond the minimum is captured — is
+an implementation decision, not prescribed by this specification.
+ 
+A conforming implementation MAY reject a call outright when verification
+fails or the expected signal is absent. Whether rejection occurs, and under
+what conditions, is implementation- and configuration-defined — this
+specification does not mandate a single policy.
+ 
+A conforming implementation MUST NOT perform serialization or
+deserialization of method arguments or return values. It operates on
+context and identity signals, never on deserialized business payloads, and
+MAY be evaluated before argument deserialization occurs.
+ 
+A conforming implementation MAY emit custom observability events via the
+observer SPI custom span extension (§9.7). It MUST NOT emit the four key
+events (`CALL_SENT`, `CALL_RECEIVED`, `RETURN_SENT`, `RETURN_RECEIVED`).
+Those events remain the exclusive responsibility of the proxy and
+dispatcher, and their placement at the business/topology boundary is
+unaffected by authentication (see ADR 0017 for the equivalent reasoning
+applied to failure semantics). A call rejected by authentication MUST NOT
+result in `CALL_RECEIVED` — the call never reaches the boundary between
+topology and business layer that event marks.
+ 
+A rejected authentication is surfaced as a `PERMISSION` error.
+ 
+### 15.7 Authentication Independence
+ 
+An authentication implementation MUST NOT:
+ 
+- Require modification of any component contract or implementation
+- Require the calling or called component to be aware of which
+  authentication implementation, if any, is configured for a connection
+- Perform serialization or deserialization of method arguments or return
+  values
+---
+ 
+## 16. Authorization SPI
+ 
+### 16.1 Summary
+ 
+The authorization SPI decides whether an authenticated caller is permitted
+to invoke a specific operation — a topology-layer concern about which node
+may call what. A single implementation owns the complete authorization
+decision for a connection. Component code is unaware of it.
+ 
+This concerns node-to-node permission, not end-user permission (see
+Identity, Authorization in the glossary).
+ 
+A conforming Itara implementation MUST provide a built-in no-op
+authorization implementation. In the absence of authorization
+configuration on a connection, every call is permitted. This is the
+default behaviour.
+ 
+### 16.2 Authorization Type Identifier
+ 
+Every authorization implementation MUST declare a type identifier — a
+non-empty, case-insensitive string — by which it is referenced in the
+wiring configuration. The following identifier is reserved:
+ 
+| Identifier | Meaning |
+|------------|---------|
+| `noop` | No authorization. Every call is permitted. This is the default. |
+ 
+As with authentication (§15.2), this specification does not reserve
+identifiers for specific authorization mechanisms (RBAC, ACL, policy engine
+integration, or otherwise) and does not model these into categories.
+Implementations MAY define additional type identifiers under any
+non-reserved name.
+ 
+### 16.3 Plugin Discovery
+ 
+Authorization implementations are discovered via their companion `.itara`
+metadata file, which MUST declare `kind = "authorization"` and an
+`[authorization]` section, mirroring §15.3.
+ 
+An authorization artifact MUST export a factory that the agent uses to
+parse connection configurations and create authorization instances,
+following the same pattern as §15.3.
+ 
+### 16.4 Wiring Configuration
+ 
+An authorization implementation is selected per connection by referencing
+its type identifier in the wiring configuration, in the same `{ id, params
+}` block shape established elsewhere. Authorization configuration is
+per-connection, matching authentication (§15.4) and for the same reason.
+ 
+An authorization reference without a type identifier is a configuration
+error. The agent MUST NOT start in this state.
+ 
+### 16.5 SPI Contract
+ 
+An authorization implementation is given the identity authentication
+produced for the call (§15.6) — or the absence of one, when no
+authentication is configured — together with an identification of the
+operation being invoked. The operation MUST be identified in
+transport-agnostic terms, fully and unambiguously qualified: the node,
+component, and method being called, not a transport-specific address such
+as an HTTP path. The node is required alongside the component because a
+single component may be referenced by multiple nodes (see Node, Deployment
+Group in the glossary) — component and method alone would leave rules
+unable to distinguish between them. How an implementation composes these
+three pieces of information, plus the identity, into its own rule format
+is entirely up to it; this specification only guarantees that all four are
+available to it.
+ 
+The implementation returns a decision: permit or deny. It MAY consult
+whatever policy source it is configured with — a config file, a rules
+engine, a third-party policy service — none of which is this
+specification's concern.
+ 
+A conforming implementation MUST NOT perform serialization or
+deserialization of method arguments or return values. It operates on the
+identity and the method identifier, never on deserialized argument values,
+and MAY be evaluated before argument deserialization occurs.
+ 
+A conforming implementation MAY emit custom observability events via the
+observer SPI custom span extension (§9.7). It MUST NOT emit the four key
+events. A call denied by authorization MUST NOT result in `CALL_RECEIVED`,
+for the same reason stated in §15.6.
+ 
+A denied authorization is surfaced as a `PERMISSION` error, same as an
+authentication rejection (§6.6 addition, above).
+ 
+### 16.6 Authorization Independence
+ 
+An authorization implementation MUST NOT:
+ 
+- Require modification of any component contract or implementation
+- Require the calling or called component to be aware of which
+  authorization implementation, if any, is configured for a connection
+- Perform serialization or deserialization of method arguments or return
+  values
+- Make decisions based on deserialized business payload contents — only
+  on identity and the operation being invoked
  
 ---
 
