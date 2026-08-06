@@ -1,13 +1,9 @@
 package io.itara.agent.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.annotation.Nulls;
 import io.itara.spi.failuresemantics.FailureSemanticsConfig;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * A connection declared in the wiring configuration.
@@ -67,6 +63,9 @@ public class ConnectionEntry {
      */
     private FailureSemanticsEntry failureSemantics;
 
+    private AuthenticationEntry authentication;
+    private AuthorizationEntry authorization;
+
     public String getFrom() { return from; }
     public void setFrom(String from) { this.from = from; }
 
@@ -84,11 +83,17 @@ public class ConnectionEntry {
         this.failureSemantics = failureSemantics;
     }
 
+    public AuthenticationEntry getAuthentication() { return authentication; }
+    public void setAuthentication(AuthenticationEntry authentication) { this.authentication = authentication; }
+
+    public AuthorizationEntry getAuthorization() { return authorization; }
+    public void setAuthorization(AuthorizationEntry authorization) { this.authorization = authorization; }
+
     /**
      * Returns the failure semantics type id for this connection.
      * Defaults to "noop" if no failureSemantics block is declared.
      */
-    public String getFailureSemanticsType() {
+    public String getFailureSemanticsId() {
         return failureSemantics != null ? failureSemantics.getId() : "noop";
     }
 
@@ -100,6 +105,22 @@ public class ConnectionEntry {
         return failureSemantics != null
                 ? failureSemantics.toSpiConfig()
                 : FailureSemanticsConfig.builder().build();
+    }
+
+    /**
+     * Returns the authentication type id for this connection.
+     * Defaults to "noop" if no authentication block is declared.
+     */
+    public String getAuthenticationId() {
+        return authentication != null ? authentication.getId() : "noop";
+    }
+
+    /**
+     * Returns the authorization type id for this connection.
+     * Defaults to "noop" if no authorization block is declared.
+     */
+    public String getAuthorizationId() {
+        return authorization != null ? authorization.getId() : "noop";
     }
 
     /**
@@ -120,7 +141,10 @@ public class ConnectionEntry {
     public String toString() {
         return "ConnectionEntry{from='" + from + "', to='" + to
                 + "', transport.id='" + (transport != null ? transport.getId() : null)
-                + "', serializer.id='" + (serializer != null ? serializer.getId() : null) + "'}";
+                + "', serializer.id='" + (serializer != null ? serializer.getId() : null)
+                + "', authentication.id='" + (authentication != null ? authentication.getId() : null)
+                + "', authorization.id='" + (authorization != null ? authorization.getId() : null)
+                + "'}";
     }
 
     public void validate() {
@@ -135,6 +159,20 @@ public class ConnectionEntry {
         if (!isDirect() && (serializer == null || serializer.getId() == null || serializer.getId().isBlank())) {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'serializer.id'.");
+        }
+        if (isDirect() && authentication != null && !"noop".equalsIgnoreCase(authentication.getId())) {
+            throw new ConfigurationException(
+                    "[Itara] Connection to='" + to + "' declares authentication.id='" + authentication.getId()
+                            + "' on a direct connection. Authentication and authorization are not yet enforced "
+                            + "for direct (colocated) connections — see the tracking issue. Remove the "
+                            + "authentication block, or use a non-direct transport if enforcement is required.");
+        }
+        if (isDirect() && authorization != null && !"noop".equalsIgnoreCase(authorization.getId())) {
+            throw new ConfigurationException(
+                    "[Itara] Connection to='" + to + "' declares authorization.id='" + authorization.getId()
+                            + "' on a direct connection. Authentication and authorization are not yet enforced "
+                            + "for direct (colocated) connections — see the tracking issue. Remove the "
+                            + "authorization block, or use a non-direct transport if enforcement is required.");
         }
     }
 

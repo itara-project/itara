@@ -4,12 +4,20 @@ import demo.calculator.api.CalculatorService;
 import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.authentication.NoopAuthentication;
+import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.TransportRegistry;
 import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -48,6 +56,12 @@ public class HttpTransportGroupingIntegrationTest {
 
     private static final String COMPONENT_A = "calculator";
     private static final String COMPONENT_B = "calculator-b";
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
+    private static final ItaraAuthorization NOOP_AUTHORIZATION = new NoopAuthorization();
+    private static final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
+            new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
 
     private static int portA;
     private static int portB;
@@ -151,11 +165,15 @@ public class HttpTransportGroupingIntegrationTest {
                     .getOrCreate("http", config);
 
             ItaraDispatcher dispatcherA = new ItaraDispatcher(
-                    COMPONENT_A, "http", serializer, serializerConfig,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    COMPONENT_A, COMPONENT_A, "http", serializer, serializerConfig,
+                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
+                    NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG);
             ItaraDispatcher dispatcherB = new ItaraDispatcher(
-                    COMPONENT_B, "http", serializer, serializerConfig,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    COMPONENT_B, COMPONENT_B, "http", serializer, serializerConfig,
+                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
+                    NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG);
 
             transport.registerListener(COMPONENT_A, config, dispatcherA);
             transport.registerListener(COMPONENT_B, config, dispatcherB);
@@ -187,10 +205,11 @@ public class HttpTransportGroupingIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        componentId, serializer, serializerConfig, transport, transportId,
+                        componentId, componentId, serializer, serializerConfig, transport, transportId,
                         new HttpTransportConfig("localhost", port, false),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                         null, null
                 )
         );

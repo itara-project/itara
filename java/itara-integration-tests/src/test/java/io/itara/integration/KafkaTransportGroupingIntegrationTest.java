@@ -1,6 +1,7 @@
 package io.itara.integration;
 
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.TransportRegistry;
 import io.itara.spi.transport.ItaraTransport;
@@ -165,12 +166,12 @@ public class KafkaTransportGroupingIntegrationTest {
                     TransportRegistry.instance().getOrCreate("kafka", parsedB));
 
             // Register both dispatchers on the shared instance
-            DispatchHandler dispatcherA = (componentId, method, payload, headers) -> {
+            DispatchHandler dispatcherA = (payload, headers, transportCredential) -> {
                 receivedByA.add(new String(payload));
                 latchA.countDown();
                 return new byte[0];
             };
-            DispatchHandler dispatcherB = (componentId, method, payload, headers) -> {
+            DispatchHandler dispatcherB = (payload, headers, transportCredential) -> {
                 receivedByB.add(new String(payload));
                 latchB.countDown();
                 return new byte[0];
@@ -187,19 +188,15 @@ public class KafkaTransportGroupingIntegrationTest {
             KafkaTransportConfig producerConfigA = new KafkaTransportConfig(
                     bootstrapServers, null, TOPIC_A, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerA = new KafkaTransport(producerConfigA);
-            producerA.send(COMPONENT_A, "onEventA", "payload-a".getBytes(),
-                    Map.of("x-itara-component-id", COMPONENT_A,
-                            "x-itara-method-name",  "onEventA"),
-                    parsedA, null);
+            producerA.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_A, "onEventA"), "payload-a".getBytes(),
+                    Map.of(), parsedA, null);
 
             // Producer for topic B → should reach dispatcher B
             KafkaTransportConfig producerConfigB = new KafkaTransportConfig(
                     bootstrapServers, null, TOPIC_B, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerB = new KafkaTransport(producerConfigB);
-            producerB.send(COMPONENT_B, "onEventB", "payload-b".getBytes(),
-                    Map.of("x-itara-component-id", COMPONENT_B,
-                            "x-itara-method-name",  "onEventB"),
-                    parsedB, null);
+            producerB.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_B, "onEventB"), "payload-b".getBytes(),
+                    Map.of(), parsedB, null);
 
             assertTrue(latchA.await(10, TimeUnit.SECONDS),
                     "Dispatcher A did not receive message within 10 seconds");

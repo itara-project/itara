@@ -21,6 +21,7 @@ final class ItaraHttpStatus {
     static final int CHECKED_ERROR     = 422;
     static final int RUNTIME_ERROR     = 500;
     static final int TRANSPORT_ERROR   = 503;
+    static final int PERMISSION_ERROR  = 403;
 
     /**
      * Maps an Itara ErrorKind to the corresponding HTTP status code.
@@ -31,6 +32,7 @@ final class ItaraHttpStatus {
             case CHECKED   -> CHECKED_ERROR;
             case RUNTIME   -> RUNTIME_ERROR;
             case TRANSPORT -> TRANSPORT_ERROR;
+            case PERMISSION -> PERMISSION_ERROR;
         };
     }
 

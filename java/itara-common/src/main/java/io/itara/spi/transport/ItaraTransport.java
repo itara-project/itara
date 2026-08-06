@@ -1,6 +1,7 @@
 package io.itara.spi.transport;
 
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ItaraCallTarget;
 
 import java.time.Duration;
 import java.util.Map;
@@ -42,8 +43,12 @@ public interface ItaraTransport {
      * the transport acts on it. Transports that do not support timeout enforcement
      * MUST silently ignore it. Null means no per-attempt timeout is configured (§14.10)
      *
-     * @param componentId  The id of the remote component
-     * @param methodName   The method being called
+     * @param target       The call being made — node, component, method. The
+     *                     agent has already encoded this into headers
+     *                     (CallTargetPropagation); a transport that needs
+     *                     component or method for its own routing (e.g. an
+     *                     HTTP path) reads it from here, not by parsing
+     *                     anything itself.
      * @param payload      Pre-serialized argument bytes
      * @param headers      The headers collected for propagation
      * @param config       Connection properties from the wiring config
@@ -51,8 +56,7 @@ public interface ItaraTransport {
      * @return             Raw response bytes
      * @throws Exception   On any transport-level failure
      */
-    byte[] send(String componentId,
-                String methodName,
+    byte[] send(ItaraCallTarget target,
                 byte[] payload,
                 Map<String, String> headers,
                 ItaraTransportConfig config,

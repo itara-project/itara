@@ -10,6 +10,8 @@ import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.agent.metadata.MetadataFile;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
+import io.itara.runtime.AuthenticationRegistry;
+import io.itara.runtime.AuthorizationRegistry;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.FailureSemanticsRegistry;
@@ -18,6 +20,12 @@ import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.ReconstructibleExceptionRegistry;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -27,6 +35,7 @@ import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
 
 import java.lang.instrument.Instrumentation;
+import java.util.Collections;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -50,6 +59,8 @@ import java.util.logging.Logger;
  *       semantics implementations
  *   7c. Load META-INF/itara/exception-factory — discover reconstructible
  *       exception factories from API artifact jars
+ *   7d. Load META-INF/itara/authentication— discover available authentication impls
+ *   7e. Load META-INF/itara/authorization— discover available authorization impls
  *   8. Initialize ObservabilityFacade
  *   9. Register ComponentFactory — activates and wraps instances in
  *      observability decorator for all four events on direct calls
@@ -98,6 +109,8 @@ public class ItaraAgent {
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
+        AuthenticationRegistry authenticationRegistry = AuthenticationRegistry.instance();
+        AuthorizationRegistry authorizationRegistry = AuthorizationRegistry.instance();
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
         log.fine("[Itara] loading wiring config path=" + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
@@ -144,6 +157,14 @@ public class ItaraAgent {
         // ── Step 7c: Load exception factories (META-INF/itara/exception-factory)
         log.fine("[Itara] loading reconstructible exception factories");
         ReconstructibleExceptionFactoryLoader.load(systemClassLoader);
+
+        // ── Step 7d: Load authentication factories (META-INF/itara/authentication)
+        log.fine("[Itara] loading authentication factories");
+        AuthenticationLoader.load(itaraClassLoader);
+
+        // ── Step 7e: Load authorization factories (META-INF/itara/authorization)
+        log.fine("[Itara] loading authorization factories");
+        AuthorizationLoader.load(itaraClassLoader);
 
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
@@ -202,6 +223,18 @@ public class ItaraAgent {
                 ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
                 ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
 
+                AuthenticationConfig rawAuthenticationConfig = buildAuthenticationConfig(conn);
+                ItaraAuthenticationConfig authenticationConfig =
+                        authenticationRegistry.parseConfig(conn.getAuthenticationId(), rawAuthenticationConfig);
+                ItaraAuthentication authentication =
+                        authenticationRegistry.getOrCreate(conn.getAuthenticationId(), authenticationConfig);
+
+                AuthorizationConfig rawAuthorizationConfig = buildAuthorizationConfig(conn);
+                ItaraAuthorizationConfig authorizationConfig =
+                        authorizationRegistry.parseConfig(conn.getAuthorizationId(), rawAuthorizationConfig);
+                ItaraAuthorization authorization =
+                        authorizationRegistry.getOrCreate(conn.getAuthorizationId(), authorizationConfig);
+
                 Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                 Node fromNode = conn.getFrom() != null
                         ? config.findNode(conn.getFrom()).orElse(null)
@@ -230,7 +263,8 @@ public class ItaraAgent {
                     }
 
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            componentId, transportId, serializer, serializerConfig, registry, pattern);
+                            componentId, toNode.getId(), transportId, serializer, serializerConfig, registry, pattern,
+                            authentication, authenticationConfig, authorization, authorizationConfig);
                     transport.registerListener(componentId, transportConfig, dispatcher);
 
                     log.info("[Itara] connection established id=" + transportId
@@ -252,7 +286,7 @@ public class ItaraAgent {
 
                     ItaraFailureSemantics failureSemantics =
                             FailureSemanticsRegistry.instance().create(
-                                    conn.getFailureSemanticsType(),
+                                    conn.getFailureSemanticsId(),
                                     conn.getFailureSemanticsConfig());
 
                     MetadataFile apiMetadata = ItaraMetadataIndex.instance()
@@ -271,8 +305,9 @@ public class ItaraAgent {
                     Object proxy = java.lang.reflect.Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(contractId, serializer, serializerConfig, transport, transportId,
-                                    transportConfig, pattern, failureSemantics, apiMetadata, exceptionFactory)
+                            new ItaraProxyHandler(contractId, toNode.getId(), serializer, serializerConfig, transport, transportId,
+                                    transportConfig, pattern, failureSemantics, authentication, authenticationConfig, apiMetadata,
+                                    exceptionFactory)
                     );
                     registry.preRegister(contractId, proxy);
 
@@ -327,5 +362,33 @@ public class ItaraAgent {
         return SerializerConfig.builder()
                 .params(conn.getSerializer().getParams())
                 .build();
+    }
+
+    /**
+     * Builds an AuthenticationConfig for a connection.
+     *
+     * Absent authentication block → empty params, same shape as
+     * buildSerializerConfig. ConnectionEntry.getAuthenticationId() already
+     * defaults to "noop" regardless of whether the block is present.
+     */
+    private static AuthenticationConfig buildAuthenticationConfig(ConnectionEntry conn) {
+        Map<String, String> params = conn.getAuthentication() != null
+                ? conn.getAuthentication().getParams()
+                : Collections.emptyMap();
+        return AuthenticationConfig.builder().params(params).build();
+    }
+
+    /**
+     * Builds an AuthorizationConfig for a connection.
+     *
+     * Absent authorization block → empty params, same shape as
+     * buildSerializerConfig. ConnectionEntry.getAuthorizationId() already
+     * defaults to "noop" regardless of whether the block is present.
+     */
+    private static AuthorizationConfig buildAuthorizationConfig(ConnectionEntry conn) {
+        Map<String, String> params = conn.getAuthorization() != null
+                ? conn.getAuthorization().getParams()
+                : Collections.emptyMap();
+        return AuthorizationConfig.builder().params(params).build();
     }
 }

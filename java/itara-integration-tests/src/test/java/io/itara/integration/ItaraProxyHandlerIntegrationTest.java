@@ -2,12 +2,17 @@ package io.itara.integration;
 
 import demo.calculator.api.CalculatorService;
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.authentication.NoopAuthentication;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ExchangePattern;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
 import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -41,6 +46,10 @@ public class ItaraProxyHandlerIntegrationTest {
     private static final String COMPONENT_ID = "calculator";
     private static final HttpTransportConfig PROPS =
             new HttpTransportConfig("localhost", 9999, false);
+    private static final String NODE_ID = "calculatorNode";
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
 
     // Captures what the failure semantics implementation receives
     private boolean capturedIdempotent;
@@ -83,8 +92,9 @@ public class ItaraProxyHandlerIntegrationTest {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
-                new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, noopTransport, "noop",
-                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null)
+                new ItaraProxyHandler(COMPONENT_ID, NODE_ID, serializer, serializerConfig, noopTransport, "noop",
+                        PROPS, ExchangePattern.REQUEST_REPLY, fs,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG, metadata, null)
         );
     }
 
@@ -160,9 +170,9 @@ public class ItaraProxyHandlerIntegrationTest {
             CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
-                    new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, checkingTransport, "noop",
+                    new ItaraProxyHandler(COMPONENT_ID, NODE_ID, serializer, serializerConfig, checkingTransport, "noop",
                             PROPS, ExchangePattern.REQUEST_REPLY,
-                            new NoopFailureSemantics(), null, null)
+                            new NoopFailureSemantics(), NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG, null, null)
             );
 
             // Should throw — not swallow
@@ -197,7 +207,7 @@ public class ItaraProxyHandlerIntegrationTest {
     private static class FailingTransport implements ItaraTransport {
 
         @Override
-        public byte[] send(String componentId, String methodName, byte[] payload,
+        public byte[] send(ItaraCallTarget target, byte[] payload,
                            Map<String, String> headers, ItaraTransportConfig config,
                            Duration timeout) throws ItaraRemoteException {
             throw new ItaraRemoteException(

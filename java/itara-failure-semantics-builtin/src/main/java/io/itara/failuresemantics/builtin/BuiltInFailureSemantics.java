@@ -118,6 +118,7 @@ class BuiltInFailureSemantics implements ItaraFailureSemantics {
                     if (!(e instanceof ItaraRemoteException)) return false;
                     ItaraRemoteException ire = (ItaraRemoteException) e;
                     if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.CHECKED) return false;
+                    if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.PERMISSION) return false;
                     if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.TRANSPORT) return true;
                     if (ire.getErrorKind() == ItaraRemoteException.ErrorKind.RUNTIME
                             && config.retryRuntime) return true;

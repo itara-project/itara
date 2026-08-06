@@ -19,7 +19,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ArtifactMeta {
 
-    /** kind = "component" | "api" | "transport" | "serializer" | "observer" | "context-handler" */
+    /** kind = "component" | "api" | "transport" | "serializer" | "observer" | "failure-semantics" |
+     * "context-handler" | "authentication" | "authorization" */
     private String kind;
 
     /**

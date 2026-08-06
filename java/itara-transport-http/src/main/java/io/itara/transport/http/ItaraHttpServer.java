@@ -107,7 +107,7 @@ public class ItaraHttpServer {
 
         byte[] responseBytes;
         try {
-            responseBytes = dispatcher.dispatch(componentId, methodName, requestBytes, headers);
+            responseBytes = dispatcher.dispatch(requestBytes, headers, null);
         } catch (ItaraRemoteException e) {
             sendBytes(exchange, ItaraHttpStatus.forErrorKind(e.getErrorKind()), e.getSerializedPayload());
             return;
