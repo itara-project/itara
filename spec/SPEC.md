@@ -196,6 +196,20 @@ An activator MUST:
 An activator MAY be lazy — instantiated only when the component is first requested from the registry — or eager — instantiated at startup. Conforming implementations MUST support lazy activation. Support for eager activation is OPTIONAL.
 
 ---
+ 
+### 3.6 Component Scope
+ 
+Every executing component instance has a scope. The scope defines the boundary of what that instance can reach — which other components' proxies are actually available to it, as prepared by the agent from the wiring configuration — and carries whatever information is necessary to enforce that boundary, at minimum which node in the topology graph is currently in control.
+
+This scope is established and maintained exclusively by the agent, at every point where control passes from one component into another, whether or not that crossing involves a process boundary.
+
+A component MUST NOT be able to supply or influence which node it is currently executing as, as an argument or through any other caller-controlled input. This reflects what the agent itself has established about the call, never what a caller claims about itself.
+
+A component MUST NOT be able to reach another component for which no connection is declared in the wiring configuration, regardless of what the component's own code attempts. This is enforced structurally, not defensively: the agent only prepares a proxy for a declared connection in the first place, so an undeclared connection simply has no proxy to obtain. This does not require detecting or preventing means of reaching a component's implementation outside of proxies the agent itself prepared — reflection or direct construction, for example. That is an implementation-level concern, not a conformance requirement of this specification.
+
+This is an unconditional agent guarantee, not a feature gated behind any particular plugin being configured — the same way the four observability events fire regardless of configuration (§1.2), component scope holds regardless of whether anything is built on top of it.
+
+Colocation does not imply shared scope. Placing two components in the same process for a zero-overhead direct connection (§1.2, Colocation) is a placement decision made to optimise communication overhead; it MUST NOT be treated as, or have the effect of, a trust boundary. A conforming implementation MUST prevent a colocated component from acquiring, assuming, or being mistaken for another component's scope — the same guarantee that already holds across a process boundary MUST hold with identical strength within one.
 
 ## 4. Wiring Model
 
