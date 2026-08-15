@@ -52,10 +52,7 @@ public class VirtualNode extends Node {
 
     @Override
     public void validate() {
-        if (getId() == null || getId().isBlank()) {
-            throw new ConfigurationException(
-                    "[Itara] Virtual node is missing required field 'id'.");
-        }
+        validateId();
         if (contract == null || contract.isBlank()) {
             throw new ConfigurationException(
                     "[Itara] Virtual node '" + getId()

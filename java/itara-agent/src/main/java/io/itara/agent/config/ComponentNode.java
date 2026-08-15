@@ -44,10 +44,7 @@ public class ComponentNode extends Node {
 
     @Override
     public void validate() {
-        if (getId() == null || getId().isBlank()) {
-            throw new ConfigurationException(
-                    "[Itara] Component node is missing required field 'id'.");
-        }
+        validateId();
         if (component == null || component.isBlank()) {
             throw new ConfigurationException(
                     "[Itara] Component node '" + getId()

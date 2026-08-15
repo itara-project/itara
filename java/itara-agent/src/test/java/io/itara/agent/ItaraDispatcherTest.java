@@ -2,6 +2,7 @@ package io.itara.agent;
 
 import io.itara.api.ItaraActivator;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
@@ -60,7 +61,7 @@ class ItaraDispatcherTest {
 
     public static class CaptureActivator implements ItaraActivator {
         @Override
-        public Object activate(ItaraRegistry registry) {
+        public Object activate() {
             return new CaptureImpl();
         }
     }
@@ -128,11 +129,11 @@ class ItaraDispatcherTest {
     class Constructor {
 
         @Test
-        @DisplayName("throws immediately when the component has no registered classloader")
-        void throwsWhenComponentClassLoaderNotRegistered() {
-            assertThrows(IllegalStateException.class, () ->
-                    new ItaraDispatcher("unregistered", "test-transport", new PassthroughSerializer(),
-                            TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY));
+        @DisplayName("throws immediately when constructed with a null ComponentScope")
+        void throwsWhenScopeIsNull() {
+            assertThrows(NullPointerException.class, () ->
+                    new ItaraDispatcher("conn-unregistered", "unregistered", "test-transport", new PassthroughSerializer(),
+                            TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, null));
         }
     }
 
@@ -149,16 +150,21 @@ class ItaraDispatcherTest {
             ClassLoader ambientClassLoader = freshClassLoader();
             assertNotSame(componentClassLoader, ambientClassLoader, "precondition: the two loaders must differ");
 
-            ItaraRegistry.instance().registerActivator(
-                    "capture", CaptureActivator.class, CaptureContract.class, componentClassLoader);
+            ItaraRegistry.instance().registerActivator("capture", CaptureActivator.class);
+
+            ComponentScope scope = new ComponentScope.Factory()
+                    .nodeId("captureNode")
+                    .componentId("capture")
+                    .classLoader(componentClassLoader)
+                    .build();
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
-                    "capture", "test-transport", new PassthroughSerializer(), TEST_SERIALIZER_CONFIG,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    "conn-capture", "capture", "test-transport", new PassthroughSerializer(), TEST_SERIALIZER_CONFIG,
+                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, scope);
 
             Thread.currentThread().setContextClassLoader(ambientClassLoader);
 
-            byte[] result = dispatcher.dispatch("capture", "captureTccl", new byte[0], Map.of());
+            byte[] result = dispatcher.dispatch( "captureTccl", new byte[0], Map.of());
 
             String observedDuringCall = new String(result);
             assertTrue(observedDuringCall.contains(componentClassLoader.toString()),
@@ -170,17 +176,23 @@ class ItaraDispatcherTest {
         @Test
         @DisplayName("restores TCCL even when the component method throws")
         void restoresTcclEvenWhenComponentThrows() throws Exception {
-            ItaraRegistry.instance().registerActivator(
-                    "throwing", ThrowingActivator.class, ThrowingContract.class, freshClassLoader());
+            ClassLoader componentClassLoader = freshClassLoader();
+            ItaraRegistry.instance().registerActivator("throwing", ThrowingActivator.class);
+
+            ComponentScope scope = new ComponentScope.Factory()
+                    .nodeId("throwingNode")
+                    .componentId("throwing")
+                    .classLoader(componentClassLoader)
+                    .build();
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
-                    "throwing", "test-transport", new PassthroughSerializer(),
-                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    "conn-throwing", "throwing", "test-transport", new PassthroughSerializer(),
+                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, scope);
 
             ClassLoader ambientClassLoader = Thread.currentThread().getContextClassLoader();
 
             assertThrows(ItaraRemoteException.class, () ->
-                    dispatcher.dispatch("throwing", "explode", new byte[0], Map.of()));
+                    dispatcher.dispatch("explode", new byte[0], Map.of()));
 
             assertSame(ambientClassLoader, Thread.currentThread().getContextClassLoader());
         }
@@ -199,7 +211,7 @@ class ItaraDispatcherTest {
 
     public static class ThrowingActivator implements ItaraActivator {
         @Override
-        public Object activate(ItaraRegistry registry) {
+        public Object activate() {
             return new ThrowingImpl();
         }
     }

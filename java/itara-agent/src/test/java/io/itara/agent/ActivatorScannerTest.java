@@ -152,7 +152,7 @@ class ActivatorScannerTest {
         String source = """
             public class %s implements io.itara.api.ItaraActivator {
                 @Override
-                public Object activate(io.itara.runtime.ItaraRegistry registry) {
+                public Object activate() {
                     return new Object();
                 }
             }

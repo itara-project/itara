@@ -17,7 +17,8 @@ nodes:
     address: "demo.events.payment-made"
 
 connections:
-  - from:
+  - id: "order-producer-001"
+    from:
     to: "orderProducerNode"
     transport:
       id: http
@@ -26,7 +27,8 @@ connections:
         port: 8081
     serializer:
       id: "json"
-  - from: "orderProducerNode"
+  - id: "order-producer-002"
+    from: "orderProducerNode"
     to: "orderPlacedChannel"
     transport:
       id: kafka
@@ -34,7 +36,8 @@ connections:
         bootstrapServers: "localhost:9092"
     serializer:
       id: "json"
-  - from: "orderProducerNode"
+  - id: "order-producer-003"
+    from: "orderProducerNode"
     to: "orderCancelledChannel"
     transport:
       id: kafka
@@ -42,7 +45,8 @@ connections:
         bootstrapServers: "localhost:9092"
     serializer:
       id: "json"
-  - from: "orderProducerNode"
+  - id: "order-producer-004"
+    from: "orderProducerNode"
     to: "paymentMadeChannel"
     transport:
       id: kafka
@@ -50,7 +54,8 @@ connections:
         bootstrapServers: "localhost:9092"
     serializer:
       id: "json"
-  - from: "orderPlacedChannel"
+  - id: "order-consumer-001"
+    from: "orderPlacedChannel"
     to: "orderConsumerNode"
     transport:
       id: kafka
@@ -59,7 +64,8 @@ connections:
         consumerGroup: "order-consumer-group"
     serializer:
       id: "json"
-  - from: "orderCancelledChannel"
+  - id: "order-consumer-002"
+    from: "orderCancelledChannel"
     to: "orderConsumerNode"
     transport:
       id: kafka
@@ -68,7 +74,8 @@ connections:
         consumerGroup: "order-consumer-group"
     serializer:
       id: "json"
-  - from: "paymentMadeChannel"
+  - id: "order-consumer-003"
+    from: "paymentMadeChannel"
     to: "orderConsumerNode"
     transport:
       id: kafka

@@ -1,6 +1,5 @@
 package io.itara.runtime;
 
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -28,14 +27,23 @@ public class ItaraMain {
     private static final Logger log = Logger.getLogger(ItaraMain.class.getName());
 
     public static void main(String[] args) throws InterruptedException {
-        try {
-            ItaraRegistry.instance().activateAllLocal();
-        } catch (Exception e) {
-            log.log(Level.SEVERE,
-                    "[Itara] FATAL: one or more local components failed to activate. "
-                            + "Refusing to start.", e);
-            System.exit(1);
-        }
+        ComponentLookup.disable();
+
+        // TODO(good-first-issue): replacement for the old activateAllLocal()
+        // eager-activation call below. Maintain a list of every registered
+        // proxy and dispatcher, and eagerly trigger/cache each one's
+        // delegate here (where caching makes sense — see ItaraRegistry),
+        // so an activation failure surfaces at boot again instead of only
+        // on the first real call that happens to reach it.
+        //
+        // try {
+        //     ItaraRegistry.instance().activateAllLocal();
+        // } catch (Exception e) {
+        //     log.log(Level.SEVERE,
+        //             "[Itara] FATAL: one or more local components failed to activate. "
+        //                     + "Refusing to start.", e);
+        //     System.exit(1);
+        // }
 
         log.info("[Itara] component ready");
         Thread.currentThread().join();

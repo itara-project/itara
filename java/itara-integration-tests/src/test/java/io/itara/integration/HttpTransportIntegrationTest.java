@@ -9,6 +9,7 @@ import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraReconstructibleException;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
@@ -55,6 +56,23 @@ import static org.junit.jupiter.api.Assertions.*;
 class HttpTransportIntegrationTest {
 
     private static final String COMPONENT_ID = "calculator";
+    private static final String CONN_ID = "conn-001";
+
+    // ItaraDispatcher and ItaraProxyHandler now each require a ComponentScope,
+    // received already-built rather than derived internally (see ADR 0021,
+    // ComponentScope). One node's worth of identity per role is enough for
+    // every test in this file — none of them exercise scope content itself.
+    private static final ComponentScope DISPATCHER_SCOPE = new ComponentScope.Factory()
+            .nodeId("calculatorNode")
+            .componentId(COMPONENT_ID)
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
+    private static final ComponentScope PROXY_FROM_SCOPE = new ComponentScope.Factory()
+            .nodeId("callerNode")
+            .componentId("caller")
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
 
     private static ItaraHttpServer server;
     private static CalculatorService proxy;
@@ -77,17 +95,15 @@ class HttpTransportIntegrationTest {
 
         // Registry — pre-register the raw implementation for the dispatcher
         ItaraRegistry registry = ItaraRegistry.instance();
-        registry.registerActivator(COMPONENT_ID,
-                CalculatorActivator.class,
-                CalculatorService.class
-        );
+        registry.registerActivator(COMPONENT_ID, CalculatorActivator.class);
 
         // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
         ItaraDispatcher dispatcher = new ItaraDispatcher(
-                COMPONENT_ID, "http", serializer, serializerConfig, registry, ExchangePattern.REQUEST_REPLY
+                CONN_ID, COMPONENT_ID, "http", serializer, serializerConfig, registry, ExchangePattern.REQUEST_REPLY,
+                DISPATCHER_SCOPE
         );
         Map<String, DispatchHandler> dispatchers = new HashMap<>();
-        dispatchers.put(COMPONENT_ID, dispatcher);
+        dispatchers.put(dispatcher.getDispatchKey(), dispatcher);
         server = new ItaraHttpServer(port, dispatchers);
         server.start();
 
@@ -95,12 +111,13 @@ class HttpTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, serializerConfig, transport, "http",
+                        CONN_ID, COMPONENT_ID, serializer, serializerConfig, transport, "http",
                         config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
-                        null
+                        null,
+                        PROXY_FROM_SCOPE
                 )
         );
     }
@@ -170,6 +187,7 @@ class HttpTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
+                        "nonexistent-conn-id",
                         "nonexistent-component",
                         serializer,
                         serializerConfig,
@@ -179,7 +197,8 @@ class HttpTransportIntegrationTest {
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
-                        null
+                        null,
+                        PROXY_FROM_SCOPE
                 )
         );
         ItaraRemoteException ex = assertThrows(
@@ -199,6 +218,7 @@ class HttpTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
+                        CONN_ID,
                         COMPONENT_ID,
                         serializer,
                         serializerConfig,
@@ -208,7 +228,8 @@ class HttpTransportIntegrationTest {
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         null,
-                        null
+                        null,
+                        PROXY_FROM_SCOPE
                 )
         );
         ItaraRemoteException ex = assertThrows(
@@ -253,12 +274,14 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
+                            CONN_ID,
                             COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
-                            new CalculatorExceptionFactory()
+                            new CalculatorExceptionFactory(),
+                            PROXY_FROM_SCOPE
                     )
             );
         }
@@ -268,12 +291,14 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
+                            CONN_ID,
                             COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
-                            null
+                            null,
+                            PROXY_FROM_SCOPE
                     )
             );
         }
@@ -327,12 +352,14 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
+                            CONN_ID,
                             COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
-                            emptyFactory
+                            emptyFactory,
+                            PROXY_FROM_SCOPE
                     )
             );
 
@@ -380,12 +407,14 @@ class HttpTransportIntegrationTest {
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
+                            CONN_ID,
                             COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
                             null,
-                            wrongTypeFactory
+                            wrongTypeFactory,
+                            PROXY_FROM_SCOPE
                     )
             );
 

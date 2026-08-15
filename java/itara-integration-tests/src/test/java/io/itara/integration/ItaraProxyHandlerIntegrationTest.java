@@ -4,6 +4,7 @@ import demo.calculator.api.CalculatorService;
 import io.itara.agent.ItaraProxyHandler;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonItaraSerializer;
@@ -41,6 +42,16 @@ public class ItaraProxyHandlerIntegrationTest {
     private static final String COMPONENT_ID = "calculator";
     private static final HttpTransportConfig PROPS =
             new HttpTransportConfig("localhost", 9999, false);
+
+    // ItaraProxyHandler now requires the calling node's own ComponentScope,
+    // captured at construction rather than trusted from ambient thread-local
+    // state (ADR 0021). These tests exercise the outbound pipeline itself,
+    // not scope propagation, so a single fixed scope suffices throughout.
+    private static final ComponentScope FROM_SCOPE = new ComponentScope.Factory()
+            .nodeId("callerNode")
+            .componentId("caller")
+            .classLoader(ItaraProxyHandlerIntegrationTest.class.getClassLoader())
+            .build();
 
     // Captures what the failure semantics implementation receives
     private boolean capturedIdempotent;
@@ -83,8 +94,8 @@ public class ItaraProxyHandlerIntegrationTest {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
-                new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, noopTransport, "noop",
-                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null)
+                new ItaraProxyHandler("test-conn", COMPONENT_ID, serializer, serializerConfig, noopTransport, "noop",
+                        PROPS, ExchangePattern.REQUEST_REPLY, fs, metadata, null, FROM_SCOPE)
         );
     }
 
@@ -160,9 +171,9 @@ public class ItaraProxyHandlerIntegrationTest {
             CalculatorService proxy = (CalculatorService) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(),
                     new Class<?>[]{ CalculatorService.class },
-                    new ItaraProxyHandler(COMPONENT_ID, serializer, serializerConfig, checkingTransport, "noop",
+                    new ItaraProxyHandler("test-conn", COMPONENT_ID, serializer, serializerConfig, checkingTransport, "noop",
                             PROPS, ExchangePattern.REQUEST_REPLY,
-                            new NoopFailureSemantics(), null, null)
+                            new NoopFailureSemantics(), null, null, FROM_SCOPE)
             );
 
             // Should throw — not swallow
@@ -206,7 +217,7 @@ public class ItaraProxyHandlerIntegrationTest {
         }
 
         @Override
-        public void registerListener(String componentId, ItaraTransportConfig config,
+        public void registerListener(ItaraTransportConfig config,
                                      io.itara.runtime.DispatchHandler handler) {}
 
         @Override

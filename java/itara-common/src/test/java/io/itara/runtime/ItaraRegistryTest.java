@@ -6,18 +6,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.ArrayList;
-import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("ItaraRegistry")
 class ItaraRegistryTest {
@@ -29,7 +22,6 @@ class ItaraRegistryTest {
     @BeforeEach
     void reset() {
         ItaraRegistry.instance().reset();
-        ORDER_LOG.clear();
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────
@@ -47,15 +39,8 @@ class ItaraRegistryTest {
 
     public static class SimpleActivator implements ItaraActivator {
         @Override
-        public Object activate(ItaraRegistry registry) {
+        public Object activate() {
             return new TestContractImpl();
-        }
-    }
-
-    public static class FailingActivator implements ItaraActivator {
-        @Override
-        public Object activate(ItaraRegistry registry) {
-            throw new RuntimeException("activation deliberately failed");
         }
     }
 
@@ -63,148 +48,19 @@ class ItaraRegistryTest {
         return new URLClassLoader(new URL[0], Thread.currentThread().getContextClassLoader());
     }
 
-    // ── registerActivator ────────────────────────────────────────────────
-
-    @Nested
-    @DisplayName("registerActivator")
-    class RegisterActivator {
-
-        @Test
-        @DisplayName("4-arg overload throws NullPointerException when classloader is null")
-        void fourArgOverloadRejectsNullClassLoader() {
-            assertThrows(NullPointerException.class, () ->
-                    ItaraRegistry.instance().registerActivator(
-                            "test", SimpleActivator.class, TestContract.class, null));
-        }
-
-        @Test
-        @DisplayName("3-arg overload defaults to the calling thread's context classloader")
-        void threeArgOverloadDefaultsToCurrentTccl() {
-            ClassLoader expected = Thread.currentThread().getContextClassLoader();
-
-            ItaraRegistry.instance().registerActivator("test", SimpleActivator.class, TestContract.class);
-
-            assertSame(expected, ItaraRegistry.instance().getComponentClassLoader("test"));
-        }
-    }
-
-    // ── decorate() (exercised via get()) ────────────────────────────────
-
-    @Nested
-    @DisplayName("decorate")
-    class Decorate {
-
-        @Test
-        @DisplayName("always wraps in a proxy, regardless of registered observer count")
-        void alwaysDecoratesRegardlessOfObserverCount() {
-            assertEquals(0, ObserverRegistry.instance().size(), "precondition: no observers registered");
-
-            ItaraRegistry.instance().registerActivator(
-                    "test", SimpleActivator.class, TestContract.class, freshClassLoader());
-
-            TestContract result = ItaraRegistry.instance().get("test", TestContract.class);
-
-            assertTrue(Proxy.isProxyClass(result.getClass()),
-                    "component must be decorated even with zero registered observers");
-        }
-
-        @Test
-        @DisplayName("proxy is defined under the component's own registered classloader, not the ambient TCCL")
-        void proxyDefinedUnderComponentClassLoaderNotAmbientTccl() {
-            ClassLoader componentClassLoader = freshClassLoader();
-            ClassLoader ambientClassLoader = freshClassLoader();
-            assertNotSame(componentClassLoader, ambientClassLoader, "precondition: the two loaders must differ");
-
-            ItaraRegistry.instance().registerActivator(
-                    "test", SimpleActivator.class, TestContract.class, componentClassLoader);
-
-            Thread current = Thread.currentThread();
-            ClassLoader previous = current.getContextClassLoader();
-            current.setContextClassLoader(ambientClassLoader);
-            try {
-                TestContract result = ItaraRegistry.instance().get("test", TestContract.class);
-
-                assertSame(componentClassLoader, result.getClass().getClassLoader());
-            } finally {
-                current.setContextClassLoader(previous);
-            }
-        }
-    }
-
-    // ── activateAllLocal ─────────────────────────────────────────────────
-
-    // Static log, not an instance field — RecordingActivator* below are
-    // static top-level-visible classes with no reference to the test
-    // instance, so they record here instead.
-    static final List<String> ORDER_LOG = new ArrayList<>();
-
-    public static class RecordingActivatorAlpha implements ItaraActivator {
-        @Override
-        public Object activate(ItaraRegistry registry) {
-            ORDER_LOG.add("alpha");
-            return new TestContractImpl();
-        }
-    }
-
-    public static class RecordingActivatorBravo implements ItaraActivator {
-        @Override
-        public Object activate(ItaraRegistry registry) {
-            ORDER_LOG.add("bravo");
-            return new TestContractImpl();
-        }
-    }
-
-    public static class RecordingActivatorCharlie implements ItaraActivator {
-        @Override
-        public Object activate(ItaraRegistry registry) {
-            ORDER_LOG.add("charlie");
-            return new TestContractImpl();
-        }
-    }
-
-    @Nested
-    @DisplayName("activateAllLocal")
-    class ActivateAllLocal {
-
-        @Test
-        @DisplayName("activates local components in deterministic, sorted order")
-        void activatesInSortedOrder() {
-            // Registered deliberately out of alphabetical order.
-            ItaraRegistry.instance().registerActivator(
-                    "charlie", RecordingActivatorCharlie.class, TestContract.class, freshClassLoader());
-            ItaraRegistry.instance().registerActivator(
-                    "alpha", RecordingActivatorAlpha.class, TestContract.class, freshClassLoader());
-            ItaraRegistry.instance().registerActivator(
-                    "bravo", RecordingActivatorBravo.class, TestContract.class, freshClassLoader());
-
-            ItaraRegistry.instance().activateAllLocal();
-
-            assertEquals(List.of("alpha", "bravo", "charlie"), ORDER_LOG);
-        }
-
-        @Test
-        @DisplayName("aborts on the first activation failure, fails fast")
-        void abortsOnFirstFailure() {
-            ItaraRegistry.instance().registerActivator(
-                    "a-fails", FailingActivator.class, TestContract.class, freshClassLoader());
-            ItaraRegistry.instance().registerActivator(
-                    "z-would-succeed", SimpleActivator.class, TestContract.class, freshClassLoader());
-
-            RuntimeException ex = assertThrows(RuntimeException.class,
-                    () -> ItaraRegistry.instance().activateAllLocal());
-
-            assertTrue(ex.getMessage().contains("a-fails"));
-        }
-    }
-
     // ── Circular dependency detection ───────────────────────────────────
 
     public static class SelfReferencingActivator implements ItaraActivator {
         @Override
-        public Object activate(ItaraRegistry registry) {
+        public Object activate() {
             // Activating the same component id, recursively, on the same
-            // thread — must be caught, not stack-overflow.
-            return registry.get("self", TestContract.class);
+            // thread — must be caught, not stack-overflow. Uses
+            // getRawImplementation() rather than get() deliberately: this
+            // test exercises activateRaw()'s own circular-dependency guard
+            // directly. get() would now fail for an unrelated reason first
+            // (no active ComponentScope, no registered outbound connection)
+            // — neither of which is what this test is actually about.
+            return ItaraRegistry.instance().getRawImplementation("self", TestContract.class);
         }
     }
 
@@ -215,8 +71,7 @@ class ItaraRegistryTest {
         @Test
         @DisplayName("throws IllegalStateException rather than recursing indefinitely")
         void throwsRatherThanRecursingForever() {
-            ItaraRegistry.instance().registerActivator(
-                    "self", SelfReferencingActivator.class, TestContract.class, freshClassLoader());
+            ItaraRegistry.instance().registerActivator("self", SelfReferencingActivator.class);
 
             assertThrows(IllegalStateException.class,
                     () -> ItaraRegistry.instance().get("self", TestContract.class));
@@ -230,26 +85,113 @@ class ItaraRegistryTest {
     class TopologyErrors {
 
         @Test
-        @DisplayName("get() throws for an unregistered component id")
-        void getThrowsForUnregisteredId() {
-            assertThrows(IllegalStateException.class,
-                    () -> ItaraRegistry.instance().get("does-not-exist", TestContract.class));
-        }
-
-        @Test
         @DisplayName("getRawImplementation() throws for an unregistered component id")
         void getRawImplementationThrowsForUnregisteredId() {
             assertThrows(IllegalStateException.class,
                     () -> ItaraRegistry.instance().getRawImplementation("does-not-exist", TestContract.class));
         }
+    }
+
+    // ── get() — scope and connection resolution ─────────────────────────
+
+    @Nested
+    @DisplayName("get()")
+    class Get {
 
         @Test
-        @DisplayName("successfully registered component does not throw")
-        void registeredComponentDoesNotThrow() {
-            ItaraRegistry.instance().registerActivator(
-                    "test", SimpleActivator.class, TestContract.class, freshClassLoader());
+        @DisplayName("throws when no ComponentScope is active on the calling thread")
+        void throwsWhenNoScopeActive() {
+            assertThrows(IllegalStateException.class,
+                    () -> ItaraRegistry.instance().get("whatever", TestContract.class));
+        }
 
-            assertDoesNotThrow(() -> ItaraRegistry.instance().get("test", TestContract.class));
+        @Test
+        @DisplayName("throws when the calling node has no declared outbound connection to the target")
+        void throwsWhenNoConnectionDeclared() {
+            ComponentScope callerScope = new ComponentScope.Factory()
+                    .nodeId("callerNode")
+                    .componentId("caller")
+                    .classLoader(freshClassLoader())
+                    .build();
+
+            try (ComponentScopeHandle handle = ComponentScopeHandle.open(callerScope)) {
+                assertThrows(IllegalStateException.class,
+                        () -> ItaraRegistry.instance().get("undeclared-target", TestContract.class));
+            }
+        }
+
+        @Test
+        @DisplayName("returns the registered connection proxy when caller, target, and connection all line up")
+        void returnsProxyWhenConnectionDeclared() {
+            Object proxy = new Object(); // stand-in — get() never inspects the proxy itself
+            ItaraRegistry.instance().registerConnectionProxy("conn-caller-to-target", proxy);
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-caller-to-target");
+
+            ComponentScope callerScope = new ComponentScope.Factory()
+                    .nodeId("callerNode")
+                    .componentId("caller")
+                    .classLoader(freshClassLoader())
+                    .build();
+
+            try (ComponentScopeHandle handle = ComponentScopeHandle.open(callerScope)) {
+                assertSame(proxy, ItaraRegistry.instance().get("target", Object.class));
+            }
+        }
+    }
+
+    // ── registerOutboundConnection — the outbound-ambiguity guard ───────
+
+    @Nested
+    @DisplayName("registerOutboundConnection")
+    class RegisterOutboundConnection {
+
+        @Test
+        @DisplayName("a first registration for (fromNodeId, targetIdentifier) succeeds")
+        void firstRegistrationSucceeds() {
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-a");
+            // No exception — the point of this test.
+        }
+
+        @Test
+        @DisplayName("throws when the same (fromNodeId, targetIdentifier) is registered again with a "
+                + "different connectionId — a node cannot have two outbound connections to different "
+                + "targets sharing one component id")
+        void throwsOnAmbiguousSecondConnection() {
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-a");
+
+            assertThrows(IllegalStateException.class, () ->
+                    ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-b"));
+        }
+
+        @Test
+        @DisplayName("throws even when re-registering the exact same (fromNodeId, targetIdentifier, "
+                + "connectionId) triple — registration is strictly once, not idempotent")
+        void throwsOnExactDuplicateToo() {
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-a");
+
+            assertThrows(IllegalStateException.class, () ->
+                    ItaraRegistry.instance().registerOutboundConnection("callerNode", "target", "conn-a"));
+        }
+
+        @Test
+        @DisplayName("different fromNodeIds may each declare their own connection to the same target — "
+                + "the guard is scoped per caller, not global")
+        void differentFromNodesCanEachConnectToTheSameTarget() {
+            ItaraRegistry.instance().registerOutboundConnection("nodeA", "target", "conn-a-to-target");
+
+            // Must not throw — a different caller connecting to the same
+            // target is the ordinary fan-out case, not an ambiguity.
+            ItaraRegistry.instance().registerOutboundConnection("nodeB", "target", "conn-b-to-target");
+        }
+
+        @Test
+        @DisplayName("the same fromNodeId may declare connections to different targets without conflict")
+        void sameFromNodeCanConnectToDifferentTargets() {
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target-1", "conn-to-1");
+
+            // Must not throw — different targetIdentifiers from the same
+            // caller are entirely unrelated registrations.
+            ItaraRegistry.instance().registerOutboundConnection("callerNode", "target-2", "conn-to-2");
         }
     }
 }

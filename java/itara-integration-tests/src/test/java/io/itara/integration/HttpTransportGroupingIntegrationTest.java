@@ -5,6 +5,7 @@ import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
@@ -49,6 +50,28 @@ public class HttpTransportGroupingIntegrationTest {
     private static final String COMPONENT_A = "calculator";
     private static final String COMPONENT_B = "calculator-b";
 
+    // ItaraDispatcher and ItaraProxyHandler now each require a ComponentScope
+    // (see ADR 0021). Two node identities for the two dispatchers under test,
+    // plus one shared caller identity for every proxy built via proxyFor() —
+    // none of these tests exercise scope content itself.
+    private static final ComponentScope SCOPE_A = new ComponentScope.Factory()
+            .nodeId("calculatorNodeA")
+            .componentId(COMPONENT_A)
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
+    private static final ComponentScope SCOPE_B = new ComponentScope.Factory()
+            .nodeId("calculatorNodeB")
+            .componentId(COMPONENT_B)
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
+    private static final ComponentScope CALLER_SCOPE = new ComponentScope.Factory()
+            .nodeId("callerNode")
+            .componentId("caller")
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
     private static int portA;
     private static int portB;
     private static ItaraHttpServer sharedServer;
@@ -65,10 +88,8 @@ public class HttpTransportGroupingIntegrationTest {
         portB = findFreePort();
 
         ItaraRegistry registry = ItaraRegistry.instance();
-        registry.registerActivator(COMPONENT_A,
-                CalculatorActivator.class, CalculatorService.class);
-        registry.registerActivator(COMPONENT_B,
-                CalculatorActivator.class, CalculatorService.class);
+        registry.registerActivator(COMPONENT_A, CalculatorActivator.class);
+        registry.registerActivator(COMPONENT_B, CalculatorActivator.class);
     }
 
     @AfterAll
@@ -151,14 +172,14 @@ public class HttpTransportGroupingIntegrationTest {
                     .getOrCreate("http", config);
 
             ItaraDispatcher dispatcherA = new ItaraDispatcher(
-                    COMPONENT_A, "http", serializer, serializerConfig,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    "conn1", COMPONENT_A, "http", serializer, serializerConfig,
+                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, SCOPE_A);
             ItaraDispatcher dispatcherB = new ItaraDispatcher(
-                    COMPONENT_B, "http", serializer, serializerConfig,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY);
+                    "conn1", COMPONENT_B, "http", serializer, serializerConfig,
+                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, SCOPE_B);
 
-            transport.registerListener(COMPONENT_A, config, dispatcherA);
-            transport.registerListener(COMPONENT_B, config, dispatcherB);
+            transport.registerListener(config, dispatcherA);
+            transport.registerListener(config, dispatcherB);
             transport.start();
 
             // Proxy to component A
@@ -187,11 +208,11 @@ public class HttpTransportGroupingIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        componentId, serializer, serializerConfig, transport, transportId,
+                        "conn1", componentId, serializer, serializerConfig, transport, transportId,
                         new HttpTransportConfig("localhost", port, false),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
-                        null, null
+                        null, null, CALLER_SCOPE
                 )
         );
     }
