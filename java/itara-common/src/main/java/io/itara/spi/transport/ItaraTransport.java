@@ -66,12 +66,10 @@ public interface ItaraTransport {
      * started yet — the transport does not have the full picture until all
      * connections are processed.
      *
-     * @param componentId  The id of the component being exposed
      * @param config       The parsed transport config for this connection
      * @param dispatcher   The dispatcher to call with raw request bytes
      */
-    void registerListener(String componentId,
-                          ItaraTransportConfig config,
+    void registerListener(ItaraTransportConfig config,
                           DispatchHandler dispatcher);
 
     /**

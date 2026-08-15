@@ -244,9 +244,12 @@ The agent uses the node identifier to filter which parts of the wiring configura
 
 A connection declaration MUST include:
 
+- A unique identifier for the connection (`id`)
 - The identifier of the calling node (`from`)
 - The identifier of the called node (`to`)
 - A `transport` block identifying the transport and its parameters
+
+The `id` MUST be unique across the entire wiring configuration — no two connections, anywhere in the topology, may share one. This is what lets the correct connection-specific configuration — transport, serializer, failure semantics, or anything else declared per connection — be applied to every call on that connection.
 
 The `from` field MAY be absent or empty, indicating that the caller is external to this topology — the connection defines an inbound entry point for the `to` node.
 
@@ -254,7 +257,8 @@ A connection declaration MAY include Serializer selection for remote connections
 
 ```yaml
 connections:
-  - from: "gatewayNode"
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
     to: "calculatorNode"
     transport:
       id: http
@@ -265,7 +269,8 @@ connections:
     serializer:
       id: json
 
-  - from:                     # absent = external caller
+  - id: "external-to-gateway"
+    from:                     # absent = external caller
     to: "gatewayNode"
     transport:
       id: http
@@ -1194,6 +1199,7 @@ The verify command MUST check for and report the following conditions:
 | Orphaned connections | ERROR | A connection references a node identifier not declared in the nodes list |
 | Unknown transport type | ERROR | A connection declares a transport type not known to this tooling installation |
 | Serializer not known compatible with API | WARNING | Only checked when the callee API declares a non-empty `message-format` or a non-empty `[serializers] supported`. When checked: satisfies neither compatibility path in §8.6 |
+| Duplicate connection identifiers | ERROR | Two or more connections declare the same `id` |
 
 The verify command MUST exit with a non-zero exit code if any ERROR is present.
 Warnings MUST NOT affect the exit code. This makes the verify command suitable

@@ -10,7 +10,8 @@ nodes:
     component: "calculator"
 
 connections:
-  - from: "gatewayNode"
+  - id: "conn-001"
+    from: "gatewayNode"
     to: "calculatorNode"
     transport:
       id: "direct"

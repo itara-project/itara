@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.DispatchKeyPropagation;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -97,17 +98,26 @@ public class ItaraHttpServer {
             return;
         }
 
-        DispatchHandler dispatcher = dispatchers.get(componentId);
+        String dispatchKey;
+        try {
+            dispatchKey = DispatchKeyPropagation.decode(headers);
+        } catch (IllegalArgumentException e) {
+            log.warning("[Itara/HTTP] Skipping message — " + e.getMessage());
+            sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
+            return;
+        }
+
+        DispatchHandler dispatcher = dispatchers.get(dispatchKey);
         if (dispatcher == null) {
-            log.warning("[Itara/HTTP] No dispatcher registered for component '"
-                    + componentId + "' on this server");
+            log.warning("[Itara/HTTP] No dispatcher registered for dispatch key '"
+                    + dispatchKey + "' on this server");
             sendEmpty(exchange, ItaraHttpStatus.BAD_REQUEST);
             return;
         }
 
         byte[] responseBytes;
         try {
-            responseBytes = dispatcher.dispatch(componentId, methodName, requestBytes, headers);
+            responseBytes = dispatcher.dispatch(methodName, requestBytes, headers);
         } catch (ItaraRemoteException e) {
             sendBytes(exchange, ItaraHttpStatus.forErrorKind(e.getErrorKind()), e.getSerializedPayload());
             return;

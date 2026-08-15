@@ -1,7 +1,7 @@
 package demo.gateway.component;
 
 import demo.gateway.api.GatewayService;
-import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ComponentLookup;
 
 import java.util.logging.Logger;
 
@@ -35,8 +35,7 @@ public class DemoMain {
         // Small pause to let the agent's HTTP server start if needed
         Thread.sleep(500);
 
-        ItaraRegistry registry = ItaraRegistry.instance();
-        GatewayService gateway = registry.get("gateway", GatewayService.class);
+        GatewayService gateway = ComponentLookup.getSelf("gateway", GatewayService.class, true);
 
         log.info("");
         log.info("--- Making calls ---");
