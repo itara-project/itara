@@ -1,0 +1,9 @@
+nodes:
+  - id: nodeA
+    component: compA
+
+connections:
+  - id: "bad-direct-external"
+    to: nodeA
+    transport:
+      id: direct

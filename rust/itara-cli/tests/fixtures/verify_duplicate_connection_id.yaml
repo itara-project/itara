@@ -1,8 +1,6 @@
 nodes:
   - id: nodeA
     component: compA
-  - id: nodeA
-    component: compA-duplicate
   - id: nodeB
     component: compB
 
@@ -15,12 +13,21 @@ connections:
         port: "8080"
     serializer:
       id: json
-  - id: "nodeA-to-nodeB"
+  - id: "shared-id"
     from: nodeA
     to: nodeB
     transport:
       id: http
       params:
         port: "8081"
+    serializer:
+      id: json
+  - id: "shared-id"
+    from: nodeB
+    to: nodeA
+    transport:
+      id: http
+      params:
+        port: "8082"
     serializer:
       id: json

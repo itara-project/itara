@@ -1,8 +1,10 @@
 nodes:
   - id: gatewayNode
     component: gateway
-  - id: workerNode
-    component: worker
+  - id: calcNodeA
+    component: calculator
+  - id: calcNodeB
+    component: calculator
 
 connections:
   - id: "external-to-gateway"
@@ -13,12 +15,21 @@ connections:
         port: "8080"
     serializer:
       id: json
-  - id: "gateway-to-worker"
+  - id: "gateway-to-calcA"
     from: gatewayNode
-    to: workerNode
+    to: calcNodeA
     transport:
-      id: grpc
+      id: http
       params:
         port: "8081"
+    serializer:
+      id: json
+  - id: "gateway-to-calcB"
+    from: gatewayNode
+    to: calcNodeB
+    transport:
+      id: http
+      params:
+        port: "8082"
     serializer:
       id: json

@@ -3,14 +3,16 @@ nodes:
     component: compA
 
 connections:
-  - to: nodeA
+  - id: "external-to-nodeA"
+    to: nodeA
     transport:
       id: http
       params:
         port: "8080"
     serializer:
       id: json
-  - from: nodeA
+  - id: "nodeA-self"
+    from: nodeA
     to: nodeA
     transport:
       id: http

@@ -7,18 +7,21 @@ nodes:
     component: compC
 
 connections:
-  - to: nodeA
+  - id: "external-to-nodeA"
+    to: nodeA
     transport:
       id: http
       params:
         port: "8080"
     serializer:
       id: json
-  - from: nodeA
+  - id: "nodeA-to-nodeB"
+    from: nodeA
     to: nodeB
     transport:
       id: direct
-  - from: nodeB
+  - id: "nodeB-to-nodeC"
+    from: nodeB
     to: nodeC
     transport:
       id: direct

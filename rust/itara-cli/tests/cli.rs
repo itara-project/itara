@@ -302,6 +302,23 @@ mod inspect {
             .stderr(predicate::str::contains("warning"))
             .stderr(predicate::str::contains("doesNotExist"));
     }
+
+    #[test]
+    fn connections_section_shows_connection_id() {
+        itara().args(["inspect", &fixture("simple.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("gateway-to-calculator:"));
+    }
+
+    #[test]
+    fn graph_individual_line_shows_connection_id() {
+        // gatewayNode branches to two services — each branch is rendered
+        // individually, not folded into the compressed chain.
+        itara().args(["inspect", &fixture("branching.yaml")])
+            .assert().success()
+            .stdout(predicate::str::contains("id: gateway-to-serviceA"))
+            .stdout(predicate::str::contains("id: gateway-to-serviceB"));
+    }
 }
 
 // ── itara verify ──────────────────────────────────────────────────────────────
@@ -384,6 +401,49 @@ mod verify {
         itara().args(["verify", &fixture("verify_self_connection.yaml")])
             .assert().failure()
             .stdout(predicate::str::contains("self-connection"));
+    }
+
+    #[test]
+    fn duplicate_connection_id_exits_nonzero() {
+        itara().args(["verify", &fixture("verify_duplicate_connection_id.yaml")])
+            .assert().failure();
+    }
+
+    #[test]
+    fn duplicate_connection_id_names_the_duplicate() {
+        itara().args(["verify", &fixture("verify_duplicate_connection_id.yaml")])
+            .assert().failure()
+            .stdout(predicate::str::contains("shared-id"))
+            .stdout(predicate::str::contains("declared 2 times"));
+    }
+
+    #[test]
+    fn direct_external_conflict_exits_nonzero() {
+        itara().args(["verify", &fixture("verify_direct_external_conflict.yaml")])
+            .assert().failure();
+    }
+
+    #[test]
+    fn direct_external_conflict_names_the_problem() {
+        itara().args(["verify", &fixture("verify_direct_external_conflict.yaml")])
+            .assert().failure()
+            .stdout(predicate::str::contains("direct"))
+            .stdout(predicate::str::contains("no 'from'"));
+    }
+
+    #[test]
+    fn outbound_ambiguity_exits_nonzero() {
+        itara().args(["verify", &fixture("verify_outbound_ambiguity.yaml")])
+            .assert().failure();
+    }
+
+    #[test]
+    fn outbound_ambiguity_names_the_nodes_and_component() {
+        itara().args(["verify", &fixture("verify_outbound_ambiguity.yaml")])
+            .assert().failure()
+            .stdout(predicate::str::contains("calcNodeA"))
+            .stdout(predicate::str::contains("calcNodeB"))
+            .stdout(predicate::str::contains("calculator"));
     }
 
     #[test]
