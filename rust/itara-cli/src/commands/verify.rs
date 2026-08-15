@@ -1,5 +1,5 @@
 use clap;
-use itara_config::{parse_file, WiringConfig};
+use itara_config::{parse_file, WiringConfig, ConnectionEntry};
 use itara_libdir::MetadataIndex;
 use std::collections::{HashMap, HashSet};
 
@@ -9,7 +9,10 @@ const VALID_CHECKS: &[&str] = &[
     "orphaned-nodes",
     "orphaned-connections",
     "duplicate-ids",
+    "connection-id-uniqueness",
     "self-connections",
+    "direct-external-conflict",
+    "outbound-ambiguity",
     "unknown-transport",
     "virtual-no-producers",
     "virtual-no-consumers",
@@ -48,7 +51,9 @@ pub struct Args {
     pub metadata_dir: Option<String>,
     /// Skip a specific check by name. Can be repeated. Mutually exclusive with --only.
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
-    ///               self-connections, unknown-transport, virtual-no-producers,
+    ///               connection-id-uniqueness, self-connections,
+    ///               direct-external-conflict, outbound-ambiguity,
+    ///               unknown-transport, virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
@@ -57,7 +62,9 @@ pub struct Args {
     pub skip: Vec<String>,
     /// Run only the specified check. Can be repeated. Mutually exclusive with --skip.
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
-    ///               self-connections, unknown-transport, virtual-no-producers,
+    ///               connection-id-uniqueness, self-connections,
+    ///               direct-external-conflict, outbound-ambiguity,
+    ///               unknown-transport, virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
@@ -160,7 +167,10 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter, meta: Option<&Met
     let mut issues: Vec<Issue> = Vec::new();
 
     if filter.should_run("duplicate-ids")        { check_duplicate_ids(config, &mut issues); }
+    if filter.should_run("connection-id-uniqueness") { check_connection_id_uniqueness(config, &mut issues); }
     if filter.should_run("self-connections")      { check_self_connections(config, &mut issues); }
+    if filter.should_run("direct-external-conflict") { check_direct_external_conflict(config, &mut issues); }
+    if filter.should_run("outbound-ambiguity")    { check_outbound_ambiguity(config, &mut issues); }
     if filter.should_run("orphaned-nodes")        { check_orphaned_nodes(config, &mut issues); }
     if filter.should_run("orphaned-connections")  { check_orphaned_connections(config, &mut issues); }
     if filter.should_run("virtual-no-producers")      { check_virtual_no_producers(config, &mut issues); }
@@ -197,6 +207,25 @@ fn check_duplicate_ids(config: &WiringConfig, issues: &mut Vec<Issue>) {
         )));
     }
 }
+
+fn check_connection_id_uniqueness(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for conn in &config.connections {
+        *seen.entry(conn.id.as_str()).or_default() += 1;
+    }
+    // Sort for deterministic output order.
+    let mut duplicates: Vec<(&str, usize)> = seen.into_iter()
+        .filter(|(_, count)| *count > 1)
+        .collect();
+    duplicates.sort_by_key(|(id, _)| *id);
+    for (id, count) in duplicates {
+        issues.push(Issue::error(format!(
+            "connection id '{}' is declared {} times — connection ids must be unique \
+             across the entire wiring configuration",
+            id, count
+        )));
+    }
+}
  
 fn check_self_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
@@ -207,6 +236,19 @@ fn check_self_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
                     from, conn.to
                 )));
             }
+        }
+    }
+}
+
+fn check_direct_external_conflict(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    for conn in &config.connections {
+        if conn.is_direct() && conn.is_external() {
+            issues.push(Issue::error(format!(
+                "connection '{}' to '{}' declares transport 'direct' but has no 'from' \
+                 — a direct connection requires an in-process caller, which contradicts \
+                 being external",
+                conn.id, conn.to
+            )));
         }
     }
 }
@@ -253,6 +295,49 @@ fn check_orphaned_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
                     from
                 )));
             }
+        }
+    }
+}
+
+fn check_outbound_ambiguity(config: &WiringConfig, issues: &mut Vec<Issue>) {
+    // Group outbound connections by their calling node.
+    let mut by_from: HashMap<&str, Vec<&ConnectionEntry>> = HashMap::new();
+    for conn in &config.connections {
+        if let Some(from) = conn.from.as_deref() {
+            if !from.trim().is_empty() {
+                by_from.entry(from).or_default().push(conn);
+            }
+        }
+    }
+
+    let mut froms: Vec<&str> = by_from.keys().copied().collect();
+    froms.sort();
+
+    for from in froms {
+        // Map each target component id to every node id that resolves to it.
+        let mut targets_by_component: HashMap<&str, Vec<&str>> = HashMap::new();
+        for conn in &by_from[from] {
+            if let Some(component) = config.component_of_node(&conn.to) {
+                let targets = targets_by_component.entry(component).or_default();
+                if !targets.contains(&conn.to.as_str()) {
+                    targets.push(conn.to.as_str());
+                }
+            }
+        }
+
+        let mut ambiguous: Vec<(&str, Vec<&str>)> = targets_by_component.into_iter()
+            .filter(|(_, targets)| targets.len() > 1)
+            .collect();
+        ambiguous.sort_by_key(|(component, _)| *component);
+
+        for (component, mut targets) in ambiguous {
+            targets.sort();
+            issues.push(Issue::error(format!(
+                "node '{}' has outbound connections to '{}' — all resolve to component \
+                 '{}', so a call from '{}' for component '{}' cannot be resolved to a \
+                 single target",
+                from, targets.join("', '"), component, from, component
+            )));
         }
     }
 }
@@ -899,9 +984,20 @@ mod tests {
     fn default_serializer() -> Option<SerializerEntry> {
         Some(SerializerEntry { id: "json".into(), params: Default::default() })
     }
+
+    /// Generates a fresh, unique connection id for test-built connections.
+    /// The specific value is never asserted on — only that `id` is present
+    /// and structurally valid — so a counter keeps every helper call site
+    /// below unchanged while still giving every connection a distinct id.
+    fn next_conn_id() -> String {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        format!("test-conn-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
  
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("http", Some(port)),
@@ -912,6 +1008,7 @@ mod tests {
  
     fn direct(from: &str, to: &str) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: Some(from.into()),
             to: to.into(),
             transport: transport_entry("direct", None),
@@ -922,6 +1019,7 @@ mod tests {
 
     fn kafka(from: Option<&str>, to: &str) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("kafka", None),
@@ -932,6 +1030,7 @@ mod tests {
  
     fn conn_with_transport(from: Option<&str>, to: &str, transport: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry(transport, Some(port)),
@@ -945,6 +1044,13 @@ mod tests {
     /// "json" default the other helpers use.
     fn with_serializer_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
         conn.serializer = Some(SerializerEntry { id: id.into(), params: Default::default() });
+        conn
+    }
+
+    /// Overrides the id on an already-built connection.
+    /// Used by tests that need to force a specific (often colliding) id.
+    fn with_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
+        conn.id = id.into();
         conn
     }
  
@@ -1005,6 +1111,57 @@ mod tests {
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
         assert_eq!(errors(&issues).len(), 2);
     }
+
+    // ── Connection id uniqueness ──────────────────────────────────────────────
+
+    #[test]
+    fn duplicate_connection_id_flagged() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb"), node("c", "cc")],
+            vec![
+                with_id(http(None, "a", 8080), "shared"),
+                with_id(http(Some("a"), "b", 8081), "shared"),
+                http(Some("b"), "c", 8082),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("connection id 'shared'"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].is_error());
+        assert!(matches[0].message.contains("declared 2 times"));
+    }
+
+    #[test]
+    fn multiple_duplicate_connection_ids_all_flagged() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb"), node("c", "cc"), node("d", "cd")],
+            vec![
+                with_id(http(None, "a", 8080), "x"),
+                with_id(http(Some("a"), "b", 8081), "x"),
+                with_id(http(Some("b"), "c", 8082), "y"),
+                with_id(http(Some("c"), "d", 8083), "y"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("connection id"))
+            .collect();
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn unique_connection_ids_not_flagged() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![http(None, "a", 8080), http(Some("a"), "b", 8081)],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["connection-id-uniqueness"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
+    }
  
     // ── Self-connections ──────────────────────────────────────────────────────
  
@@ -1029,6 +1186,71 @@ mod tests {
             .filter(|i| i.message.contains("self-connection"))
             .collect();
         assert!(self_conn_issues.is_empty());
+    }
+
+    // ── Direct/external conflict ──────────────────────────────────────────────
+
+    #[test]
+    fn direct_connection_with_no_from_flagged() {
+        let cfg = config(
+            vec![node("a", "ca")],
+            vec![ConnectionEntry {
+                id: next_conn_id(),
+                from: None,
+                to: "a".into(),
+                transport: transport_entry("direct", None),
+                serializer: None,
+                failure_semantics: None,
+            }],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("direct") && i.message.contains("no 'from'"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].is_error());
+    }
+
+    #[test]
+    fn direct_connection_with_blank_from_flagged() {
+        // Whitespace-only 'from' is external too — same as is_external() elsewhere.
+        let cfg = config(
+            vec![node("a", "ca")],
+            vec![ConnectionEntry {
+                id: next_conn_id(),
+                from: Some("   ".into()),
+                to: "a".into(),
+                transport: transport_entry("direct", None),
+                serializer: None,
+                failure_semantics: None,
+            }],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        assert!(issues.iter().any(|i| i.is_error() && i.message.contains("no 'from'")));
+    }
+
+    #[test]
+    fn direct_connection_with_from_not_flagged() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![http(None, "a", 8080), direct("a", "b")],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["direct-external-conflict"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn external_non_direct_connection_not_flagged() {
+        let cfg = config(
+            vec![node("a", "ca")],
+            vec![http(None, "a", 8080)],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["direct-external-conflict"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
     }
  
     // ── Orphaned nodes ────────────────────────────────────────────────────────
@@ -1099,6 +1321,97 @@ mod tests {
             vec![http(None, "a", 8080)],
         );
         assert!(collect_issues(&cfg, &CheckFilter::All, None).is_empty());
+    }
+
+    // ── Outbound ambiguity ────────────────────────────────────────────────────
+
+    #[test]
+    fn outbound_ambiguity_flagged_when_two_nodes_share_a_component() {
+        let cfg = config(
+            vec![
+                node("gateway", "gateway-comp"),
+                node("calcNodeA", "calculator"),
+                node("calcNodeB", "calculator"),
+            ],
+            vec![
+                http(None, "gateway", 8080),
+                http(Some("gateway"), "calcNodeA", 8081),
+                http(Some("gateway"), "calcNodeB", 8082),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        let matches: Vec<_> = issues.iter()
+            .filter(|i| i.message.contains("'calculator'"))
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].is_error());
+        assert!(matches[0].message.contains("calcNodeA"));
+        assert!(matches[0].message.contains("calcNodeB"));
+    }
+
+    #[test]
+    fn outbound_ambiguity_not_flagged_for_distinct_components() {
+        let cfg = config(
+            vec![
+                node("gateway", "gateway-comp"),
+                node("calcNode", "calculator"),
+                node("notifierNode", "notifier"),
+            ],
+            vec![
+                http(None, "gateway", 8080),
+                http(Some("gateway"), "calcNode", 8081),
+                http(Some("gateway"), "notifierNode", 8082),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["outbound-ambiguity"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn outbound_ambiguity_not_flagged_across_different_calling_nodes() {
+        // Two different callers each reaching a different node of the same
+        // component is fine — the ambiguity is scoped per calling node.
+        let cfg = config(
+            vec![
+                node("callerA", "caller-a"),
+                node("callerB", "caller-b"),
+                node("calcNodeA", "calculator"),
+                node("calcNodeB", "calculator"),
+            ],
+            vec![
+                http(None, "callerA", 8080),
+                http(None, "callerB", 8081),
+                http(Some("callerA"), "calcNodeA", 8082),
+                http(Some("callerB"), "calcNodeB", 8083),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["outbound-ambiguity"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn outbound_ambiguity_ignores_virtual_node_targets() {
+        // A node calling into two virtual nodes has no component id to
+        // collide with — must never be flagged.
+        let cfg = config(
+            vec![
+                node("producerNode", "producer"),
+                virtual_node("channelA", "events/a", "topic.a"),
+                virtual_node("channelB", "events/b", "topic.b"),
+            ],
+            vec![
+                kafka(Some("producerNode"), "channelA"),
+                kafka(Some("producerNode"), "channelB"),
+            ],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::Only(
+            ["outbound-ambiguity"].iter().map(|s| s.to_string()).collect()
+        ), None);
+        assert!(issues.is_empty());
     }
  
     // ── Unknown transports ────────────────────────────────────────────────────
@@ -1241,6 +1554,7 @@ mod tests {
             vec![
                 kafka(Some("producerNode"), "channel"),
                 ConnectionEntry {
+                    id: next_conn_id(),
                     from: Some("channel".into()),
                     to: "consumerNode".into(),
                     transport: transport_entry("http", Some(8081)),
@@ -1314,6 +1628,7 @@ mod tests {
         absolute_timeout: Option<&str>,
     ) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: from.map(Into::into),
             to: to.into(),
             transport: itara_config::TransportEntry {
