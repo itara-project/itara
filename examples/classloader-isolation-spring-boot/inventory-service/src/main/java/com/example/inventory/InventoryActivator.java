@@ -2,13 +2,12 @@ package com.example.inventory;
 
 import com.example.inventory.api.InventoryClient;
 import io.itara.api.ItaraActivator;
-import io.itara.runtime.ItaraRegistry;
 import org.springframework.context.ConfigurableApplicationContext;
 
 public class InventoryActivator implements ItaraActivator {
 
     @Override
-    public InventoryClient activate(ItaraRegistry registry) {
+    public InventoryClient activate() {
         // Reuses the existing @SpringBootApplication class as-is — no
         // separate config class needed, since the bean composition should
         // be identical whether run standalone (via main()) or activated

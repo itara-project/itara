@@ -172,7 +172,8 @@ nodes:
     component: "inventory"
 
 connections:
-  - from: "orderNode"
+  - id: "order-to-inventory"
+    from: "orderNode"
     to: "inventoryNode"
     transport:
       id: "direct"

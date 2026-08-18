@@ -1,11 +1,12 @@
 package com.example.order;
 
 import com.example.inventory.api.InventoryClient;
-import io.itara.runtime.ItaraRegistry;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+
+import io.itara.runtime.ComponentLookup;
 
 /**
  * Bootstrap class used only when this component is activated by Itara.
@@ -30,6 +31,6 @@ public class OrderItaraConfig {
 
     @Bean
     public InventoryClient inventoryClient() {
-        return ItaraRegistry.instance().get("inventory", InventoryClient.class);
+        return ComponentLookup.get("inventory", InventoryClient.class);
     }
 }
