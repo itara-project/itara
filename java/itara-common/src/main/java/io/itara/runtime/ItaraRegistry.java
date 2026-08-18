@@ -313,11 +313,9 @@ public class ItaraRegistry {
         }
     }
 
-// TODO(good-first-issue): activateAllLocal() used to give boot-time
-    // fail-fast activation (see ItaraMain). It called get(), which now
-    // requires an active ComponentScope that this method has no way to
-    // provide — as written, it would throw immediately every time. Left
-    // here, commented out, for whoever picks up the real replacement: a
+// TODO(good-first-issue): activateAllLocal() gives boot-time
+    // fail-fast activation (see ItaraMain). It calls get(), which now
+    // requires an active ComponentScope. It needs replacement: a
     // registry-maintained list of every registered proxy and dispatcher,
     // each able to eager-activate/cache its own delegate where that makes
     // sense (see ItaraLocalProxyHandler).
@@ -328,6 +326,14 @@ public class ItaraRegistry {
     //         get(id, Object.class);
     //     }
     // }
+    public void activateAllLocal() {
+        for (Map.Entry<String, ComponentScope> componentAndScope : componentScopes.entrySet()) {
+            try (ComponentScopeHandle handle = ComponentScopeHandle.open(componentAndScope.getValue())) {
+                log.info("[Itara] eagerly activating component=" + componentAndScope.getKey());
+                getRawImplementation(componentAndScope.getKey(), Object.class);
+            }
+        }
+    }
 
     /**
      * Visible for testing — clears all registry state.
