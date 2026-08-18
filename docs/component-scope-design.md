@@ -1,6 +1,6 @@
 # Component Scope Design
 
-**Status:** In progress
+**Status:** Accepted
 **Date:** August 2026
 **Related:** SPEC.md §3.6 (Component Scope), GLOSSARY.md (Component Scope),
 classloader-isolation-design.md (TCCL precedent this generalizes)
