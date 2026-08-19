@@ -6,7 +6,15 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("ConfigLoader")
 class ConfigLoaderTest {
@@ -306,7 +314,7 @@ class ConfigLoaderTest {
         @DisplayName("unknown fields in virtual node are ignored")
         void unknownFieldsIgnored() {
             String yaml = """
-                virtualNodes:
+                nodes:
                   - id: "orderCreatedChannel"
                     kind: virtual
                     contract: "order-events/order-created"
@@ -328,7 +336,8 @@ class ConfigLoaderTest {
         void parsesDirectConnection() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: direct
@@ -346,7 +355,8 @@ class ConfigLoaderTest {
         void parsesHttpConnection() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: http
@@ -370,7 +380,8 @@ class ConfigLoaderTest {
         void noHostPortRequiredForDirect() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: direct
@@ -383,7 +394,8 @@ class ConfigLoaderTest {
         void unknownFieldsIgnored() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: direct
@@ -404,7 +416,8 @@ class ConfigLoaderTest {
         void parsesTransportId() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -420,7 +433,8 @@ class ConfigLoaderTest {
         void parsesTransportParams() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -440,7 +454,8 @@ class ConfigLoaderTest {
         void absentParamsYieldsEmptyMap() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -457,7 +472,8 @@ class ConfigLoaderTest {
         void handleTimeoutDefaultsFalse() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -473,7 +489,8 @@ class ConfigLoaderTest {
         void parsesHandleTimeout() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -493,7 +510,8 @@ class ConfigLoaderTest {
         void throwsWhenTransportBlockMissing() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                     """;
             assertThrows(ConfigurationException.class,
@@ -505,7 +523,8 @@ class ConfigLoaderTest {
         void throwsWhenTransportIdMissing() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           handleTimeout: true
@@ -521,7 +540,8 @@ class ConfigLoaderTest {
         void unknownFieldsInTransportBlockIgnored() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -537,7 +557,8 @@ class ConfigLoaderTest {
         void envVarSubstitutedInParams() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -556,7 +577,8 @@ class ConfigLoaderTest {
         void directTransportIdMarksConnectionAsDirect() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: direct
@@ -571,7 +593,8 @@ class ConfigLoaderTest {
         void fullTransportBlockParsesCorrectly() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -606,7 +629,8 @@ class ConfigLoaderTest {
         void throwsWhenToMissing() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         transport:
                           id: direct
                     """;
@@ -619,7 +643,8 @@ class ConfigLoaderTest {
         void throwsWhenTypeMissing() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                     """;
             assertThrows(ConfigurationException.class,
@@ -638,7 +663,8 @@ class ConfigLoaderTest {
         void substitutesDefaultInHost() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: http
@@ -657,7 +683,8 @@ class ConfigLoaderTest {
         void substitutesDefaultInPort() {
             String yaml = """
                     connections:
-                      - from: "gateway"
+                      - id: "conn21"
+                        from: "gateway"
                         to:   "calculator"
                         transport:
                           id: http
@@ -726,7 +753,8 @@ class ConfigLoaderTest {
                       - id: "calculatorNode"
                         component: "calculator"
                     connections:
-                      - from: "gatewayNode"
+                      - id: "conn21"
+                        from: "gatewayNode"
                         to:   "calculatorNode"
                         transport:
                           id: direct
@@ -748,7 +776,8 @@ class ConfigLoaderTest {
               - id: "notifierNode"
                 component: "notifier"
             connections:
-              - from: "gatewayNode"
+              - id: "conn21"
+                from: "gatewayNode"
                 to: "calculatorNode"
                 transport:
                   id: http
@@ -757,7 +786,8 @@ class ConfigLoaderTest {
                     port: "8081"
                 serializer:
                   id: json
-              - from: "gatewayNode"
+              - id: "conn22"
+                from: "gatewayNode"
                 to: "notifierNode"
                 transport:
                   id: http
@@ -766,7 +796,8 @@ class ConfigLoaderTest {
                     port: "8082"
                 serializer:
                   id: json
-              - from:
+              - id: "conn23"
+                from:
                 to: "gatewayNode"
                 transport:
                   id: http
@@ -969,13 +1000,15 @@ class ConfigLoaderTest {
             contract: "order-events/order-created"
             address: "org.orders.created"
         connections:
-          - from: "orderServiceNode"
+          - id: "conn21"
+            from: "orderServiceNode"
             to: "orderCreatedChannel"
             transport:
               id: kafka
             serializer:
               id: json
-          - from: "orderCreatedChannel"
+          - id: "conn22"
+            from: "orderCreatedChannel"
             to: "inventoryServiceNode"
             transport:
               id: kafka
@@ -983,7 +1016,8 @@ class ConfigLoaderTest {
                 consumerGroup: "inventory-consumer-group"
             serializer:
               id: json
-          - from: "orderCreatedChannel"
+          - id: "conn23"
+            from: "orderCreatedChannel"
             to: "notificationServiceNode"
             transport:
               id: kafka
@@ -1062,12 +1096,13 @@ class ConfigLoaderTest {
                     component: "gateway"
                   - id: "orderServiceNode"
                     component: "order-service"
-                virtualNodes:
                   - id: "orderCreatedChannel"
+                    kind: virtual
                     contract: "order-events/order-created"
                     address: "org.orders.created"
                 connections:
-                  - from: "gatewayNode"
+                  - id: "conn21"
+                    from: "gatewayNode"
                     to: "orderServiceNode"
                     transport:
                       id: http
@@ -1076,7 +1111,8 @@ class ConfigLoaderTest {
                         port: "8081"
                     serializer:
                       id: json
-                  - from: "orderServiceNode"
+                  - id: "conn22"
+                    from: "orderServiceNode"
                     to: "orderCreatedChannel"
                     transport:
                       id: kafka
@@ -1095,7 +1131,8 @@ class ConfigLoaderTest {
         void kafkaConnectionParsesWithoutHostOrPort() {
             String yaml = """
                 connections:
-                  - from: "orderServiceNode"
+                  - id: "conn21"
+                    from: "orderServiceNode"
                     to: "orderCreatedChannel"
                     transport:
                       id: kafka
@@ -1110,7 +1147,8 @@ class ConfigLoaderTest {
         void kafkaConsumerConnectionParsesConsumerGroup() {
             String yaml = """
                 connections:
-                  - from: "orderCreatedChannel"
+                  - id: "conn21"
+                    from: "orderCreatedChannel"
                     to: "inventoryServiceNode"
                     transport:
                       id: kafka
@@ -1223,7 +1261,8 @@ class ConfigLoaderTest {
         void absentDefaultsToNoop() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1243,7 +1282,8 @@ class ConfigLoaderTest {
         void parsesId() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1265,7 +1305,8 @@ class ConfigLoaderTest {
         void parsesMaxRetryAsMaxAttempts() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1288,7 +1329,8 @@ class ConfigLoaderTest {
         void parsesTimeout() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1312,7 +1354,8 @@ class ConfigLoaderTest {
         void parsesAbsoluteTimeout() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1336,7 +1379,8 @@ class ConfigLoaderTest {
         void parsesHandleTimeout() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1359,7 +1403,8 @@ class ConfigLoaderTest {
         void parsesFlatParams() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1386,7 +1431,8 @@ class ConfigLoaderTest {
         void absentParamsYieldsEmptyMap() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1408,7 +1454,8 @@ class ConfigLoaderTest {
         void absentMaxRetryYieldsNullMaxAttempts() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1430,7 +1477,8 @@ class ConfigLoaderTest {
         void fullBlockParsesCorrectly() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1466,7 +1514,8 @@ class ConfigLoaderTest {
         void unknownFieldsIgnored() {
             String yaml = """
                     connections:
-                      - from: gateway
+                      - id: "conn21"
+                        from: gateway
                         to: calculator
                         transport:
                           id: http
@@ -1496,7 +1545,8 @@ class ConfigLoaderTest {
                 anchors:
                   host: &calcHost "localhost"
                 connections:
-                  - from: gateway
+                  - id: "conn21"
+                    from: gateway
                     to:   calculator
                     transport:
                       id: http
@@ -1516,6 +1566,7 @@ class ConfigLoaderTest {
             String yaml = """
                 connections:
                   - &baseConn
+                    id: base-conn
                     from: gateway
                     to:   calculator
                     transport:
@@ -1525,7 +1576,8 @@ class ConfigLoaderTest {
                         port: "8081"
                     serializer:
                       id: json
-                  - *baseConn
+                  - <<: *baseConn
+                    id: base-conn-aliased
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
             assertEquals(2, conns.size());
@@ -1545,7 +1597,8 @@ class ConfigLoaderTest {
                     maxRetry: 3
                     timeout: 2s
                 connections:
-                  - from: gateway
+                  - id: "conn21"
+                    from: gateway
                     to:   calculator
                     transport:
                       id: http
@@ -1574,7 +1627,8 @@ class ConfigLoaderTest {
                     maxRetry: 3
                     timeout: 2s
                 connections:
-                  - from: gateway
+                  - id: "conn21"
+                    from: gateway
                     to:   calculator
                     transport:
                       id: http
@@ -1606,7 +1660,8 @@ class ConfigLoaderTest {
                     host: notif-host
                     port: "8082"
                 connections:
-                  - from: gateway
+                  - id: "conn21"
+                    from: gateway
                     to:   calculator
                     transport:
                       id: http
@@ -1614,7 +1669,8 @@ class ConfigLoaderTest {
                         <<: *calcParams
                     serializer:
                       id: json
-                  - from: gateway
+                  - id: "conn22"
+                    from: gateway
                     to:   notifier
                     transport:
                       id: http

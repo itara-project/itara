@@ -1,0 +1,35 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: calcNodeA
+    component: calculator
+  - id: calcNodeB
+    component: calculator
+
+connections:
+  - id: "external-to-gateway"
+    to: gatewayNode
+    transport:
+      id: http
+      params:
+        port: "8080"
+    serializer:
+      id: json
+  - id: "gateway-to-calcA"
+    from: gatewayNode
+    to: calcNodeA
+    transport:
+      id: http
+      params:
+        port: "8081"
+    serializer:
+      id: json
+  - id: "gateway-to-calcB"
+    from: gatewayNode
+    to: calcNodeB
+    transport:
+      id: http
+      params:
+        port: "8082"
+    serializer:
+      id: json

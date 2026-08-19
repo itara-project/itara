@@ -3,14 +3,16 @@ nodes:
     component: gateway
 
 connections:
-  - to: gatewayNode
+  - id: "external-to-gateway"
+    to: gatewayNode
     transport:
       id: http
       params:
         port: "8080"
     serializer:
       id: json
-  - from: gatewayNode
+  - id: "gateway-to-undeclared"
+    from: gatewayNode
     to: undeclaredNode
     transport:
       id: http
