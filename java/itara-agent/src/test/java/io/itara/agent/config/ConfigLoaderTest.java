@@ -1274,7 +1274,7 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("noop", conn.getFailureSemanticsType());
+            assertEquals("noop", conn.getFailureSemanticsId());
         }
 
         @Test
@@ -1297,7 +1297,7 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("built-in", conn.getFailureSemanticsType());
+            assertEquals("built-in", conn.getFailureSemanticsId());
         }
 
         @Test
@@ -1500,7 +1500,7 @@ class ConfigLoaderTest {
             var config = conn.getFailureSemanticsConfig();
 
             assertAll(
-                    () -> assertEquals("built-in", conn.getFailureSemanticsType()),
+                    () -> assertEquals("built-in", conn.getFailureSemanticsId()),
                     () -> assertEquals(4, config.getMaxAttempts()),
                     () -> assertEquals(java.time.Duration.ofSeconds(2), config.getTimeout()),
                     () -> assertTrue(config.isHandleTimeout()),
@@ -1529,6 +1529,326 @@ class ConfigLoaderTest {
                           id: json
                     """;
             assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+    }
+
+    @Nested
+    @DisplayName("authentication block")
+    class Authentication {
+
+        @Test
+        @DisplayName("absent authentication block defaults to noop")
+        void absentDefaultsToNoop() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("noop", conn.getAuthenticationId());
+        }
+
+        @Test
+        @DisplayName("parses id field")
+        void parsesId() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authentication:
+                          id: mtls
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("mtls", conn.getAuthenticationId());
+        }
+
+        @Test
+        @DisplayName("parses flat params map")
+        void parsesFlatParams() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authentication:
+                          id: mtls
+                          params:
+                            trustStore: /etc/itara/truststore.p12
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            var params = conn.getAuthentication().getParams();
+
+            assertEquals("/etc/itara/truststore.p12", params.get("trustStore"));
+        }
+
+        @Test
+        @DisplayName("absent params block yields empty map")
+        void absentParamsYieldsEmptyMap() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authentication:
+                          id: mtls
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertTrue(conn.getAuthentication().getParams().isEmpty());
+        }
+
+        @Test
+        @DisplayName("unknown fields in authentication block are ignored")
+        void unknownFieldsIgnored() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authentication:
+                          id: mtls
+                          unknownFutureField: somevalue
+                        serializer:
+                          id: json
+                    """;
+            assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("throws when authentication block is present with a blank id")
+        void throwsWhenIdBlank() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authentication:
+                          id: ""
+                        serializer:
+                          id: json
+                    """;
+            assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("applies direct connections too — no serializer required")
+        void appliesToDirectConnections() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: direct
+                        authentication:
+                          id: mtls
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("mtls", conn.getAuthenticationId());
+        }
+    }
+
+    @Nested
+    @DisplayName("authorization block")
+    class Authorization {
+
+        @Test
+        @DisplayName("absent authorization block defaults to noop")
+        void absentDefaultsToNoop() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("noop", conn.getAuthorizationId());
+        }
+
+        @Test
+        @DisplayName("parses id field")
+        void parsesId() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authorization:
+                          id: rbac
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("rbac", conn.getAuthorizationId());
+        }
+
+        @Test
+        @DisplayName("parses flat params map")
+        void parsesFlatParams() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authorization:
+                          id: rbac
+                          params:
+                            policyFile: /etc/itara/policy.yaml
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+            var params = conn.getAuthorization().getParams();
+
+            assertEquals("/etc/itara/policy.yaml", params.get("policyFile"));
+        }
+
+        @Test
+        @DisplayName("absent params block yields empty map")
+        void absentParamsYieldsEmptyMap() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authorization:
+                          id: rbac
+                        serializer:
+                          id: json
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertTrue(conn.getAuthorization().getParams().isEmpty());
+        }
+
+        @Test
+        @DisplayName("unknown fields in authorization block are ignored")
+        void unknownFieldsIgnored() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authorization:
+                          id: rbac
+                          unknownFutureField: somevalue
+                        serializer:
+                          id: json
+                    """;
+            assertDoesNotThrow(() -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("throws when authorization block is present with a blank id")
+        void throwsWhenIdBlank() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: http
+                          params:
+                            host: localhost
+                            port: "8081"
+                        authorization:
+                          id: ""
+                        serializer:
+                          id: json
+                    """;
+            assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.parseString(yaml));
+        }
+
+        @Test
+        @DisplayName("applies to direct connections too — no serializer required")
+        void appliesToDirectConnections() {
+            String yaml = """
+                    connections:
+                      - id: "conn21"
+                        from: gateway
+                        to: calculator
+                        transport:
+                          id: direct
+                        authorization:
+                          id: rbac
+                    """;
+            ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
+
+            assertEquals("rbac", conn.getAuthorizationId());
         }
     }
 
@@ -1611,7 +1931,7 @@ class ConfigLoaderTest {
                       id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            assertEquals("built-in", conn.getFailureSemanticsType());
+            assertEquals("built-in", conn.getFailureSemanticsId());
             assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
             assertEquals(java.time.Duration.ofSeconds(2),
                     conn.getFailureSemanticsConfig().getTimeout());

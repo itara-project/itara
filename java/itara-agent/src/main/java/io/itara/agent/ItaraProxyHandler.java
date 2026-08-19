@@ -8,9 +8,14 @@ import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ComponentScopeHandle;
 import io.itara.runtime.DispatchKeyPropagation;
+import io.itara.runtime.CallTargetPropagation;
 import io.itara.runtime.ExchangePattern;
+import io.itara.runtime.ItaraCallTarget;
+import io.itara.runtime.ItaraContext;
 import io.itara.runtime.ItaraScope;
 import io.itara.runtime.ObservabilityFacade;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.transport.ItaraTransport;
@@ -61,6 +66,7 @@ public class ItaraProxyHandler implements InvocationHandler {
 
     private final String dispatchKey;
     private final String componentId;
+    private final String nodeId;
     private final String transportId;
     private final ItaraSerializer serializer;
     private final ItaraSerializerConfig serializerConfig;
@@ -69,12 +75,15 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final ObservabilityFacade facade;
     private final ExchangePattern exchangePattern;
     private final ItaraFailureSemantics failureSemantics;
+    private final ItaraAuthentication authentication;
+    private final ItaraAuthenticationConfig authenticationConfig;
     private final Set<String> nonIdempotentMethods;
     private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registered
     private final ComponentScope fromScope; // the local calling node — opened before CALL_SENT, per ADR 0021
 
     public ItaraProxyHandler(String dispatchKey,
                              String componentId,
+                             String nodeId,
                              ItaraSerializer serializer,
                              ItaraSerializerConfig serializerConfig,
                              ItaraTransport transport,
@@ -82,12 +91,15 @@ public class ItaraProxyHandler implements InvocationHandler {
                              ItaraTransportConfig transportConfig,
                              ExchangePattern exchangePattern,
                              ItaraFailureSemantics failureSemantics,
+                             ItaraAuthentication authentication,
+                             ItaraAuthenticationConfig authenticationConfig,
                              MetadataFile apiMetadata,
                              ItaraReconstructibleExceptionFactory exceptionFactory,
                              ComponentScope fromScope) {
         this.dispatchKey          = Objects.requireNonNull(dispatchKey,
                 "[Itara] ItaraProxyHandler requires a non-null dispatchKey for component '" + componentId + "'.");
         this.componentId          = componentId;
+        this.nodeId               = nodeId;
         this.transportId          = transportId;
         this.serializer           = serializer;
         this.serializerConfig     = serializerConfig;
@@ -96,6 +108,8 @@ public class ItaraProxyHandler implements InvocationHandler {
         this.facade               = ObservabilityFacade.instance();
         this.exchangePattern      = exchangePattern;
         this.failureSemantics     = failureSemantics;
+        this.authentication       = authentication;
+        this.authenticationConfig = authenticationConfig;
         this.nonIdempotentMethods = apiMetadata != null
                 ? apiMetadata.getMethods().nonIdempotentSet()
                 : Collections.emptySet();
@@ -114,6 +128,8 @@ public class ItaraProxyHandler implements InvocationHandler {
         // state, per ADR 0021 — so it's genuinely active before CALL_SENT
         // fires, not merely assumed to be.
         try (ComponentScopeHandle fromHandle = ComponentScopeHandle.open(fromScope)) {
+            ItaraContext previousCtx = ItaraContext.current();
+            ItaraCallTarget target = ItaraCallTarget.of(nodeId, componentId, method.getName());
 
             // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
             try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportId, exchangePattern)) {
@@ -133,6 +149,22 @@ public class ItaraProxyHandler implements InvocationHandler {
                                     + "' on '" + componentId + "': " + e.getMessage(), e);
                 }
 
+                // 2b. Produce the identity assertion once per call, before failure
+                //     semantics is invoked, and reuse it across any retries of this
+                //     call (ADR 0027) — unlike the per-attempt observability headers
+                //     below, this is not regenerated per attempt.
+                Map<String, String> assertion;
+                try {
+                    assertion = authentication.produceAssertion(authenticationConfig, target);
+                } catch (Exception e) {
+                    scope.setError(true);
+                    throw new ItaraRemoteException(
+                            ItaraRemoteException.ErrorKind.TRANSPORT,
+                            e.getClass().getName(),
+                            "Authentication implementation failed to produce an assertion for '"
+                                    + method.getName() + "' on '" + componentId + "': " + e.getMessage(), e);
+                }
+
                 // 3. Transport — wrapped in a TransportCall lambda and handed to the
                 //    failure semantics implementation. The implementation decides how
                 //    many times to invoke it, with what timeout, and when to give up.
@@ -141,50 +173,54 @@ public class ItaraProxyHandler implements InvocationHandler {
                 //    call, on every attempt. This ensures that if the failure semantics
                 //    implementation emits a custom span before a retry attempt, that span
                 //    is the active context when headers are built and consequently what
-                //    is propagated to the callee (§14.5, §14.7).
+                //    is propagated to the callee (§14.5, §14.7). The call target and the
+                //    identity assertion are not context-dependent — merged in on every
+                //    attempt, but computed only once, above.
                 boolean idempotent = !nonIdempotentMethods.contains(method.getName());
                 final Map<String, String> dispatchKeyHeaders = DispatchKeyPropagation.encode(dispatchKey);
 
-                TransportCall work = (timeout) -> {
-                    // Headers built per-attempt — active context at this point is what
-                    // gets propagated, including any retry span the failure semantics
-                    // implementation may have opened (§14.5)
-                    Map<String, String> headers = facade.buildOutboundHeaders();
-                    headers.putAll(dispatchKeyHeaders);
-                    try {
-                        return transport.send(componentId, method.getName(), payload, headers, transportConfig, timeout);
-                    } catch (ItaraRemoteException e) {
-                        // Deserialize and reconstruct any exception that carries a serialized
-                        // payload — this recovers the real ErrorKind from the remote side.
-                        // CHECKED errors are rethrown immediately and must not be retried.
-                        // RUNTIME errors surface to the failure semantics layer, which decides
-                        // whether to retry based on retryRuntime configuration.
-                        if (e.getSerializedPayload() != null) {
-                            try {
-                                ItaraErrorPayload errorPayload = (ItaraErrorPayload) serializer.deserializeResult(
-                                        e.getSerializedPayload(), ItaraErrorPayload.class, serializerConfig);
-                                throw ItaraRemoteException.from(errorPayload);
-                            } catch (ItaraRemoteException re) {
-                                throw re;
-                            } catch (Exception deserEx) {
-                                throw new ItaraRemoteException(
-                                        ItaraRemoteException.ErrorKind.TRANSPORT,
-                                        deserEx.getClass().getName(),
-                                        "Failed to deserialize error payload from '" + componentId
-                                                + "': " + deserEx.getMessage(), deserEx);
-                            }
+            TransportCall work = (timeout) -> {
+                // Headers built per-attempt — active context at this point is what
+                // gets propagated, including any retry span the failure semantics
+                // implementation may have opened (§14.5)
+                Map<String, String> headers = facade.buildOutboundHeaders();
+                headers.putAll(dispatchKeyHeaders);
+                headers.putAll(CallTargetPropagation.toHeaders(target));
+                headers.putAll(assertion);
+                try {
+                    return transport.send(target, payload, headers, transportConfig, timeout);
+                } catch (ItaraRemoteException e) {
+                    // Deserialize and reconstruct any exception that carries a serialized
+                    // payload — this recovers the real ErrorKind from the remote side.
+                    // CHECKED errors are rethrown immediately and must not be retried.
+                    // RUNTIME errors surface to the failure semantics layer, which decides
+                    // whether to retry based on retryRuntime configuration.
+                    if (e.getSerializedPayload() != null) {
+                        try {
+                            ItaraErrorPayload errorPayload = (ItaraErrorPayload) serializer.deserializeResult(
+                                    e.getSerializedPayload(), ItaraErrorPayload.class, serializerConfig);
+                            throw ItaraRemoteException.from(errorPayload);
+                        } catch (ItaraRemoteException re) {
+                            throw re;
+                        } catch (Exception deserEx) {
+                            throw new ItaraRemoteException(
+                                    ItaraRemoteException.ErrorKind.TRANSPORT,
+                                    deserEx.getClass().getName(),
+                                    "Failed to deserialize error payload from '" + componentId
+                                            + "': " + deserEx.getMessage(), deserEx);
                         }
-                        // No serialized payload — locally-originated TRANSPORT failure.
-                        // Surface to failure semantics for retry decision.
-                        throw e;
-                    } catch (Exception e) {
-                        throw new ItaraRemoteException(
-                                ItaraRemoteException.ErrorKind.TRANSPORT,
-                                e.getClass().getName(),
-                                "Transport failure calling '" + componentId
-                                        + "." + method.getName() + "': " + e.getMessage(), e);
                     }
-                };
+                    // No serialized payload — locally-originated TRANSPORT failure.
+                    // Surface to failure semantics for retry decision.
+                    throw e;
+                } catch (Exception e) {
+                    throw new ItaraRemoteException(
+                            ItaraRemoteException.ErrorKind.TRANSPORT,
+                            e.getClass().getName(),
+                            "Transport failure calling '" + componentId
+                                    + "." + method.getName() + "': " + e.getMessage(), e);
+                }
+            };
 
                 byte[] responseBytes;
                 try {

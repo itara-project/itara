@@ -66,6 +66,27 @@ is replacing.
 
 ---
 
+## Implementation Status
+
+As of this writing, only half of this decision is structurally enforced.
+`ComponentLookup` exists as the intended lookup-only, component-facing
+entry point — it exposes `get()` and `getSelf()` and nothing else — but
+`ItaraRegistry` itself remains a single, fully public class exposing both
+the component-facing and agent-only surface together. Nothing today
+prevents component code from bypassing `ComponentLookup` and calling
+`ItaraRegistry` directly; the restriction currently holds by convention,
+not by construction — the same state this ADR's own Alternatives
+Considered section rejected.
+
+Closing this gap is tracked as part of the project's planned
+modularization work (see the open GitHub issue), which will use
+language-level module boundaries to export `ComponentLookup` while
+keeping `ItaraRegistry` genuinely unreachable from outside
+`io.itara.runtime`. Until that lands, this ADR describes the target
+design; the enforcement it promises is not yet in place.
+
+---
+
 ## References
 
 - Spec §3.6 — Component Scope

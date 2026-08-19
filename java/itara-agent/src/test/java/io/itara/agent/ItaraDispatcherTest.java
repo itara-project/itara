@@ -1,11 +1,21 @@
 package io.itara.agent;
 
+import io.itara.agent.authentication.NoopAuthentication;
+import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.api.ItaraActivator;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.CallTargetPropagation;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.ItaraSerializerGroupingKey;
@@ -86,6 +96,21 @@ class ItaraDispatcherTest {
 
     private static final ItaraSerializerConfig TEST_SERIALIZER_CONFIG = new TestSerializerConfig();
 
+    private static final String NODE_ID = "test-node";
+
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
+
+    private static final ItaraAuthorization NOOP_AUTHORIZATION = new NoopAuthorization();
+    private static final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
+            new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
+
+    /** Headers a caller would have sent — carries the claimed target the dispatcher now requires. */
+    private static Map<String, String> headersFor(String componentId, String methodName) {
+        return CallTargetPropagation.toHeaders(ItaraCallTarget.of(NODE_ID, componentId, methodName));
+    }
+
     /** Passes byte payloads through untouched — args/results are simple strings in these tests. */
     static class PassthroughSerializer implements ItaraSerializer {
         @Override
@@ -129,11 +154,14 @@ class ItaraDispatcherTest {
     class Constructor {
 
         @Test
-        @DisplayName("throws immediately when constructed with a null ComponentScope")
-        void throwsWhenScopeIsNull() {
+        @DisplayName("throws immediately when null component scope is provided")
+        void throwsWhenComponentClassLoaderNotRegistered() {
             assertThrows(NullPointerException.class, () ->
-                    new ItaraDispatcher("conn-unregistered", "unregistered", "test-transport", new PassthroughSerializer(),
-                            TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, null));
+                    new ItaraDispatcher("conn-unregistered", "unregistered", "test-transport",
+                            new PassthroughSerializer(), TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(),
+                            ExchangePattern.REQUEST_REPLY,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG, null));
         }
     }
 
@@ -153,18 +181,20 @@ class ItaraDispatcherTest {
             ItaraRegistry.instance().registerActivator("capture", CaptureActivator.class);
 
             ComponentScope scope = new ComponentScope.Factory()
-                    .nodeId("captureNode")
+                    .nodeId(NODE_ID)
                     .componentId("capture")
                     .classLoader(componentClassLoader)
                     .build();
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
-                    "conn-capture", "capture", "test-transport", new PassthroughSerializer(), TEST_SERIALIZER_CONFIG,
-                    ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, scope);
+                    "conn-capture", "capture", "test-transport", new PassthroughSerializer(),
+                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
+                    NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG, scope);
 
             Thread.currentThread().setContextClassLoader(ambientClassLoader);
 
-            byte[] result = dispatcher.dispatch( "captureTccl", new byte[0], Map.of());
+            byte[] result = dispatcher.dispatch(new byte[0], headersFor("capture", "captureTccl"), null);
 
             String observedDuringCall = new String(result);
             assertTrue(observedDuringCall.contains(componentClassLoader.toString()),
@@ -187,12 +217,14 @@ class ItaraDispatcherTest {
 
             ItaraDispatcher dispatcher = new ItaraDispatcher(
                     "conn-throwing", "throwing", "test-transport", new PassthroughSerializer(),
-                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY, scope);
+                    TEST_SERIALIZER_CONFIG, ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
+                    NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG, scope);
 
             ClassLoader ambientClassLoader = Thread.currentThread().getContextClassLoader();
 
             assertThrows(ItaraRemoteException.class, () ->
-                    dispatcher.dispatch("explode", new byte[0], Map.of()));
+                    dispatcher.dispatch(new byte[0], headersFor("throwing", "explode"), null));
 
             assertSame(ambientClassLoader, Thread.currentThread().getContextClassLoader());
         }

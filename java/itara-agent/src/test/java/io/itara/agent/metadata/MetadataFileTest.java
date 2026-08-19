@@ -676,4 +676,104 @@ class MetadataFileTest {
         assertEquals(1, calls.size());
         assertEquals("calculator", calls.get(0).getId());
     }
+
+    @Test
+    @DisplayName("parses authentication section")
+    void parsesAuthenticationSection() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "authentication"
+            id = "mtls"
+            version = "1.0.0"
+
+            [authentication]
+            type = "mtls"
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getAuthentication());
+        assertEquals("mtls", metadata.getAuthentication().getType());
+    }
+
+    @Test
+    @DisplayName("authentication is null when [authentication] section is absent")
+    void authenticationNullWhenSectionAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "inventory"
+            version = "1.0.0"
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNull(metadata.getAuthentication());
+    }
+
+    @Test
+    @DisplayName("unknown fields in authentication section are ignored")
+    void unknownFieldsInAuthenticationSectionIgnored() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "authentication"
+            id = "mtls"
+            version = "1.0.0"
+
+            [authentication]
+            type = "mtls"
+            future-field = "ignored"
+            """;
+        assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
+    }
+
+    @Test
+    @DisplayName("parses authorization section")
+    void parsesAuthorizationSection() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "authorization"
+            id = "rbac"
+            version = "1.0.0"
+
+            [authorization]
+            type = "rbac"
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNotNull(metadata.getAuthorization());
+        assertEquals("rbac", metadata.getAuthorization().getType());
+    }
+
+    @Test
+    @DisplayName("authorization is null when [authorization] section is absent")
+    void authorizationNullWhenSectionAbsent() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "component"
+            id = "inventory"
+            version = "1.0.0"
+            """;
+
+        MetadataFile metadata = mapper.readValue(toml, MetadataFile.class);
+
+        assertNull(metadata.getAuthorization());
+    }
+
+    @Test
+    @DisplayName("unknown fields in authorization section are ignored")
+    void unknownFieldsInAuthorizationSectionIgnored() throws Exception {
+        String toml = """
+            [artifact]
+            kind = "authorization"
+            id = "rbac"
+            version = "1.0.0"
+
+            [authorization]
+            type = "rbac"
+            future-field = "ignored"
+            """;
+        assertDoesNotThrow(() -> mapper.readValue(toml, MetadataFile.class));
+    }
 }

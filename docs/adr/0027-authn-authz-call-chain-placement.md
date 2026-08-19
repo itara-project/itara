@@ -23,8 +23,7 @@ and business logic. A rejection at either step stops the call there; it
 never reaches deserialization or `CALL_RECEIVED`.
 
 This requires the transport to convey whatever authentication and
-authorization need — routing information (node, component, method) and
-any identity signal — independent of the serialized payload, since both
+authorization need, independent of the serialized payload, since both
 run before deserialization happens (spec §7.5).
 
 **Caller side:** authentication's identity assertion is produced once,

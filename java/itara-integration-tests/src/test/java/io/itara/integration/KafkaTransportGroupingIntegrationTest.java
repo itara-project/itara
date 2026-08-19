@@ -2,8 +2,10 @@ package io.itara.integration;
 
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.DispatchKeyPropagation;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.TransportRegistry;
+import io.itara.spi.identity.ItaraTransportCredential;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
@@ -184,7 +186,7 @@ public class KafkaTransportGroupingIntegrationTest {
             KafkaTransportConfig producerConfigA = new KafkaTransportConfig(
                     bootstrapServers, null, TOPIC_A, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerA = new KafkaTransport(producerConfigA);
-            producerA.send(COMPONENT_A, "onEventA", "payload-a".getBytes(),
+            producerA.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_A, "onEventA"), "payload-a".getBytes(),
                     Map.of("x-itara-component-id", COMPONENT_A,
                             "x-itara-method-name",  "onEventA",
                             DispatchKeyPropagation.HEADER_DISPATCH_KEY, DISPATCH_KEY_A),
@@ -194,7 +196,7 @@ public class KafkaTransportGroupingIntegrationTest {
             KafkaTransportConfig producerConfigB = new KafkaTransportConfig(
                     bootstrapServers, null, TOPIC_B, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerB = new KafkaTransport(producerConfigB);
-            producerB.send(COMPONENT_B, "onEventB", "payload-b".getBytes(),
+            producerB.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_B, "onEventB"), "payload-b".getBytes(),
                     Map.of("x-itara-component-id", COMPONENT_B,
                             "x-itara-method-name",  "onEventB",
                             DispatchKeyPropagation.HEADER_DISPATCH_KEY, DISPATCH_KEY_B),
@@ -242,7 +244,7 @@ public class KafkaTransportGroupingIntegrationTest {
             KafkaTransportConfig producerConfig = new KafkaTransportConfig(
                     bootstrapServers, null, topic, false, KafkaFailureAction.DROP, null);
             KafkaTransport producer = new KafkaTransport(producerConfig);
-            producer.send("whatever", "onSomething", "payload".getBytes(),
+            producer.send(ItaraCallTarget.of("whatever", "whatever", "onSomething"), "payload".getBytes(),
                     Map.of("x-itara-component-id", "whatever",
                             "x-itara-method-name",  "onSomething",
                             DispatchKeyPropagation.HEADER_DISPATCH_KEY, "conn-DOES-NOT-EXIST"),
@@ -286,7 +288,7 @@ public class KafkaTransportGroupingIntegrationTest {
             KafkaTransportConfig producerConfig = new KafkaTransportConfig(
                     bootstrapServers, null, topic, false, KafkaFailureAction.DROP, null);
             KafkaTransport producer = new KafkaTransport(producerConfig);
-            producer.send("order-events/order-placed", "onOrderPlaced", "payload".getBytes(),
+            producer.send(ItaraCallTarget.of("order-events/order-placed", "order-events/order-placed", "onOrderPlaced"), "payload".getBytes(),
                     Map.of("x-itara-component-id", "order-events/order-placed",
                             "x-itara-method-name",  "onOrderPlaced",
                             DispatchKeyPropagation.HEADER_DISPATCH_KEY, sharedKey),
@@ -328,7 +330,7 @@ public class KafkaTransportGroupingIntegrationTest {
         }
 
         @Override
-        public byte[] dispatch(String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
+        public byte[] dispatch(byte[] requestBytes, Map<String, String> headers, ItaraTransportCredential transportCredential) throws Exception {
             receivedBy.add(new String(requestBytes));
             latch.countDown();
             return new byte[0];
