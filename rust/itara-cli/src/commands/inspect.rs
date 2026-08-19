@@ -97,9 +97,8 @@ fn print_connections(config: &WiringConfig) {
         .filter(|c| !c.is_external())
         .collect();
 
-    let from_width = internal.iter()
-        .filter_map(|c| c.from.as_deref())
-        .map(|f| f.len())
+    let id_width = internal.iter()
+        .map(|c| c.id.len())
         .max()
         .unwrap_or(0)
         .max(16);
@@ -111,9 +110,9 @@ fn print_connections(config: &WiringConfig) {
     for conn in &internal {
         let from = conn.from.as_deref().unwrap_or("?");
         kv(
-            &format!("{} →", from),
-            &format!("{:<20} [{}]", conn.to, conn.transport.id),
-            from_width + 2, // +2 for " →"
+            &format!("{}:", conn.id),
+            &format!("{} → {} [{}]", from, conn.to, conn.transport.id),
+            id_width + 1, // +1 for ":"
         );
     }
     blank();
@@ -340,15 +339,17 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
     }
 
     // Any connections not yet rendered (mid-graph branches etc.) get their
-    // own individual arrow lines.
+    // own individual arrow lines. These are exactly the cases a compressed
+    // chain can't represent unambiguously, so include the connection id.
     for conn in config.connections.iter().filter(|c| !c.is_external()) {
         if !rendered.contains(&(conn as *const _)) {
             let from = conn.from.as_deref().unwrap_or("?");
             lines.push(format!(
-                "[{}] {} [{}]",
+                "[{}] {} [{}]  (id: {})",
                 from,
                 arrow_label(conn),
                 conn.to,
+                conn.id,
             ));
         }
     }
@@ -423,8 +424,16 @@ mod tests {
         }
     }
 
+    /// Generates a fresh, unique connection id for test-built connections.
+    fn next_conn_id() -> String {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        format!("test-conn-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+
     fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: from.map(Into::into),
             to: to.into(),
             transport: transport_entry("http", Some(port)),
@@ -435,12 +444,19 @@ mod tests {
 
     fn direct(from: &str, to: &str) -> ConnectionEntry {
         ConnectionEntry {
+            id: next_conn_id(),
             from: Some(from.into()),
             to: to.into(),
             transport: transport_entry("direct", None),
             serializer: None,
             failure_semantics: None,
         }
+    }
+
+    /// Overrides the id on an already-built connection.
+    fn with_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
+        conn.id = id.into();
+        conn
     }
  
     fn config(nodes: Vec<Node>, connections: Vec<ConnectionEntry>) -> WiringConfig {
@@ -634,6 +650,37 @@ mod tests {
         let cfg = config(vec![node("a", "ca")], vec![]);
         let chains = build_chains(&cfg);
         assert!(chains.is_empty());
+    }
+
+    #[test]
+    fn chains_individual_branch_lines_include_connection_id() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb"), node("c", "cc")],
+            vec![
+                http(None, "a", 8080),
+                with_id(http(Some("a"), "b", 8081), "a-to-b"),
+                with_id(http(Some("a"), "c", 8082), "a-to-c"),
+            ],
+        );
+        let chains = build_chains(&cfg);
+        let individual: Vec<&String> = chains.iter()
+            .filter(|c| c.contains("id: a-to-b") || c.contains("id: a-to-c"))
+            .collect();
+        assert_eq!(individual.len(), 2, "both branch lines should carry their own id");
+    }
+
+    #[test]
+    fn chains_compressed_chain_line_omits_connection_id() {
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![
+                with_id(http(None, "a", 8080), "external-to-a"),
+                with_id(http(Some("a"), "b", 8081), "a-to-b"),
+            ],
+        );
+        let chains = build_chains(&cfg);
+        assert_eq!(chains.len(), 1);
+        assert!(!chains[0].contains("id:"), "compressed chain must stay id-free");
     }
 
     #[test]

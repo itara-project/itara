@@ -340,3 +340,20 @@ Placement is what changes when you move a component from one deployment group
 to another, or change its transport. The component itself does not change —
 only its position in the topology and the communication path to and from it.
 Placement decisions are made in the wiring configuration.
+
+## Component Scope
+ 
+**Defines the boundary of what a running component instance can reach,
+and carries what's needed to enforce it — established and maintained
+exclusively by the agent.**
+ 
+A component's scope determines which other components' proxies are
+actually available to it, prepared by the agent from the wiring
+configuration. It also carries whatever the agent needs to enforce that
+boundary — at minimum, which node in the topology graph is currently in
+control. This is not identity in the authentication sense; it's simply
+the agent's own record of where in the graph execution currently is.
+ 
+Colocation does not imply shared scope. Two components sharing a process
+for a zero-overhead direct connection (see Colocation) remain distinct —
+each has its own scope, and neither can assume the other's.

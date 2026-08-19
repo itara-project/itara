@@ -147,15 +147,15 @@ Nodes:
   orderCancelledChannel virtual:   fulfilment-events/order-cancelled @ demo.events.order-cancelled
 
 Connections:
-  orderNode →             inventoryNode        [direct]
-  orderNode →             fulfilmentNode       [direct]
-  orderNode →             paymentNode          [http]
-  orderNode →             orderReservedChannel [kafka]
-  orderNode →             orderFulfilledChannel [kafka]
-  orderNode →             orderCancelledChannel [kafka]
-  orderReservedChannel →  notificationNode     [kafka]
-  orderFulfilledChannel → notificationNode     [kafka]
-  orderCancelledChannel → notificationNode     [kafka]
+  order-to-inventory:             orderNode → inventoryNode [direct]
+  order-to-fulfilment:            orderNode → fulfilmentNode [direct]
+  order-to-payment:               orderNode → paymentNode [http]
+  order-to-orderReserved:         orderNode → orderReservedChannel [kafka]
+  order-to-orderFulfilled:        orderNode → orderFulfilledChannel [kafka]
+  order-to-orderCancelled:        orderNode → orderCancelledChannel [kafka]
+  orderReserved-to-notification:  orderReservedChannel → notificationNode [kafka]
+  orderFulfilled-to-notification: orderFulfilledChannel → notificationNode [kafka]
+  orderCancelled-to-notification: orderCancelledChannel → notificationNode [kafka]
 
 Deployment groups (derived):
   Group A: fulfilmentNode, orderNode, inventoryNode
@@ -184,15 +184,15 @@ Deployment groups (derived):
 Graph:
   [external] --http:8081--> [orderNode]
   [external] --http:8081--> [inventoryNode]
-  [orderNode] --direct--> [inventoryNode]
-  [orderNode] --direct--> [fulfilmentNode]
-  [orderNode] --http:8083--> [paymentNode]
-  [orderNode] --kafka--> [orderReservedChannel]
-  [orderNode] --kafka--> [orderFulfilledChannel]
-  [orderNode] --kafka--> [orderCancelledChannel]
-  [orderReservedChannel] --kafka--> [notificationNode]
-  [orderFulfilledChannel] --kafka--> [notificationNode]
-  [orderCancelledChannel] --kafka--> [notificationNode]
+  [orderNode] --direct--> [inventoryNode]  (id: order-to-inventory)
+  [orderNode] --direct--> [fulfilmentNode]  (id: order-to-fulfilment)
+  [orderNode] --http:8083--> [paymentNode]  (id: order-to-payment)
+  [orderNode] --kafka--> [orderReservedChannel]  (id: order-to-orderReserved)
+  [orderNode] --kafka--> [orderFulfilledChannel]  (id: order-to-orderFulfilled)
+  [orderNode] --kafka--> [orderCancelledChannel]  (id: order-to-orderCancelled)
+  [orderReservedChannel] --kafka--> [notificationNode]  (id: orderReserved-to-notification)
+  [orderFulfilledChannel] --kafka--> [notificationNode]  (id: orderFulfilled-to-notification)
+  [orderCancelledChannel] --kafka--> [notificationNode]  (id: orderCancelled-to-notification)
 ```
  
 All four topology configs can be inspected the same way. The deployment
@@ -283,6 +283,7 @@ Add stock to the inventory in the microservices topologies:
 ```bash
 curl -X POST http://localhost:8082/itara/inventory/addItem \
      -H "Content-Type: application/json" \
+     -H "x-itara-dispatch-key: external-to-inventory" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
 
@@ -291,6 +292,7 @@ And in the monolith and informed topologies:
 ```bash
 curl -X POST http://localhost:8081/itara/inventory/addItem \
      -H "Content-Type: application/json" \
+     -H "x-itara-dispatch-key: external-to-inventory" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
 
@@ -301,6 +303,7 @@ Place an order:
 ```bash
 curl -X POST http://localhost:8081/itara/order/placeOrder \
      -H "Content-Type: application/json" \
+     -H "x-itara-dispatch-key: external-to-order" \
      -d '["order-1", "WIDGET-A", 1, 80, "USD"]'
 ```
 

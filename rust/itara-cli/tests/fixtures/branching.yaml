@@ -7,14 +7,16 @@ nodes:
     component: serviceB
 
 connections:
-  - to: gatewayNode
+  - id: "external-to-gateway"
+    to: gatewayNode
     transport:
       id: http
       params:
         port: "8080"
     serializer:
       id: json
-  - from: gatewayNode
+  - id: "gateway-to-serviceA"
+    from: gatewayNode
     to: serviceANode
     transport:
       id: http
@@ -22,7 +24,8 @@ connections:
         port: "8081"
     serializer:
       id: json
-  - from: gatewayNode
+  - id: "gateway-to-serviceB"
+    from: gatewayNode
     to: serviceBNode
     transport:
       id: http

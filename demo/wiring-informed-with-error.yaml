@@ -23,7 +23,8 @@ nodes:
     address: "demo.events.order-cancelled"
 
 connections:
-  - from:
+  - id: "external-to-order"
+    from:
     to: "orderNode"
     transport:
       id: http
@@ -32,7 +33,8 @@ connections:
         port: 8081
     serializer:
       id: "json"
-  - from:
+  - id: "external-to-inventory"
+    from:
     to: "inventoryNode"
     transport:
       id: http
@@ -41,7 +43,8 @@ connections:
         port: 8082
     serializer:
       id: "json"
-  - from: "orderNode"
+  - id: "order-to-payment"
+    from: "orderNode"
     to: "paymentNode"
     transport:
       id: http
@@ -57,11 +60,13 @@ connections:
       params:
         waitDuration: 500ms
         retryRuntime: "true"
-  - from: "orderNode"
+  - id: "order-to-inventory"
+    from: "orderNode"
     to: "inventoryNode"
     transport:
       id: direct
-#  - from: "orderNode"
+#  - id: "order-to-fulfilment"
+#    from: "orderNode"
 #    to: "fulfilmentNode"
 #    transport:
 #      id: http
@@ -77,7 +82,8 @@ connections:
 #      params:
 #        waitDuration: 500ms
 #        retryRuntime: "true"
-  - from: "orderNode"
+  - id: "order-to-orderReserved"
+    from: "orderNode"
     to: orderReservedChannel
     transport:
       id: kafka
@@ -85,7 +91,8 @@ connections:
         bootstrapServers: "kafka:29092"
     serializer:
       id: "json"
-  - from: "orderNode"
+  - id: "order-to-orderFulfilled"
+    from: "orderNode"
     to: orderFulfilledChannel
     transport:
       id: kafka
@@ -93,7 +100,8 @@ connections:
         bootstrapServers: "kafka:29092"
     serializer:
       id: "json"
-  - from: "orderNode"
+  - id: "order-to-orderCancelled"
+    from: "orderNode"
     to: orderCancelledChannel
     transport:
       id: kafka
@@ -101,7 +109,8 @@ connections:
         bootstrapServers: "kafka:29092"
     serializer:
       id: "json"
-  - from: "orderReservedChannel"
+  - id: "orderReserved-to-notification"
+    from: "orderReservedChannel"
     to: "notificationNode"
     transport:
       id: kafka
@@ -110,7 +119,8 @@ connections:
         consumerGroup: "order-consumer-group"
     serializer:
       id: "json"
-  - from: "orderFulfilledChannel"
+  - id: "orderFulfilled-to-notification"
+    from: "orderFulfilledChannel"
     to: "notificationNode"
     transport:
       id: kafka
@@ -119,7 +129,8 @@ connections:
         consumerGroup: "order-consumer-group"
     serializer:
       id: "json"
-  - from: "orderCancelledChannel"
+  - id: "orderCancelled-to-notification"
+    from: "orderCancelledChannel"
     to: "notificationNode"
     transport:
       id: kafka

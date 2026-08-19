@@ -2,6 +2,7 @@ package io.itara.integration;
 
 import io.itara.agent.ItaraProxyHandler;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.DispatchHandler;
@@ -64,6 +65,16 @@ public class KafkaTransportIntegrationTest {
     private static final String COMPONENT_ID   = "order-events/order-placed";
     private static final String METHOD_NAME    = "onOrderPlaced";
     private static final String CONSUMER_GROUP = "itara-integration-test";
+    private static final String DISPATCH_KEY   = "test-conn";
+
+    // ItaraProxyHandler now requires the calling node's own ComponentScope
+    // (see ADR 0021) — this test only exercises the transport pipeline, not
+    // scope content, so a single fixed identity is enough.
+    private static final ComponentScope PRODUCER_SCOPE = new ComponentScope.Factory()
+            .nodeId("orderProducerNode")
+            .componentId("order-producer")
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
 
     @Container
     static final KafkaContainer kafka = new KafkaContainer(
@@ -93,13 +104,8 @@ public class KafkaTransportIntegrationTest {
                 bootstrapServers, null, TOPIC, false, KafkaFailureAction.DROP, null);
 
         consumerTransport = new KafkaTransport(consumerConfig);
-        DispatchHandler capturingDispatcher = (componentId, methodName, payload, headers) -> {
-            receivedPayloads.add(new String(payload));
-            receivedHeaders.add(Map.copyOf(headers));
-            if (latch != null) latch.countDown();
-            return new byte[0];
-        };
-        consumerTransport.registerListener(COMPONENT_ID, consumerConfig, capturingDispatcher);
+        DispatchHandler capturingDispatcher = new CapturingDispatcher();
+        consumerTransport.registerListener(consumerConfig, capturingDispatcher);
         consumerTransport.start();
 
         producerTransport = new KafkaTransport(producerConfig);
@@ -107,11 +113,12 @@ public class KafkaTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ OrderPlacedContractProxy.class },
                 new ItaraProxyHandler(
-                        COMPONENT_ID, serializer, serializerConfig, producerTransport, "kafka",
+                        DISPATCH_KEY, COMPONENT_ID, serializer, serializerConfig, producerTransport, "kafka",
                         producerConfig, ExchangePattern.FIRE_AND_FORGET,
                         new NoopFailureSemantics(),
                         null,
-                        null
+                        null,
+                        PRODUCER_SCOPE
                 )
         );
 
@@ -190,8 +197,7 @@ public class KafkaTransportIntegrationTest {
                 false, KafkaFailureAction.DROP, null);
 
         KafkaTransport transport = new KafkaTransport(stopTestConfig);
-        transport.registerListener(COMPONENT_ID, stopTestConfig,
-                (id, method, payload, headers) -> new byte[0]);
+        transport.registerListener(stopTestConfig, new NoOpDispatcher());
         transport.start();
 
         Thread.sleep(500); // let it start
@@ -204,5 +210,34 @@ public class KafkaTransportIntegrationTest {
      */
     interface OrderPlacedContractProxy {
         void onOrderPlaced(String orderId, String customerId, double amount);
+    }
+
+    private static class NoOpDispatcher implements DispatchHandler {
+
+        @Override
+        public String getDispatchKey() {
+            return DISPATCH_KEY;
+        }
+
+        @Override
+        public byte[] dispatch(String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
+            return new byte[0];
+        }
+    }
+
+    private static class CapturingDispatcher implements DispatchHandler {
+
+        @Override
+        public String getDispatchKey() {
+            return DISPATCH_KEY;
+        }
+
+        @Override
+        public byte[] dispatch(String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
+            receivedPayloads.add(new String(requestBytes));
+            receivedHeaders.add(Map.copyOf(headers));
+            if (latch != null) latch.countDown();
+            return new byte[0];
+        }
     }
 }

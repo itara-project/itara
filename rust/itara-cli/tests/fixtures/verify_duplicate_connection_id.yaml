@@ -1,0 +1,33 @@
+nodes:
+  - id: nodeA
+    component: compA
+  - id: nodeB
+    component: compB
+
+connections:
+  - id: "external-to-nodeA"
+    to: nodeA
+    transport:
+      id: http
+      params:
+        port: "8080"
+    serializer:
+      id: json
+  - id: "shared-id"
+    from: nodeA
+    to: nodeB
+    transport:
+      id: http
+      params:
+        port: "8081"
+    serializer:
+      id: json
+  - id: "shared-id"
+    from: nodeB
+    to: nodeA
+    transport:
+      id: http
+      params:
+        port: "8082"
+    serializer:
+      id: json
