@@ -5,6 +5,25 @@ use regex::Regex;
 use serde::Deserialize;
 use yaml_merge_keys::merge_keys_serde;
 
+/// Recursively checks if a serde_yaml::Value contains any merge keys (<<).
+fn contains_merge_keys(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Mapping(map) => {
+            for (key, val) in map {
+                if key.as_str() == Some("<<") {
+                    return true;
+                }
+                if contains_merge_keys(val) {
+                    return true;
+                }
+            }
+            false
+        }
+        serde_yaml::Value::Sequence(seq) => seq.iter().any(contains_merge_keys),
+        _ => false,
+    }
+}
+
 // ── Error type ────────────────────────────────────────────────────────────────
 
 /// Thrown when the wiring configuration is malformed or contains invalid values.
@@ -241,8 +260,13 @@ impl<'de> serde::Deserialize<'de> for Node {
         let mut value = serde_yaml::Value::deserialize(d)?;
 
         // Apply default kind = "component" for backwards compatibility
+        // Also normalize kind to lowercase for case-insensitive matching
         if let serde_yaml::Value::Mapping(ref mut map) = value {
-            if !map.contains_key(&serde_yaml::Value::String("kind".to_string())) {
+            if let Some(kind_val) = map.get_mut(&serde_yaml::Value::String("kind".to_string())) {
+                if let serde_yaml::Value::String(kind_str) = kind_val {
+                    *kind_str = kind_str.to_lowercase();
+                }
+            } else {
                 map.insert(
                     serde_yaml::Value::String("kind".to_string()),
                     serde_yaml::Value::String("component".to_string()),
@@ -687,23 +711,37 @@ pub fn parse_string(yaml: &str) -> Result<WiringConfig, ConfigError> {
         return Ok(WiringConfig::default());
     }
 
-    // serde_yaml operates at the event stream level and does not resolve
-    // YAML merge keys (<<) or aliases into the final value graph.
-    // Parse to a raw Value first, resolve merge keys, then deserialize.
+    // First, parse to a raw Value to detect whether merge keys (<<) are present.
+    // This is cheap and avoids unnecessarily falling back to the Value pipeline.
     let raw: serde_yaml::Value = serde_yaml::from_str(&substituted).map_err(|e| {
         ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
     })?;
 
-    let resolved = merge_keys_serde(raw).map_err(|e| {
-        ConfigError::Invalid(format!("Failed to resolve YAML merge keys: {}", e))
-    })?;
+    if contains_merge_keys(&raw) {
+        // Merge-key path: resolve merge keys, then deserialize via serde_path_to_error.
+        // This preserves structural field paths (e.g. nodes[0].component) but loses
+        // original YAML line/column information.
+        let resolved = merge_keys_serde(raw).map_err(|e| {
+            ConfigError::Invalid(format!("Failed to resolve YAML merge keys: {}", e))
+        })?;
 
-    let config: WiringConfig = serde_path_to_error::deserialize(resolved).map_err(|e| {
-    ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
-    })?;
+        let config: WiringConfig = serde_path_to_error::deserialize(resolved).map_err(|e| {
+            ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
+        })?;
 
-    config.validate()?;
-    Ok(config)
+        config.validate()?;
+        Ok(config)
+    } else {
+        // Direct path: deserialize straight from the string using serde_yaml's
+        // Deserializer, wrapped with serde_path_to_error. This preserves BOTH
+        // original line/column information AND structural field paths.
+        let deserializer = serde_yaml::Deserializer::from_str(&substituted);
+        let config: WiringConfig = serde_path_to_error::deserialize(deserializer)
+            .map_err(|e| ConfigError::Invalid(format!("Failed to parse wiring config: {}", e)))?;
+
+        config.validate()?;
+        Ok(config)
+    }
 }
 
 /// Filter the full config to only the nodes and connections relevant
