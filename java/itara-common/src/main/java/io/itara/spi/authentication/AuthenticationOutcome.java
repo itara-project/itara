@@ -37,7 +37,7 @@ public final class AuthenticationOutcome {
         return new AuthenticationOutcome(true, identity, null);
     }
 
-    /** Rejected. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0023). */
+    /** Rejected. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026). */
     public static AuthenticationOutcome rejected(String reason) {
         if (reason == null || reason.isEmpty()) {
             throw new IllegalArgumentException("[Itara] rejection reason must be a non-empty message");

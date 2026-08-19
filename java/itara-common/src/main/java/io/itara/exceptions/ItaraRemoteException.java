@@ -65,7 +65,7 @@ public class ItaraRemoteException extends RuntimeException {
 
         /**
          * Authentication rejected the call, or authorization denied it
-         * (spec §15.6, §16.5; ADR 0023). Both share this single kind — the
+         * (spec §15.6, §16.5; ADR 0026). Both share this single kind — the
          * caller does not need to distinguish "who are you" failures from
          * "you're not allowed to do that" failures, and neither gets a
          * dedicated exception type.

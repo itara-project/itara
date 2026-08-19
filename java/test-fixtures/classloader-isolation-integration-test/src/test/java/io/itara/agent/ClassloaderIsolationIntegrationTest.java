@@ -2,12 +2,20 @@ package io.itara.agent;
 
 import com.example.conflicta.api.ConflictAService;
 import com.example.conflictb.api.ConflictBService;
+import io.itara.agent.authentication.NoopAuthentication;
+import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.agent.config.ComponentNode;
 import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -90,6 +98,13 @@ class ClassloaderIsolationIntegrationTest {
             registry.registerActivator(componentId, activated.getActivatorClass());
         }
 
+        final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+        final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+                new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
+        final ItaraAuthorization NOOP_AUTHORIZATION = new NoopAuthorization();
+        final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
+                new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
+
         // One ComponentScope per local node — built once, the same way
         // ItaraAgent builds them, and shared by every proxy that serves
         // that node (ADR 0021).
@@ -123,7 +138,10 @@ class ClassloaderIsolationIntegrationTest {
         ConflictBService aToB = (ConflictBService) Proxy.newProxyInstance(
                 systemClassLoader,
                 new Class<?>[]{ ConflictBService.class },
-                new ItaraLocalProxyHandler("conn-a-to-b", "conflict-b", registry, scopeB, scopeA)
+                new ItaraLocalProxyHandler("conn-a-to-b", "conflict-b", registry, scopeB, scopeA,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG)
         );
         registry.registerConnectionProxy("conn-a-to-b", aToB);
         registry.registerOutboundConnection("conflictANode", "conflict-b", "conn-a-to-b");
@@ -139,12 +157,18 @@ class ClassloaderIsolationIntegrationTest {
         ConflictAService conflictA = (ConflictAService) Proxy.newProxyInstance(
                 systemClassLoader,
                 new Class<?>[]{ ConflictAService.class },
-                new ItaraLocalProxyHandler("conn-test-to-a", "conflict-a", registry, scopeA, testHarnessScope)
+                new ItaraLocalProxyHandler("conn-test-to-a", "conflict-a", registry, scopeA, testHarnessScope,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG)
         );
         ConflictBService conflictB = (ConflictBService) Proxy.newProxyInstance(
                 systemClassLoader,
                 new Class<?>[]{ ConflictBService.class },
-                new ItaraLocalProxyHandler("conn-test-to-b", "conflict-b", registry, scopeB, testHarnessScope)
+                new ItaraLocalProxyHandler("conn-test-to-b", "conflict-b", registry, scopeB, testHarnessScope,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG)
         );
 
         // Real cross-component call, real conflicting dependency versions.

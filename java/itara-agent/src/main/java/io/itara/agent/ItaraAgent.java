@@ -48,10 +48,7 @@ import java.util.logging.Logger;
  * Startup sequence:
  *   1. Load wiring config
  *   2. Build metadata index from .itara files (itara.metadata.dir)
- *   3. Scan classpath for @ComponentInterface contracts
- *   3b. For each local component, read [implemented-event-contracts]
- *       from its .itara metadata and register registry aliases so the
- *       dispatcher can find the implementation by event contract id
+ *   3. Scan classpath for @ComponentInterface and @EventContractInterface contracts
  *   4. Scan META-INF/itara/activator for local activator classes,
  *      resolving component identity (id, version, api-version) via the
  *      metadata index built in step 2
@@ -62,15 +59,22 @@ import java.util.logging.Logger;
  *       semantics implementations
  *   7c. Load META-INF/itara/exception-factory — discover reconstructible
  *       exception factories from API artifact jars
- *   7d. Load META-INF/itara/authentication— discover available authentication impls
- *   7e. Load META-INF/itara/authorization— discover available authorization impls
+ *   7d. Load META-INF/itara/authentication — discover available authentication impls
+ *   7e. Load META-INF/itara/authorization — discover available authorization impls
  *   8. Initialize ObservabilityFacade
- *   9. Register ComponentFactory — activates and wraps instances in
- *      observability decorator for all four events on direct calls
- *  10. Register activators for local components
- *  11. Process connections:
- *        - direct:   nothing to do, factory handles decoration on first get()
- *        - other:    use TransportRegistry to create proxy or start listener
+ *   9. For each local component: build and register its own ComponentScope,
+ *      register its activator, and register a registry alias for every
+ *      event contract it implements (from [implemented-event-contracts] in
+ *      its .itara metadata) — all in the same pass, before any listener
+ *      starts in step 11
+ *  10. Process connections:
+ *        - direct:  build an ItaraLocalProxyHandler, register its proxy
+ *                    and its outbound-connection entry — no transport
+ *                    involved.
+ *        - other:   use TransportRegistry to build a proxy (outbound) or
+ *                    register a dispatcher listener (inbound), with
+ *                    authentication/authorization wired in for both
+ *  11. Start all transports
  *  12. Hand control to the application (main runs normally)
  *
  * JVM arguments:
@@ -214,6 +218,19 @@ public class ItaraAgent {
         // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
+
+                AuthenticationConfig rawAuthenticationConfig = buildAuthenticationConfig(conn);
+                ItaraAuthenticationConfig authenticationConfig =
+                        authenticationRegistry.parseConfig(conn.getAuthenticationId(), rawAuthenticationConfig);
+                ItaraAuthentication authentication =
+                        authenticationRegistry.getOrCreate(conn.getAuthenticationId(), authenticationConfig);
+
+                AuthorizationConfig rawAuthorizationConfig = buildAuthorizationConfig(conn);
+                ItaraAuthorizationConfig authorizationConfig =
+                        authorizationRegistry.parseConfig(conn.getAuthorizationId(), rawAuthorizationConfig);
+                ItaraAuthorization authorization =
+                        authorizationRegistry.getOrCreate(conn.getAuthorizationId(), authorizationConfig);
+
                 if (conn.isDirect()) {
                     Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                     Node fromNode = config.findNode(conn.getFrom()).orElseThrow(); // external check is done during config validation
@@ -240,7 +257,9 @@ public class ItaraAgent {
                     Object proxy = Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope)
+                            new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope,
+                                    authentication, authenticationConfig, authentication, authenticationConfig,
+                                    authorization, authorizationConfig)
                     );
                     registry.registerConnectionProxy(conn.getId(), proxy);
                     registry.registerOutboundConnection(fromNode.getId(), componentId, conn.getId());
@@ -262,18 +281,6 @@ public class ItaraAgent {
                 String serializerId = conn.getSerializer().getId();
                 ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
                 ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
-
-                AuthenticationConfig rawAuthenticationConfig = buildAuthenticationConfig(conn);
-                ItaraAuthenticationConfig authenticationConfig =
-                        authenticationRegistry.parseConfig(conn.getAuthenticationId(), rawAuthenticationConfig);
-                ItaraAuthentication authentication =
-                        authenticationRegistry.getOrCreate(conn.getAuthenticationId(), authenticationConfig);
-
-                AuthorizationConfig rawAuthorizationConfig = buildAuthorizationConfig(conn);
-                ItaraAuthorizationConfig authorizationConfig =
-                        authorizationRegistry.parseConfig(conn.getAuthorizationId(), rawAuthorizationConfig);
-                ItaraAuthorization authorization =
-                        authorizationRegistry.getOrCreate(conn.getAuthorizationId(), authorizationConfig);
 
                 Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                 Node fromNode = conn.getFrom() != null

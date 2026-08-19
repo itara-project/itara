@@ -6,7 +6,7 @@ import java.util.Map;
 
 /**
  * The shared identity type produced by authentication and consumed by
- * authorization (ADR 0021). Neither SPI needs to know about the other's
+ * authorization (ADR 0024). Neither SPI needs to know about the other's
  * implementation — this type is the entire contract between them.
  *
  * Carries the minimum shape spec §15.6 requires:
@@ -15,7 +15,7 @@ import java.util.Map;
  *   - security scope and claims — an open, extensible set (claims)
  *
  * The claims map is also where implementation-specific fields beyond the
- * minimum live (ADR 0021's extensibility requirement) — put whatever a
+ * minimum live (ADR 0024's extensibility requirement) — put whatever a
  * given mechanism produces in there under whatever keys make sense; a
  * generic Map<String,Object> supports typed access for a consumer that
  * knows to expect a specific key, without requiring every authorization

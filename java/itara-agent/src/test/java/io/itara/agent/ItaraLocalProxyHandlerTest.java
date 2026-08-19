@@ -1,11 +1,19 @@
 package io.itara.agent;
 
+import io.itara.agent.authentication.NoopAuthentication;
+import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.api.ItaraActivator;
 import io.itara.runtime.ComponentLookup;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ComponentScopeHandle;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -85,6 +93,12 @@ class ItaraLocalProxyHandlerTest {
     private ComponentScope scopeA; // the calling node under test
     private ComponentScope scopeB; // A's real, declared connection
     private ComponentScope scopeC; // colocated, activated, real — but undeclared from A
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
+    private static final ItaraAuthorization NOOP_AUTHORIZATION = new NoopAuthorization();
+    private static final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
+            new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
 
     @BeforeEach
     void setUp() {
@@ -104,7 +118,10 @@ class ItaraLocalProxyHandlerTest {
         // connection from A to C is ever registered, anywhere in this test.
         Greeter proxyToB = (Greeter) Proxy.newProxyInstance(
                 cl, new Class<?>[]{ Greeter.class },
-                new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA));
+                new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                        NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG));
         registry.registerConnectionProxy("conn-a-to-b", proxyToB);
         registry.registerOutboundConnection("nodeA", "component-b", "conn-a-to-b");
     }
@@ -144,7 +161,10 @@ class ItaraLocalProxyHandlerTest {
             // reachable in this JVM, just not by A.
             Greeter proxyToC = (Greeter) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(), new Class<?>[]{ Greeter.class },
-                    new ItaraLocalProxyHandler("conn-b-to-c", "component-c", registry, scopeC, scopeB));
+                    new ItaraLocalProxyHandler("conn-b-to-c", "component-c", registry, scopeC, scopeB,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG));
             registry.registerConnectionProxy("conn-b-to-c", proxyToC);
             registry.registerOutboundConnection("nodeB", "component-c", "conn-b-to-c");
 
@@ -178,7 +198,10 @@ class ItaraLocalProxyHandlerTest {
 
             Greeter proxyToB = (Greeter) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(), new Class<?>[]{ Greeter.class },
-                    new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA));
+                    new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG));
 
             // Simulate a hostile or simply broken caller that has poisoned
             // the thread's ambient scope directly, bypassing the normal
@@ -206,7 +229,10 @@ class ItaraLocalProxyHandlerTest {
 
             Greeter proxyToB = (Greeter) Proxy.newProxyInstance(
                     Thread.currentThread().getContextClassLoader(), new Class<?>[]{ Greeter.class },
-                    new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA));
+                    new ItaraLocalProxyHandler("conn-a-to-b", "component-b", registry, scopeB, scopeA,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                            NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG));
 
             try (ComponentScopeHandle poisonedHandle = ComponentScopeHandle.open(poisoned)) {
                 proxyToB.greet(); // same crossing as above, result discarded — only the aftermath matters here

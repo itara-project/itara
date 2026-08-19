@@ -8,15 +8,13 @@ import java.util.Objects;
  *
  * Any field may be null — not every exchange pattern has all three (an
  * event has no meaningful reply-target node, for instance; see
- * ExchangePattern.FIRE_AND_FORGET). Consumers that require a field to
- * make a decision are responsible for treating a null as "unknown", not
- * this type.
+ * ExchangePattern.FIRE_AND_FORGET).
  *
- * Propagated between the caller and callee agent via headers — see
- * {@link CallTargetPropagation} — never via anything transport-specific.
- * A transport's own routing mechanism (an HTTP path, a Kafka topic) is
- * a separate, transport-owned concern and is not this type's source of
- * truth on either side.
+ * Only method travels over the wire (see CallTargetPropagation) — node
+ * and component are always known locally on both sides (the caller from
+ * its own wiring config, the callee from its own dispatcher construction),
+ * so both sides build their own ItaraCallTarget directly rather than
+ * decoding one end-to-end.
  */
 public final class ItaraCallTarget {
 

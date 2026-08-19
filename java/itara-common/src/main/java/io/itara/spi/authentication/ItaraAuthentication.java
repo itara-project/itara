@@ -32,7 +32,7 @@ public interface ItaraAuthentication {
      *
      * Called once per logical call, before the failure semantics
      * implementation is invoked, and reused across any retries of that
-     * call — not regenerated per attempt (ADR 0024).
+     * call — not regenerated per attempt (ADR 0027).
      *
      * @param config The calling connection's parsed configuration.
      * @param target The operation being called — e.g. for an

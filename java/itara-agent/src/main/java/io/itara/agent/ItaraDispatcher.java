@@ -38,16 +38,21 @@ import java.util.logging.Logger;
  *      on it being active (restore-as-soon-as-possible, matching how inbound
  *      observability context is already restored first).
  *   1. registry lookup      ← outside all further scopes, fails fast
- *   2. method resolution    ← outside all further scopes, fails fast
+ *   2. method resolution    ← outside all further scopes, fails fast. The
+ *      method name is the only part of the call target carried over the
+ *      wire (CallTargetPropagation) — node and component are already known
+ *      authoritatively from this dispatcher's own construction.
  *   3. restoreInboundContext (inbound scope opened — fires onInboundContextReleased on close)
- *   4. deserialize args      ← within inbound context, measurable in future
- *   5. CALL_RECEIVED         ← Itara/component boundary (callee scope opened)
- *   6. component.invoke()    ← TCCL already set to the component's own
+ *   4. authenticate          ← ADR 0027: after context reconstruction, before authorization
+ *   5. authorize             ← ADR 0027: after authentication, before deserialization
+ *   6. deserialize args      ← within inbound context, measurable in future
+ *   7. CALL_RECEIVED         ← Itara/component boundary (callee scope opened)
+ *   8. component.invoke()    ← TCCL already set to the component's own
  *      classloader, as part of step 0 opening the ComponentScope
- *   7. callee scope.close()  → RETURN_SENT
- *   8. serialize result      ← within inbound context, measurable in future
- *   9. inbound scope.close() → onInboundContextReleased, context popped
- *  10. ComponentScopeHandle.close() — restores the previous scope and TCCL,
+ *   9. callee scope.close()  → RETURN_SENT
+ *  10. serialize result      ← within inbound context, measurable in future
+ *  11. inbound scope.close() → onInboundContextReleased, context popped
+ *  12. ComponentScopeHandle.close() — restores the previous scope and TCCL,
  *      last, matching step 0 being first
  *
  * The callee scope wraps component invocation, and the TCCL swap around it —
@@ -122,33 +127,15 @@ public class ItaraDispatcher implements DispatchHandler {
     @Override
     public byte[] dispatch(byte[] requestBytes, Map<String, String> headers, ItaraTransportCredential transportCredential) throws Exception {
 
-        // Reconstruct the caller-declared target from headers (§16.5) — the
-        // only source for this; the transport plays no part (its own routing
-        // is a separate concern, see CallTargetPropagation).
-        ItaraCallTarget target = CallTargetPropagation.fromHeaders(headers);
-        String methodName = target.getMethod();
-
-        // This dispatcher always serves exactly this one component, on
-        // exactly this one node — fixed at construction, never derived from
-        // anything caller-supplied. Verify the claim matches before doing
-        // anything else: cheap, and catches a routing problem (stale config,
-        // a misbehaving transport, a forged header) before it can affect an
-        // authorization decision.
-        if (!Objects.equals(componentId, target.getComponent())
-                || !Objects.equals(nodeId, target.getNode())) {
-            throw serialized(new ItaraRemoteException(
-                            ItaraRemoteException.ErrorKind.TRANSPORT,
-                            "TargetMismatchException",
-                            "Routing mismatch: claimed target component='" + target.getComponent()
-                                    + "' node='" + target.getNode()
-                                    + "' does not match this dispatcher's component='" + componentId
-                                    + "' node='" + nodeId + "'"),
-                    methodName);
-        }
+        // The method name is the only part of the call target actually
+        // carried over the wire — node and component are already known
+        // authoritatively from this dispatcher's own construction.
+        String methodName = CallTargetPropagation.decodeMethod(headers);
 
         // 0. Open this node's scope — outermost, so registry lookup, method
         //    resolution, and every step below can rely on it being active.
         try (ComponentScopeHandle scopeHandle = ComponentScopeHandle.open(this.scope)) {
+
             // 1. Registry lookup — outside all scopes, fails fast before any context is opened
             Object instance;
             try {
@@ -157,9 +144,9 @@ public class ItaraDispatcher implements DispatchHandler {
                 log.log(Level.SEVERE, "[Itara] registry lookup failed component=" + componentId
                         + " error=" + e.getMessage(), e);
                 throw serialized(new ItaraRemoteException(
-                        ItaraRemoteException.ErrorKind.TRANSPORT,
-                        e.getClass().getName(),
-                        "Registry failure for component '" + componentId + "': " + e.getMessage(), e),
+                                ItaraRemoteException.ErrorKind.TRANSPORT,
+                                e.getClass().getName(),
+                                "Registry failure for component '" + componentId + "': " + e.getMessage(), e),
                         methodName);
             }
 
@@ -173,12 +160,16 @@ public class ItaraDispatcher implements DispatchHandler {
                         methodName);
             }
 
+            // Built locally, not decoded — both fields not covered by
+            // methodName come straight from this dispatcher's own identity.
+            ItaraCallTarget target = ItaraCallTarget.of(nodeId, componentId, methodName);
+
             // 3. Restore inbound context — wraps authentication, authorization,
             //    deserialization, invocation, and serialization
             try (ItaraScope inboundScope = facade.restoreInboundContext(headers, exchangePattern)) {
 
                 // 4. Authenticate (§15.6) — after context reconstruction, before
-                //    authorization (ADR 0024)
+                //    authorization (ADR 0027)
                 AuthenticationOutcome authnOutcome;
                 try {
                     authnOutcome = authentication.authenticate(authenticationConfig, headers, transportCredential);
@@ -200,7 +191,7 @@ public class ItaraDispatcher implements DispatchHandler {
                             methodName);
                 }
 
-                // 5. Authorize (§16.5) — after authentication, before deserialization (ADR 0024)
+                // 5. Authorize (§16.5) — after authentication, before deserialization (ADR 0027)
                 AuthorizationDecision authzDecision;
                 try {
                     authzDecision = authorization.authorize(authorizationConfig, authnOutcome.getIdentity(), target, headers);
@@ -228,10 +219,10 @@ public class ItaraDispatcher implements DispatchHandler {
                     args = serializer.deserializeArgs(requestBytes, method.getParameterTypes(), serializerConfig);
                 } catch (Exception e) {
                     throw serialized(new ItaraRemoteException(
-                            ItaraRemoteException.ErrorKind.TRANSPORT,
-                            e.getClass().getName(),
-                            "Failed to deserialize arguments for '" + methodName
-                                    + "' on '" + componentId + "': " + e.getMessage(), e),
+                                    ItaraRemoteException.ErrorKind.TRANSPORT,
+                                    e.getClass().getName(),
+                                    "Failed to deserialize arguments for '" + methodName
+                                            + "' on '" + componentId + "': " + e.getMessage(), e),
                             methodName);
                 }
 
@@ -246,7 +237,6 @@ public class ItaraDispatcher implements DispatchHandler {
                     } catch (InvocationTargetException e) {
                         calleeScope.setError(true);
                         Throwable cause = e.getCause() != null ? e.getCause() : e;
-                        // Rethrow as ItaraRemoteException — the transport will map this to an error response
                         throw serialized(new ItaraRemoteException(
                                         cause instanceof RuntimeException || cause instanceof Error
                                                 ? ItaraRemoteException.ErrorKind.RUNTIME

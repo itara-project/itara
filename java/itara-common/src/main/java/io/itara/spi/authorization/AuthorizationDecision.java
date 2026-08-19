@@ -19,7 +19,7 @@ public final class AuthorizationDecision {
         return new AuthorizationDecision(true, null);
     }
 
-    /** Becomes the message of the PERMISSION error surfaced to the caller (ADR 0023). */
+    /** Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026). */
     public static AuthorizationDecision deny(String reason) {
         if (reason == null || reason.isEmpty()) {
             throw new IllegalArgumentException("[Itara] denial reason must be a non-empty message");

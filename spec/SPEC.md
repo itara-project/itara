@@ -852,8 +852,7 @@ starting a listener that:
 
 - Receives inbound byte payloads from remote callers
 - Extracts and restores the `ItaraContext` propagated by the caller
-- Routes each inbound call to the correct registered dispatcher by component
-  identifier
+- Routes each inbound call to the correct registered dispatcher
 - Returns the response byte payload to the transport for transmission back
   to the caller
 
@@ -861,21 +860,17 @@ A transport instance MAY serve multiple components simultaneously. The agent
 MAY register multiple dispatchers on the same transport instance before
 starting it, provided all registrations share the same grouping key.
 
-A transport MUST convey the information needed to route and identify an
-inbound call — at minimum the node, component, and method being invoked —
-independently of the serialized payload bytes, so that this information is
-available before the payload is deserialized. A transport MUST NOT require
-deserializing the payload to determine where or what is being called.
-
 ### 7.6 Listener Lifecycle
 
 The transport listener lifecycle MUST follow this sequence:
 
 1. **Registration phase** — the agent registers one or more dispatchers on a
-   transport instance before starting it. Each registration associates a
-   component identifier and its parsed transport configuration with a
-   dispatcher. The transport MUST NOT start accepting connections during this
-   phase.
+    transport instance before starting it. Each registration carries its own
+    parsed transport configuration and its own dispatcher. If a transport
+    instance receives multiple registrations, it MUST keep each one distinct
+    and route every inbound call to the correct dispatcher without conflating
+    registrations. The transport MUST NOT start accepting connections during
+    this phase.
 
 2. **Start** — the agent signals the transport to start after all registrations
    for that instance are complete. The transport makes all resource allocation
@@ -1948,13 +1943,13 @@ error. The agent MUST NOT start in this state.
 
 Before dispatch, an authentication implementation configured on the
 caller side MUST produce an identity assertion and attach it to the
-call's propagated header information (§7.4), under a well-known key,
-alongside anything else attached there. This applies only when the
-identity is not already conveyed by the transport connection itself —
-for example, an mTLS peer certificate presented during the TLS
-handshake requires no caller-side action here; the transport already
-carries it, and an authentication implementation configured for that
-case has nothing further to do on the caller side.
+call's propagated header information (§7.4), alongside anything else
+attached there. This applies only when the identity is not already
+conveyed by the transport connection itself — for example, an mTLS
+peer certificate presented during the TLS handshake requires no
+caller-side action here; the transport already carries it, and an
+authentication implementation configured for that case has nothing
+further to do on the caller side.
 
 Where the caller side does have work to do, it is exactly this: produce
 the identity, attach it to the propagated headers. The transport carries

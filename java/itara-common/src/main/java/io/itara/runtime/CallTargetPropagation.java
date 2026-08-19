@@ -17,33 +17,27 @@ import java.util.Map;
  */
 public final class CallTargetPropagation {
 
-    public static final String HEADER_TARGET_NODE      = "x-itara-target-node";
-    public static final String HEADER_TARGET_COMPONENT = "x-itara-target-component";
     public static final String HEADER_TARGET_METHOD    = "x-itara-target-method";
 
     private CallTargetPropagation() {}
 
     /**
-     * Serializes the target into Itara-native transport headers.
-     * A null field is omitted, not encoded as empty.
+     * Serializes the target's method into a header. A null method is
+     * omitted, not encoded as empty.
      */
     public static Map<String, String> toHeaders(ItaraCallTarget target) {
         Map<String, String> headers = new HashMap<>();
-        if (target.getNode() != null)      headers.put(HEADER_TARGET_NODE, target.getNode());
-        if (target.getComponent() != null) headers.put(HEADER_TARGET_COMPONENT, target.getComponent());
-        if (target.getMethod() != null)    headers.put(HEADER_TARGET_METHOD, target.getMethod());
+        if (target.getMethod() != null) {
+            headers.put(HEADER_TARGET_METHOD, target.getMethod());
+        }
         return headers;
     }
 
     /**
-     * Deserializes a target from inbound transport headers. Any field
-     * absent from the headers comes back null — callers decide what
-     * that means for them.
+     * Decodes the propagated method name from inbound headers, or null if
+     * absent.
      */
-    public static ItaraCallTarget fromHeaders(Map<String, String> headers) {
-        return ItaraCallTarget.of(
-                headers.get(HEADER_TARGET_NODE),
-                headers.get(HEADER_TARGET_COMPONENT),
-                headers.get(HEADER_TARGET_METHOD));
+    public static String decodeMethod(Map<String, String> headers) {
+        return headers.get(HEADER_TARGET_METHOD);
     }
 }

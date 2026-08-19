@@ -151,7 +151,7 @@ public class ItaraProxyHandler implements InvocationHandler {
 
                 // 2b. Produce the identity assertion once per call, before failure
                 //     semantics is invoked, and reuse it across any retries of this
-                //     call (ADR 0024) — unlike the per-attempt observability headers
+                //     call (ADR 0027) — unlike the per-attempt observability headers
                 //     below, this is not regenerated per attempt.
                 Map<String, String> assertion;
                 try {
