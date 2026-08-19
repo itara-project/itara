@@ -1,4 +1,4 @@
-# ADR 0024 — Authentication and Authorization Placement in the Call Chain
+# ADR 0027 — Authentication and Authorization Placement in the Call Chain
 
 **Status:** Accepted
 **Date:** August 2026
@@ -7,7 +7,7 @@
 
 ## Context
 
-With authentication and authorization as topology-layer SPIs (ADR 0021), a
+With authentication and authorization as topology-layer SPIs (ADR 0024), a
 placement decision is needed: where do they run relative to context
 reconstruction, argument deserialization, and the four observability
 events on the callee side, and relative to the failure semantics retry
@@ -86,7 +86,7 @@ is wasted work, not added correctness.
   gets.
 - This ADR does not decide whether a `PERMISSION` error triggers a retry —
   that remains the failure semantics implementation's own configurable
-  choice (ADR 0023).
+  choice (ADR 0026).
 
 ---
 
@@ -98,5 +98,5 @@ is wasted work, not added correctness.
 - Spec §16.5 (Authorization SPI)
 - ADR 0017 — Failure Semantics Observability Boundary (precedent for both
   the custom-span escape hatch and the reused-not-retried treatment)
-- ADR 0021 — Authentication and Authorization as Separate SPIs
-- ADR 0023 — `PERMISSION` Error Kind
+- ADR 0024 — Authentication and Authorization as Separate SPIs
+- ADR 0026 — `PERMISSION` Error Kind

@@ -1,4 +1,4 @@
-# ADR 0021 — Authentication and Authorization as Separate SPIs Sharing an Extensible Identity Type
+# ADR 0024 — Authentication and Authorization as Separate SPIs Sharing an Extensible Identity Type
 
 **Status:** Accepted
 **Date:** August 2026

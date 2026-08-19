@@ -1,4 +1,4 @@
-# ADR 0023 — `PERMISSION` as a Single Error Kind, Not a Dedicated Exception Type
+# ADR 0026 — `PERMISSION` as a Single Error Kind, Not a Dedicated Exception Type
 
 **Status:** Accepted
 **Date:** August 2026
@@ -83,4 +83,4 @@ distinguishability without a new type.
 ## References
 
 - Spec §6.6 (Runtime Error Handling)
-- ADR 0021 — Authentication and Authorization as Separate SPIs
+- ADR 0024 — Authentication and Authorization as Separate SPIs

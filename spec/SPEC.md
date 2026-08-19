@@ -41,6 +41,8 @@ Feedback, objections, and proposals are welcome as GitHub issues on the Itara re
 12. Conformance
 13. Event-Driven Topology
 14. Failure Semantics SPI
+15. Authentication SPI
+16. Authorization SPI
 
 ---
 
