@@ -81,7 +81,7 @@ public class TransportRegistryTest {
                            Duration timeout) { return new byte[0]; }
 
         @Override
-        public void registerListener(String componentId, ItaraTransportConfig config,
+        public void registerListener(ItaraTransportConfig config,
                                      DispatchHandler dispatcher) {}
 
         @Override public void start() {}
@@ -328,7 +328,7 @@ public class TransportRegistryTest {
                            Duration timeout) { return new byte[0]; }
 
         @Override
-        public void registerListener(String componentId, ItaraTransportConfig config,
+        public void registerListener(ItaraTransportConfig config,
                                      DispatchHandler dispatcher) {}
     }
 

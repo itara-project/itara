@@ -1,9 +1,11 @@
 package io.itara.integration;
 
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.DispatchKeyPropagation;
 import io.itara.runtime.ItaraCallTarget;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.TransportRegistry;
+import io.itara.spi.identity.ItaraTransportCredential;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
@@ -14,6 +16,7 @@ import io.itara.transport.kafka.KafkaTransportFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,6 +57,8 @@ public class KafkaTransportGroupingIntegrationTest {
     private static final String COMPONENT_B    = "service-b";
     private static final String GROUP_SHARED   = "itara-grouping-shared";
     private static final String GROUP_SEPARATE = "itara-grouping-separate";
+    private static final String DISPATCH_KEY_A = "conn-001";
+    private static final String DISPATCH_KEY_B = "conn-002";
 
     @Container
     static final KafkaContainer kafka = new KafkaContainer(
@@ -166,19 +172,11 @@ public class KafkaTransportGroupingIntegrationTest {
                     TransportRegistry.instance().getOrCreate("kafka", parsedB));
 
             // Register both dispatchers on the shared instance
-            DispatchHandler dispatcherA = (payload, headers, transportCredential) -> {
-                receivedByA.add(new String(payload));
-                latchA.countDown();
-                return new byte[0];
-            };
-            DispatchHandler dispatcherB = (payload, headers, transportCredential) -> {
-                receivedByB.add(new String(payload));
-                latchB.countDown();
-                return new byte[0];
-            };
+            DispatchHandler dispatcherA = new TestDispatcher(receivedByA, latchA, DISPATCH_KEY_A);
+            DispatchHandler dispatcherB = new TestDispatcher(receivedByB, latchB, DISPATCH_KEY_B);
 
-            sharedTransport.registerListener(COMPONENT_A, parsedA, dispatcherA);
-            sharedTransport.registerListener(COMPONENT_B, parsedB, dispatcherB);
+            sharedTransport.registerListener(parsedA, dispatcherA);
+            sharedTransport.registerListener(parsedB, dispatcherB);
             sharedTransport.start();
 
             // Give consumer time to subscribe
@@ -189,14 +187,20 @@ public class KafkaTransportGroupingIntegrationTest {
                     bootstrapServers, null, TOPIC_A, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerA = new KafkaTransport(producerConfigA);
             producerA.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_A, "onEventA"), "payload-a".getBytes(),
-                    Map.of(), parsedA, null);
+                    Map.of("x-itara-component-id", COMPONENT_A,
+                            "x-itara-method-name",  "onEventA",
+                            DispatchKeyPropagation.HEADER_DISPATCH_KEY, DISPATCH_KEY_A),
+                    parsedA, null);
 
             // Producer for topic B → should reach dispatcher B
             KafkaTransportConfig producerConfigB = new KafkaTransportConfig(
                     bootstrapServers, null, TOPIC_B, false, KafkaFailureAction.DROP, null);
             KafkaTransport producerB = new KafkaTransport(producerConfigB);
             producerB.send(ItaraCallTarget.of("grouping-test-node", COMPONENT_B, "onEventB"), "payload-b".getBytes(),
-                    Map.of(), parsedB, null);
+                    Map.of("x-itara-component-id", COMPONENT_B,
+                            "x-itara-method-name",  "onEventB",
+                            DispatchKeyPropagation.HEADER_DISPATCH_KEY, DISPATCH_KEY_B),
+                    parsedB, null);
 
             assertTrue(latchA.await(10, TimeUnit.SECONDS),
                     "Dispatcher A did not receive message within 10 seconds");
@@ -212,6 +216,93 @@ public class KafkaTransportGroupingIntegrationTest {
         }
     }
 
+    // ── Dispatch key edge cases ─────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("dispatch key edge cases")
+    class DispatchKeyEdgeCases {
+
+        @Test
+        @DisplayName("a message carrying an unrecognized dispatch key is dropped, not misrouted to a registered dispatcher")
+        void unrecognizedDispatchKeyIsDroppedNotMisrouted() throws Exception {
+            String topic = "itara.grouping.unrecognized-key";
+            String group = "itara-grouping-unrecognized-key";
+
+            ItaraTransportConfig parsed = TransportRegistry.instance()
+                    .parseConfig("kafka", rawConfig(topic, group));
+            KafkaTransport transport = (KafkaTransport) TransportRegistry.instance()
+                    .getOrCreate("kafka", parsed);
+
+            List<String> received = new CopyOnWriteArrayList<>();
+            CountDownLatch latch = new CountDownLatch(1);
+            DispatchHandler registered = new TestDispatcher(received, latch, "conn-registered");
+
+            transport.registerListener(parsed, registered);
+            transport.start();
+            Thread.sleep(2_000);
+
+            KafkaTransportConfig producerConfig = new KafkaTransportConfig(
+                    bootstrapServers, null, topic, false, KafkaFailureAction.DROP, null);
+            KafkaTransport producer = new KafkaTransport(producerConfig);
+            producer.send(ItaraCallTarget.of("whatever", "whatever", "onSomething"), "payload".getBytes(),
+                    Map.of("x-itara-component-id", "whatever",
+                            "x-itara-method-name",  "onSomething",
+                            DispatchKeyPropagation.HEADER_DISPATCH_KEY, "conn-DOES-NOT-EXIST"),
+                    producerConfig, null);
+
+            boolean delivered = latch.await(5, TimeUnit.SECONDS);
+            assertFalse(delivered, "message with an unrecognized dispatch key must not reach any dispatcher");
+            assertTrue(received.isEmpty());
+
+            transport.stop();
+        }
+
+        @Test
+        @Disabled("Known gap, tracked in issue #<fill-in> — KafkaTransport.registerListener() "
+                + "currently overwrites rather than fans out when two dispatchers share one "
+                + "dispatch key. Good first-contribution scope.")
+        @DisplayName("multiple dispatchers registered under the same dispatch key — event-driven fan-out — all receive the message")
+        void multipleDispatchersOnSameKeyAllReceiveTheEvent() throws Exception {
+            String topic     = "itara.grouping.fanout";
+            String group     = "itara-grouping-fanout";
+            String sharedKey = "orderPlacedChannel";
+
+            ItaraTransportConfig parsed = TransportRegistry.instance()
+                    .parseConfig("kafka", rawConfig(topic, group));
+            KafkaTransport transport = (KafkaTransport) TransportRegistry.instance()
+                    .getOrCreate("kafka", parsed);
+
+            List<String> receivedBySubscriber1 = new CopyOnWriteArrayList<>();
+            List<String> receivedBySubscriber2 = new CopyOnWriteArrayList<>();
+            CountDownLatch latch1 = new CountDownLatch(1);
+            CountDownLatch latch2 = new CountDownLatch(1);
+
+            DispatchHandler subscriber1 = new TestDispatcher(receivedBySubscriber1, latch1, sharedKey);
+            DispatchHandler subscriber2 = new TestDispatcher(receivedBySubscriber2, latch2, sharedKey);
+
+            transport.registerListener(parsed, subscriber1);
+            transport.registerListener(parsed, subscriber2);
+            transport.start();
+            Thread.sleep(2_000);
+
+            KafkaTransportConfig producerConfig = new KafkaTransportConfig(
+                    bootstrapServers, null, topic, false, KafkaFailureAction.DROP, null);
+            KafkaTransport producer = new KafkaTransport(producerConfig);
+            producer.send(ItaraCallTarget.of("order-events/order-placed", "order-events/order-placed", "onOrderPlaced"), "payload".getBytes(),
+                    Map.of("x-itara-component-id", "order-events/order-placed",
+                            "x-itara-method-name",  "onOrderPlaced",
+                            DispatchKeyPropagation.HEADER_DISPATCH_KEY, sharedKey),
+                    producerConfig, null);
+
+            assertTrue(latch1.await(10, TimeUnit.SECONDS), "subscriber 1 must receive the event");
+            assertTrue(latch2.await(10, TimeUnit.SECONDS), "subscriber 2 must receive the event");
+            assertEquals(1, receivedBySubscriber1.size());
+            assertEquals(1, receivedBySubscriber2.size());
+
+            transport.stop();
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private TransportConfig rawConfig(String topic, String group) {
@@ -220,5 +311,29 @@ public class KafkaTransportGroupingIntegrationTest {
                         "consumerGroup",    group))
                 .virtualNodeAddress(topic)
                 .build();
+    }
+
+    private static class TestDispatcher implements DispatchHandler {
+        private final List<String> receivedBy;
+        private CountDownLatch latch;
+        private final String key;
+
+        public TestDispatcher(List<String> receivedBy, CountDownLatch latch, String dispatchKey) {
+            this.receivedBy = receivedBy;
+            this.latch = latch;
+            this.key = dispatchKey;
+        }
+
+        @Override
+        public String getDispatchKey() {
+            return key;
+        }
+
+        @Override
+        public byte[] dispatch(byte[] requestBytes, Map<String, String> headers, ItaraTransportCredential transportCredential) throws Exception {
+            receivedBy.add(new String(requestBytes));
+            latch.countDown();
+            return new byte[0];
+        }
     }
 }

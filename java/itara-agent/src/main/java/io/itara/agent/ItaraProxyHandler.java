@@ -5,6 +5,9 @@ import io.itara.exceptions.ItaraErrorPayload;
 import io.itara.exceptions.ItaraReconstructibleException;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.exceptions.ItaraRemoteException;
+import io.itara.runtime.ComponentScope;
+import io.itara.runtime.ComponentScopeHandle;
+import io.itara.runtime.DispatchKeyPropagation;
 import io.itara.runtime.CallTargetPropagation;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraCallTarget;
@@ -24,6 +27,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -60,6 +64,7 @@ public class ItaraProxyHandler implements InvocationHandler {
 
     private static final Logger log = Logger.getLogger(ItaraProxyHandler.class.getName());
 
+    private final String dispatchKey;
     private final String componentId;
     private final String nodeId;
     private final String transportId;
@@ -74,8 +79,10 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final ItaraAuthenticationConfig authenticationConfig;
     private final Set<String> nonIdempotentMethods;
     private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registered
+    private final ComponentScope fromScope; // the local calling node — opened before CALL_SENT, per ADR 0021
 
-    public ItaraProxyHandler(String componentId,
+    public ItaraProxyHandler(String dispatchKey,
+                             String componentId,
                              String nodeId,
                              ItaraSerializer serializer,
                              ItaraSerializerConfig serializerConfig,
@@ -87,7 +94,10 @@ public class ItaraProxyHandler implements InvocationHandler {
                              ItaraAuthentication authentication,
                              ItaraAuthenticationConfig authenticationConfig,
                              MetadataFile apiMetadata,
-                             ItaraReconstructibleExceptionFactory exceptionFactory) {
+                             ItaraReconstructibleExceptionFactory exceptionFactory,
+                             ComponentScope fromScope) {
+        this.dispatchKey          = Objects.requireNonNull(dispatchKey,
+                "[Itara] ItaraProxyHandler requires a non-null dispatchKey for component '" + componentId + "'.");
         this.componentId          = componentId;
         this.nodeId               = nodeId;
         this.transportId          = transportId;
@@ -104,6 +114,8 @@ public class ItaraProxyHandler implements InvocationHandler {
                 ? apiMetadata.getMethods().nonIdempotentSet()
                 : Collections.emptySet();
         this.exceptionFactory = exceptionFactory;
+        this.fromScope = Objects.requireNonNull(fromScope,
+                "[Itara] ItaraProxyHandler requires a non-null ComponentScope for the calling node.");
     }
 
     @Override
@@ -112,58 +124,67 @@ public class ItaraProxyHandler implements InvocationHandler {
             return method.invoke(this, args);
         }
 
-        ItaraContext previousCtx = ItaraContext.current();
-        ItaraCallTarget target = ItaraCallTarget.of(nodeId, componentId, method.getName());
+        // Open the caller's own captured scope first — never trust ambient
+        // state, per ADR 0021 — so it's genuinely active before CALL_SENT
+        // fires, not merely assumed to be.
+        try (ComponentScopeHandle fromHandle = ComponentScopeHandle.open(fromScope)) {
+            ItaraContext previousCtx = ItaraContext.current();
+            ItaraCallTarget target = ItaraCallTarget.of(nodeId, componentId, method.getName());
 
-        // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
-        try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportId, exchangePattern)) {
+            // 1. CALL_SENT — scope.close() fires RETURN_RECEIVED
+            try (ItaraScope scope = facade.fireCallSent(componentId, method.getName(), transportId, exchangePattern)) {
 
-            // 2. Serialize args — once, outside the retry lambda.
-            //    Serialization is deterministic; there is no value in repeating it.
-            Object[] safeArgs = (args == null) ? new Object[0] : args;
-            byte[] payload;
-            try {
-                payload = serializer.serializeArgs(safeArgs, serializerConfig);
-            } catch (Exception e) {
-                scope.setError(true);
-                throw new ItaraRemoteException(
-                        ItaraRemoteException.ErrorKind.TRANSPORT,
-                        e.getClass().getName(),
-                        "Failed to serialize arguments for '" + method.getName()
-                                + "' on '" + componentId + "': " + e.getMessage(), e);
-            }
+                // 2. Serialize args — once, outside the retry lambda.
+                //    Serialization is deterministic; there is no value in repeating it.
+                Object[] safeArgs = (args == null) ? new Object[0] : args;
+                byte[] payload;
+                try {
+                    payload = serializer.serializeArgs(safeArgs, serializerConfig);
+                } catch (Exception e) {
+                    scope.setError(true);
+                    throw new ItaraRemoteException(
+                            ItaraRemoteException.ErrorKind.TRANSPORT,
+                            e.getClass().getName(),
+                            "Failed to serialize arguments for '" + method.getName()
+                                    + "' on '" + componentId + "': " + e.getMessage(), e);
+                }
 
-            // 2b. Produce the identity assertion once per call, before failure
-            //     semantics is invoked, and reuse it across any retries of this
-            //     call (ADR 0024) — unlike the per-attempt observability headers
-            //     below, this is not regenerated per attempt.
-            Map<String, String> assertion;
-            try {
-                assertion = authentication.produceAssertion(authenticationConfig, target);
-            } catch (Exception e) {
-                scope.setError(true);
-                throw new ItaraRemoteException(
-                        ItaraRemoteException.ErrorKind.TRANSPORT,
-                        e.getClass().getName(),
-                        "Authentication implementation failed to produce an assertion for '"
-                                + method.getName() + "' on '" + componentId + "': " + e.getMessage(), e);
-            }
+                // 2b. Produce the identity assertion once per call, before failure
+                //     semantics is invoked, and reuse it across any retries of this
+                //     call (ADR 0024) — unlike the per-attempt observability headers
+                //     below, this is not regenerated per attempt.
+                Map<String, String> assertion;
+                try {
+                    assertion = authentication.produceAssertion(authenticationConfig, target);
+                } catch (Exception e) {
+                    scope.setError(true);
+                    throw new ItaraRemoteException(
+                            ItaraRemoteException.ErrorKind.TRANSPORT,
+                            e.getClass().getName(),
+                            "Authentication implementation failed to produce an assertion for '"
+                                    + method.getName() + "' on '" + componentId + "': " + e.getMessage(), e);
+                }
 
-            // 3. Transport — wrapped in a TransportCall lambda and handed to the
-            //    failure semantics implementation. The implementation decides how
-            //    many times to invoke it, with what timeout, and when to give up.
-            //
-            //    Headers are built inside the lambda, immediately before the transport
-            //    call, on every attempt. This ensures that if the failure semantics
-            //    implementation emits a custom span before a retry attempt, that span
-            //    is the active context when headers are built and consequently what
-            //    is propagated to the callee (§14.5, §14.7). The call target and the
-            //    identity assertion are not context-dependent — merged in on every
-            //    attempt, but computed only once, above.
-            boolean idempotent = !nonIdempotentMethods.contains(method.getName());
+                // 3. Transport — wrapped in a TransportCall lambda and handed to the
+                //    failure semantics implementation. The implementation decides how
+                //    many times to invoke it, with what timeout, and when to give up.
+                //
+                //    Headers are built inside the lambda, immediately before the transport
+                //    call, on every attempt. This ensures that if the failure semantics
+                //    implementation emits a custom span before a retry attempt, that span
+                //    is the active context when headers are built and consequently what
+                //    is propagated to the callee (§14.5, §14.7). The call target and the
+                //    identity assertion are not context-dependent — merged in on every
+                //    attempt, but computed only once, above.
+                boolean idempotent = !nonIdempotentMethods.contains(method.getName());
+                final Map<String, String> dispatchKeyHeaders = DispatchKeyPropagation.encode(dispatchKey);
 
             TransportCall work = (timeout) -> {
+                // Headers built per-attempt — active context at this point is what
+                // gets propagated, including any retry span the failure semantics
+                // implementation may have opened (§14.5)
                 Map<String, String> headers = facade.buildOutboundHeaders();
+                headers.putAll(dispatchKeyHeaders);
                 headers.putAll(CallTargetPropagation.toHeaders(target));
                 headers.putAll(assertion);
                 try {
@@ -201,44 +222,50 @@ public class ItaraProxyHandler implements InvocationHandler {
                 }
             };
 
-            byte[] responseBytes;
-            try {
-                responseBytes = failureSemantics.execute(work, idempotent);
-            } catch (ItaraRemoteException e) {
-                scope.setError(true);
-                if (e.getErrorKind() == ItaraRemoteException.ErrorKind.CHECKED
-                        && exceptionFactory != null) {
-                    Optional<ItaraReconstructibleException> reconstructed =
-                            exceptionFactory.reconstruct(e.getRemoteExceptionClass(), e.getMessage());
-                    if (reconstructed.isPresent()) {
-                        if (reconstructed.get() instanceof Throwable
-                                && isDeclaredOn(method, (Throwable) reconstructed.get())) {
-                            throw (Throwable) reconstructed.get();
+                byte[] responseBytes;
+                try {
+                    responseBytes = failureSemantics.execute(work, idempotent);
+                } catch (ItaraRemoteException e) {
+                    scope.setError(true);
+                    if (e.getErrorKind() == ItaraRemoteException.ErrorKind.CHECKED
+                            && exceptionFactory != null) {
+                        Optional<ItaraReconstructibleException> reconstructed =
+                                exceptionFactory.reconstruct(e.getRemoteExceptionClass(), e.getMessage());
+                        if (reconstructed.isPresent()) {
+                            if (reconstructed.get() instanceof Throwable
+                                    && isDeclaredOn(method, (Throwable) reconstructed.get())) {
+                                throw (Throwable) reconstructed.get();
+                            }
+                            // Reconstruction produced a type not declared on this method, or a
+                            // non-Throwable. Both are factory contract violations — log and fall back.
+                            // Note: non-Throwable implementations of ItaraReconstructibleException
+                            // will also be caught here; the Java compiler prevents throwing
+                            // non-Throwables so this can only happen via a careless factory.
+                            log.warning("[Itara] reconstructed exception not declared on method"
+                                    + " contract=" + componentId
+                                    + " method=" + method.getName()
+                                    + " error-type=" + e.getRemoteExceptionClass()
+                                    + " reconstructed-type=" + reconstructed.get().getClass().getName()
+                                    + " — falling back to ItaraRemoteException");
                         }
-                        log.warning("[Itara] reconstructed exception not declared on method"
-                                + " contract=" + componentId
-                                + " method=" + method.getName()
-                                + " error-type=" + e.getRemoteExceptionClass()
-                                + " reconstructed-type=" + reconstructed.get().getClass().getName()
-                                + " — falling back to ItaraRemoteException");
                     }
+                    throw e;
                 }
-                throw e;
-            }
 
-            // 5. Deserialize result
-            try {
-                return serializer.deserializeResult(responseBytes, method.getReturnType(), serializerConfig);
-            } catch (Exception e) {
-                scope.setError(true);
-                throw new ItaraRemoteException(
-                        ItaraRemoteException.ErrorKind.TRANSPORT,
-                        e.getClass().getName(),
-                        "Failed to deserialize response from '" + componentId
-                                + "." + method.getName() + "': " + e.getMessage(), e);
-            }
+                // 5. Deserialize result
+                try {
+                    return serializer.deserializeResult(responseBytes, method.getReturnType(), serializerConfig);
+                } catch (Exception e) {
+                    scope.setError(true);
+                    throw new ItaraRemoteException(
+                            ItaraRemoteException.ErrorKind.TRANSPORT,
+                            e.getClass().getName(),
+                            "Failed to deserialize response from '" + componentId
+                                    + "." + method.getName() + "': " + e.getMessage(), e);
+                }
 
-        } // 6. scope.close() → RETURN_RECEIVED, context popped
+            } // 6. scope.close() → RETURN_RECEIVED, context popped
+        } // fromHandle.close() — fromScope restored to whatever was ambient before this call
     }
 
     /**

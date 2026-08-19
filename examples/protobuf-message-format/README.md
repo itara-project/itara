@@ -229,7 +229,7 @@ and call `calculator` for each request. You can call `gateway` to trigger
 the calculations via simple cURL commands:
 
 ```
-curl -X POST http://localhost:8080/itara/gateway/sum -d "[6, 12]"
+curl -X POST http://localhost:8080/itara/gateway/sum -H "x-itara-dispatch-key: external-to-gateway" -d "[6, 12]"
 ```
 
 That number crossed a real process boundary as protobuf-encoded bytes —

@@ -28,6 +28,16 @@ impl std::fmt::Display for ConfigError {
             ConfigError::MissingProperty(msg) => write!(f, "[Itara] {}", msg),
         }
     }
+}// ── Id validation ────────────────────────────────────────────────────────────
+
+/// The character set required for node ids and connection ids: letters,
+/// digits, '.', '_', and '-'. Enforced at parse time since these ids are
+/// used as dispatch keys and observability event fields downstream.
+const ID_CHARSET: &str = r"^[A-Za-z0-9._-]+$";
+
+/// Returns true if `id` contains only characters from `ID_CHARSET`.
+fn has_valid_id_charset(id: &str) -> bool {
+    Regex::new(ID_CHARSET).unwrap().is_match(id)
 }
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -66,6 +76,13 @@ impl ComponentNode {
                 "Component node is missing required field 'id'.".to_string(),
             ));
         }
+        if !has_valid_id_charset(&self.id) {
+            return Err(ConfigError::Invalid(format!(
+                "Component node id '{}' contains invalid characters — ids may only \
+                 contain letters, digits, '.', '_', and '-'.",
+                self.id
+            )));
+        }
         if self.component.trim().is_empty() {
             return Err(ConfigError::Invalid(format!(
                 "Component node '{}' is missing required field 'component'.",
@@ -103,6 +120,13 @@ impl VirtualNode {
             return Err(ConfigError::Invalid(
                 "Virtual node is missing required field 'id'.".to_string(),
             ));
+        }
+        if !has_valid_id_charset(&self.id) {
+            return Err(ConfigError::Invalid(format!(
+                "Virtual node id '{}' contains invalid characters — ids may only \
+                 contain letters, digits, '.', '_', and '-'.",
+                self.id
+            )));
         }
         if self.contract.trim().is_empty() {
             return Err(ConfigError::Invalid(format!(
@@ -396,7 +420,8 @@ pub struct FailureSemanticsEntry {
 ///
 /// Example YAML:
 ///   connections:
-///     - from: "gatewayNode"
+///     - id: "gateway-to-calculator"
+///       from: "gatewayNode"
 ///       to: "calculatorNode"
 ///       transport:
 ///         id: http
@@ -407,6 +432,12 @@ pub struct FailureSemanticsEntry {
 ///         id: json
 #[derive(Debug, Clone)]
 pub struct ConnectionEntry {
+    /// Unique identifier for this connection. Required — MUST be unique
+    /// across the entire wiring configuration (spec §4.4). Used to apply
+    /// this connection's own transport, serializer, and failure semantics
+    /// to every call made on it.
+    pub id: String,
+
     /// The calling node id. None or empty = external caller.
     pub from: Option<String>,
 
@@ -427,6 +458,7 @@ pub struct ConnectionEntry {
 
 #[derive(Deserialize)]
 struct ConnectionHelper {
+    id: String,
     #[serde(default)]
     from: Option<String>,
     to: String,
@@ -441,6 +473,7 @@ impl<'de> serde::Deserialize<'de> for ConnectionEntry {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let h = ConnectionHelper::deserialize(d)?;
         Ok(ConnectionEntry {
+            id:         h.id,
             from:       h.from,
             to:         h.to,
             transport:  h.transport,
@@ -480,6 +513,18 @@ impl ConnectionEntry {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.id.trim().is_empty() {
+            return Err(ConfigError::Invalid(
+                "Connection is missing required field 'id'.".to_string(),
+            ));
+        }
+        if !has_valid_id_charset(&self.id) {
+            return Err(ConfigError::Invalid(format!(
+                "Connection id '{}' contains invalid characters — ids may only \
+                 contain letters, digits, '.', '_', and '-'.",
+                self.id
+            )));
+        }
         if self.to.trim().is_empty() {
             return Err(ConfigError::Invalid(
                 "Connection is missing required field 'to'.".to_string(),
@@ -765,7 +810,8 @@ nodes:
     component: "calculator"
 
 connections:
-  - from: "gatewayNode"
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
     to: "calculatorNode"
     transport:
       id: http
@@ -775,7 +821,8 @@ connections:
     serializer:
       id: json
 
-  - from:
+  - id: "external-to-calculator"
+    from:
     to: "gatewayNode"
     transport:
       id: http
@@ -862,13 +909,15 @@ nodes:
     address: "demo.events.order-placed"
 
 connections:
-  - from: "orderServiceNode"
+  - id: "order-to-orderPlaced"
+    from: "orderServiceNode"
     to: "orderPlacedChannel"
     transport:
       id: kafka
     serializer:
       id: json
-  - from: "orderPlacedChannel"
+  - id: "orderPlaced-to-order"
+    from: "orderPlacedChannel"
     to: "orderServiceNode"
     transport:
       id: kafka
@@ -924,7 +973,8 @@ nodes:
     contract: "events/placed"
     address: "topic.placed"
 connections:
-  - from: "a"
+  - id: "a-to-b"
+    from: "a"
     to: "b"
     transport:
       id: kafka
@@ -942,7 +992,8 @@ connections:
 anchors:
   host: &calcHost "localhost"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -964,6 +1015,7 @@ connections:
         let yaml = r#"
 connections:
   - &baseConn
+    id: "gateway-to-calculator"
     from: gateway
     to: calculator
     transport:
@@ -991,7 +1043,8 @@ defaults: &httpDefaults
     host: localhost
     port: "8081"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       <<: *httpDefaults
@@ -1014,7 +1067,8 @@ defaults: &httpDefaults
     host: localhost
     port: "8081"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       <<: *httpDefaults
@@ -1046,7 +1100,8 @@ anchors:
     host: notif-host
     port: "8082"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1054,7 +1109,8 @@ connections:
         <<: *calcParams
     serializer:
       id: json
-  - from: gateway
+  - id: "gateway-to-notifier"
+    from: gateway
     to: notifier
     transport:
       id: http
@@ -1080,7 +1136,8 @@ connections:
     fn parses_transport_block_with_params() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1101,7 +1158,8 @@ connections:
     fn parses_handle_timeout_true() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1120,7 +1178,8 @@ connections:
     fn handle_timeout_defaults_to_false() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1135,7 +1194,8 @@ connections:
     fn absent_params_yields_empty_map() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1152,7 +1212,8 @@ connections:
         // Note: this would fail at deserialize time since transport is required
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
 "#;
         assert!(parse_string(yaml).is_err());
@@ -1162,7 +1223,8 @@ connections:
     fn direct_connection_is_direct() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: direct
@@ -1176,7 +1238,8 @@ connections:
         // A direct connection has no serializer block at all — must not fail validation.
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: direct
@@ -1189,7 +1252,8 @@ connections:
     fn serializer_block_missing_fails_validation_for_non_direct_connection() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1204,7 +1268,8 @@ connections:
     fn serializer_id_empty_fails_validation_for_non_direct_connection() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1221,7 +1286,8 @@ connections:
     fn serializer_params_parsed_correctly() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1243,7 +1309,8 @@ connections:
     fn serializer_absent_params_yields_empty_map() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1260,7 +1327,8 @@ connections:
     fn failure_semantics_absent_is_none() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1275,7 +1343,8 @@ connections:
     fn failure_semantics_other_fields_default_correctly() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1298,7 +1367,8 @@ connections:
     fn failure_semantics_without_id_fails_parsing() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1314,7 +1384,8 @@ connections:
     fn failure_semantics_full() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1345,7 +1416,8 @@ connections:
     fn failure_semantics_handle_timeout_parsed() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1365,7 +1437,8 @@ connections:
     fn has_timeout_returns_true_when_set() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1383,7 +1456,8 @@ connections:
     fn has_timeout_returns_false_when_no_failure_semantics() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1398,7 +1472,8 @@ connections:
     fn has_timeout_returns_false_when_failure_semantics_has_no_timeout() {
         let yaml = r#"
 connections:
-  - from: gateway
+  - id: "gateway-to-calculator"
+    from: gateway
     to: calculator
     transport:
       id: http
@@ -1409,5 +1484,113 @@ connections:
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(!config.connections[0].has_timeout());
+    }
+
+    // ── Connection id ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn connection_id_missing_fails_parsing() {
+        // 'id' key absent entirely — fails at deserialize time since it's required.
+        let yaml = r#"
+connections:
+  - from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        assert!(parse_string(yaml).is_err());
+    }
+
+    #[test]
+    fn connection_id_empty_fails_validation() {
+        let yaml = r#"
+connections:
+  - id: ""
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("missing required field 'id'"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn connection_id_invalid_characters_fails_validation() {
+        let yaml = r#"
+connections:
+  - id: "gateway to calculator!"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("invalid characters"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn connection_id_allows_dots_underscores_hyphens() {
+        let yaml = r#"
+connections:
+  - id: "gateway.to_calculator-v2"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        assert!(parse_string(yaml).is_ok());
+    }
+
+    // ── Node id character set ────────────────────────────────────────────────
+
+    #[test]
+    fn component_node_id_invalid_characters_fails_validation() {
+        let yaml = r#"
+nodes:
+  - id: "gateway node!"
+    component: "gateway"
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("invalid characters"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn virtual_node_id_invalid_characters_fails_validation() {
+        let yaml = r#"
+nodes:
+  - id: "order placed!"
+    kind: virtual
+    contract: "order-events/order-placed"
+    address: "demo.events.order-placed"
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("invalid characters"), "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn node_id_allows_dots_underscores_hyphens() {
+        let yaml = r#"
+nodes:
+  - id: "gateway.node_v2-a"
+    component: "gateway"
+"#;
+        assert!(parse_string(yaml).is_ok());
     }
 }

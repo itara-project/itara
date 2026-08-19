@@ -1,4 +1,4 @@
-# ADR 0022 — Authentication and Authorization Configured at Connection Level
+# ADR 0025 — Authentication and Authorization Configured at Connection Level
 
 **Status:** Accepted
 **Date:** August 2026
@@ -88,4 +88,4 @@ actually decide (a specific relationship between two nodes).
 
 - Spec §15.4 (Authentication SPI, Wiring Configuration)
 - Spec §16.4 (Authorization SPI, Wiring Configuration)
-- ADR 0021 — Authentication and Authorization as Separate SPIs
+- ADR 0024 — Authentication and Authorization as Separate SPIs

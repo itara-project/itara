@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.itara.spi.failuresemantics.FailureSemanticsConfig;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * A connection declared in the wiring configuration.
@@ -14,7 +15,8 @@ import java.util.List;
  * Example YAML:
  *
  *   connections:
- *     - from: "gateway"
+ *     - id:   "gateway-to-calculator"
+ *       from: "gateway"
  *       to:   "calculator"
  *       transport:
  *         id: http
@@ -32,6 +34,25 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ConnectionEntry {
+
+    private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]+");
+
+    /**
+     * This connection's own identifier. Required, and unique across every
+     * connection in the wiring config (see WiringConfig.validate()) —
+     * unlike 'from'/'to', which identify nodes, this identifies the
+     * connection itself: the specific link between them, distinct from
+     * any other connection that might share the same 'from' and 'to'
+     * (different transport, different serializer, etc.) or the same
+     * 'to' from a different caller.
+     *
+     * Case-sensitive. Letters, digits, '.', '_', and '-' only — this set
+     * is deliberately conservative: it's exactly Kafka's own topic-name
+     * character set, and it stays unencoded-safe in HTTP header values
+     * and URL path segments, both of which a transport is free to use to
+     * propagate it.
+     */
+    private String id;
 
     /**
      * The calling node id. Absent or empty means the caller is
@@ -65,6 +86,9 @@ public class ConnectionEntry {
 
     private AuthenticationEntry authentication;
     private AuthorizationEntry authorization;
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
 
     public String getFrom() { return from; }
     public void setFrom(String from) { this.from = from; }
@@ -139,7 +163,7 @@ public class ConnectionEntry {
 
     @Override
     public String toString() {
-        return "ConnectionEntry{from='" + from + "', to='" + to
+        return "ConnectionEntry{id='" + id + "', from='" + from + "', to='" + to
                 + "', transport.id='" + (transport != null ? transport.getId() : null)
                 + "', serializer.id='" + (serializer != null ? serializer.getId() : null)
                 + "', authentication.id='" + (authentication != null ? authentication.getId() : null)
@@ -148,6 +172,15 @@ public class ConnectionEntry {
     }
 
     public void validate() {
+        if (id == null || id.isBlank()) {
+            throw new ConfigurationException(
+                    "[Itara] Connection to='" + to + "' is missing required field 'id'.");
+        }
+        if (!VALID_ID.matcher(id).matches()) {
+            throw new ConfigurationException(
+                    "[Itara] Connection id='" + id + "' is invalid — only letters, digits, "
+                            + "'.', '_', and '-' are allowed.");
+        }
         if (to == null || to.isBlank()) {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'to'.");
@@ -156,24 +189,17 @@ public class ConnectionEntry {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'transport.id'.");
         }
+        if (isDirect() && isExternal()) {
+            throw new ConfigurationException(
+                    "[Itara] Connection id='" + id + "' is direct but has no 'from' — direct "
+                            + "connections are colocated, in-process calls and cannot be external.");
+        }
         if (!isDirect() && (serializer == null || serializer.getId() == null || serializer.getId().isBlank())) {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'serializer.id'.");
         }
-        if (isDirect() && authentication != null && !"noop".equalsIgnoreCase(authentication.getId())) {
-            throw new ConfigurationException(
-                    "[Itara] Connection to='" + to + "' declares authentication.id='" + authentication.getId()
-                            + "' on a direct connection. Authentication and authorization are not yet enforced "
-                            + "for direct (colocated) connections — see the tracking issue. Remove the "
-                            + "authentication block, or use a non-direct transport if enforcement is required.");
-        }
-        if (isDirect() && authorization != null && !"noop".equalsIgnoreCase(authorization.getId())) {
-            throw new ConfigurationException(
-                    "[Itara] Connection to='" + to + "' declares authorization.id='" + authorization.getId()
-                            + "' on a direct connection. Authentication and authorization are not yet enforced "
-                            + "for direct (colocated) connections — see the tracking issue. Remove the "
-                            + "authorization block, or use a non-direct transport if enforcement is required.");
-        }
+        if (authentication != null) authentication.validate(to);
+        if (authorization != null) authorization.validate(to);
     }
 
     public boolean isRelatedToAnyOfNodes(List<String> nodeIds) {

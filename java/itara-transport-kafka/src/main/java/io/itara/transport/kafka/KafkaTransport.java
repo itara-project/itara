@@ -1,6 +1,7 @@
 package io.itara.transport.kafka;
 
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.DispatchKeyPropagation;
 import io.itara.runtime.ItaraCallTarget;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.transport.ItaraTransportConfig;
@@ -128,17 +129,16 @@ public class KafkaTransport implements ItaraTransport {
     // ── Consumer side ─────────────────────────────────────────────────────
 
     @Override
-    public void registerListener(String componentId,
-                                 ItaraTransportConfig config,
+    public void registerListener(ItaraTransportConfig config,
                                  DispatchHandler dispatcher) {
         KafkaTransportConfig kafkaConfig = (KafkaTransportConfig) config;
-        listeners.put(componentId, new ListenerConfig(
+        listeners.put(dispatcher.getDispatchKey(), new ListenerConfig(
                 dispatcher,
                 kafkaConfig.getFailureAction(),
                 kafkaConfig.getDlaTopic()));
         topics.add(kafkaConfig.getTopic());
-        log.fine("[Itara/Kafka] registered listener for component '" + componentId
-                + "' on topic '" + kafkaConfig.getTopic() + "'");
+        log.fine("[Itara/Kafka] registered listener for dispatch key='" + dispatcher.getDispatchKey()
+                + "' on topic='" + kafkaConfig.getTopic() + "'");
     }
 
     @Override
@@ -213,18 +213,27 @@ public class KafkaTransport implements ItaraTransport {
             return;
         }
 
-        ListenerConfig listener = listeners.get(targetComponentId);
-        if (listener == null) {
-            log.warning("[Itara/Kafka] Skipping message — no listener registered"
-                    + " for component '" + targetComponentId + "'");
-            return;
-        }
-
         Map<String, String> headers = new HashMap<>();
         kafkaHeaders.forEach(h ->
                 headers.put(h.key(), new String(h.value(), StandardCharsets.UTF_8)));
 
-        log.info("[Itara/Kafka] <- " + methodName + " on " + targetComponentId);
+        String dispatchKey;
+        try {
+            dispatchKey = DispatchKeyPropagation.decode(headers);
+        } catch (IllegalArgumentException e) {
+            log.warning("[Itara/Kafka] Skipping message — " + e.getMessage());
+            return;
+        }
+
+        ListenerConfig listener = listeners.get(dispatchKey);
+        if (listener == null) {
+            log.warning("[Itara/Kafka] Skipping message — no listener registered"
+                    + " for dispatch key '" + dispatchKey + "'");
+            return;
+        }
+
+        log.info("[Itara/Kafka] <- " + methodName + " on " + targetComponentId
+                + " (dispatchKey=" + dispatchKey + ")");
 
         try {
             listener.dispatcher.dispatch(record.value(), headers, null);

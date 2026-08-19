@@ -12,6 +12,7 @@ import io.itara.agent.metadata.MetadataFile;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
 import io.itara.runtime.AuthenticationRegistry;
 import io.itara.runtime.AuthorizationRegistry;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.FailureSemanticsRegistry;
@@ -35,6 +36,8 @@ import io.itara.spi.transport.ItaraTransportConfig;
 import io.itara.spi.transport.TransportConfig;
 
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
 import java.util.Collections;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -173,16 +176,22 @@ public class ItaraAgent {
         // Iterates local nodes only — ActivatorScanner.scan() already
         // guarantees every one of these has an activator and a classloader,
         // so there is no need to guard against a missing entry here.
+        Map<String, ComponentScope> localNodeScopes = new HashMap<>();
+
         for (ComponentNode node : config.getLocalNodes()) {
             String componentId = node.getComponent();
             ActivatedComponent activated = ActivatorScanner.instance().getActivatedComponent(componentId);
             ClassLoader componentClassLoader = ActivatorScanner.instance().getClassLoader(componentId);
 
-            registry.registerActivator(
-                    componentId,
-                    activated.getActivatorClass(),
-                    contracts.get(componentId),
-                    componentClassLoader);
+            ComponentScope scope = new ComponentScope.Factory()
+                    .nodeId(node.getId())
+                    .componentId(componentId)
+                    .classLoader(componentClassLoader)
+                    .build();
+            localNodeScopes.put(node.getId(), scope);
+            registry.registerComponentScope(componentId, scope);
+
+            registry.registerActivator(componentId, activated.getActivatorClass());
 
             // Register aliases for all event contracts this component
             // implements, as declared in [implemented-event-contracts]
@@ -206,8 +215,39 @@ public class ItaraAgent {
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
                 if (conn.isDirect()) {
-                    // Colocated — factory handles decoration on first get()
-                    log.fine("[Itara] connection wired type=direct from=" + conn.getFrom()
+                    Node toNode   = config.findNode(conn.getTo()).orElseThrow();
+                    Node fromNode = config.findNode(conn.getFrom()).orElseThrow(); // external check is done during config validation
+
+                    String componentId = switch (toNode.getKind()) {
+                        case COMPONENT -> ((ComponentNode) toNode).getComponent();
+                        case VIRTUAL   -> throw new IllegalStateException(
+                                "[Itara] Direct connection id='" + conn.getId() + "' targets virtual node '"
+                                        + toNode.getId() + "' — direct connections require a real, local "
+                                        + "component on both ends.");
+                    };
+
+                    Class<?> contractClass = contracts.get(componentId);
+                    if (contractClass == null) {
+                        throw new IllegalStateException(
+                                "[Itara] Cannot create local proxy for '" + conn.getTo()
+                                        + "': no contract class found for '" + componentId + "'. "
+                                        + "Is the API jar on the classpath?");
+                    }
+
+                    ComponentScope scope     = localNodeScopes.get(toNode.getId());
+                    ComponentScope fromScope = localNodeScopes.get(fromNode.getId());
+
+                    Object proxy = Proxy.newProxyInstance(
+                            systemClassLoader,
+                            new Class<?>[]{ contractClass },
+                            new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope)
+                    );
+                    registry.registerConnectionProxy(conn.getId(), proxy);
+                    registry.registerOutboundConnection(fromNode.getId(), componentId, conn.getId());
+
+                    log.info("[Itara] connection established id=" + conn.getId()
+                            + " direction=local"
+                            + " from=" + conn.getFrom()
                             + " to=" + conn.getTo());
                     continue;
                 }
@@ -262,10 +302,22 @@ public class ItaraAgent {
                         componentId = fromNode.contractIdentifier();
                     }
 
+                    ComponentScope scope = localNodeScopes.get(toNode.getId());
+
+                    String dispatchKey;
+                    switch (pattern){
+                        case ExchangePattern.FIRE_AND_FORGET:
+                            dispatchKey = fromNode.getId();
+                            break;
+                        default:
+                            dispatchKey = conn.getId();
+                            break;
+                    }
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            componentId, toNode.getId(), transportId, serializer, serializerConfig, registry, pattern,
-                            authentication, authenticationConfig, authorization, authorizationConfig);
-                    transport.registerListener(componentId, transportConfig, dispatcher);
+                            dispatchKey, componentId, transportId, serializer, serializerConfig,
+                            registry, pattern, authentication, authenticationConfig, authorization,
+                            authorizationConfig, scope);
+                    transport.registerListener(transportConfig, dispatcher);
 
                     log.info("[Itara] connection established id=" + transportId
                             + " direction=inbound"
@@ -302,14 +354,26 @@ public class ItaraAgent {
                                     .get(contractId)
                                     .orElse(null);
 
-                    Object proxy = java.lang.reflect.Proxy.newProxyInstance(
+                    ComponentScope fromScope = localNodeScopes.get(fromNode.getId());
+
+                    String dispatchKey;
+                    switch (pattern){
+                        case ExchangePattern.FIRE_AND_FORGET:
+                            dispatchKey = toNode.getId();
+                            break;
+                        default:
+                            dispatchKey = conn.getId();
+                            break;
+                    }
+                    Object proxy = Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(contractId, toNode.getId(), serializer, serializerConfig, transport, transportId,
-                                    transportConfig, pattern, failureSemantics, authentication, authenticationConfig, apiMetadata,
-                                    exceptionFactory)
+                            new ItaraProxyHandler(dispatchKey, contractId, toNode.getId(), serializer, serializerConfig,
+                                    transport, transportId, transportConfig, pattern, failureSemantics, authentication,
+                                    authenticationConfig, apiMetadata, exceptionFactory, fromScope)
                     );
-                    registry.preRegister(contractId, proxy);
+                    registry.registerConnectionProxy(conn.getId(), proxy);
+                    registry.registerOutboundConnection(fromNode.getId(), contractId, conn.getId());
 
                     log.info("[Itara] connection established id=" + conn.getTransport().getId()
                             + " direction=outbound"

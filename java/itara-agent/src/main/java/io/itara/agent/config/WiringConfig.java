@@ -3,8 +3,10 @@ package io.itara.agent.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The per-JVM wiring configuration.
@@ -84,6 +86,24 @@ public class WiringConfig {
     public void validate() {
         if (nodes != null) nodes.forEach(Node::validate);
         if (connections != null) connections.forEach(ConnectionEntry::validate);
+        validateConnectionIdUniqueness();
+    }
+
+    /**
+     * Connection ids are the key used to select the right dispatcher or
+     * proxy for a connection at runtime (see DispatchKey) — a duplicate
+     * here isn't a style nitpick, it's two connections that would be
+     * indistinguishable at dispatch time.
+     */
+    private void validateConnectionIdUniqueness() {
+        Set<String> seen = new HashSet<>();
+        for (ConnectionEntry conn : connections) {
+            if (!seen.add(conn.getId())) {
+                throw new ConfigurationException(
+                        "[Itara] Duplicate connection id '" + conn.getId()
+                                + "' — connection ids must be unique across the whole wiring config.");
+            }
+        }
     }
 
     public String getComponentOfNodeId(String nodeId) {

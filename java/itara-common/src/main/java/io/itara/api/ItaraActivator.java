@@ -1,7 +1,5 @@
 package io.itara.api;
 
-import io.itara.runtime.ItaraRegistry;
-
 /**
  * Implemented by the developer in the component jar.
  *
@@ -18,11 +16,11 @@ import io.itara.runtime.ItaraRegistry;
  *
  * Example:
  *   public class PricingActivator implements ItaraActivator<PricingService> {
- *       public PricingService activate(ItaraRegistry registry) {
+ *       public PricingService activate() {
  *           return new PricingServiceImpl();
  *       }
  *   }
  */
 public interface ItaraActivator {
-    Object activate(ItaraRegistry registry) throws Exception;
+    Object activate() throws Exception;
 }

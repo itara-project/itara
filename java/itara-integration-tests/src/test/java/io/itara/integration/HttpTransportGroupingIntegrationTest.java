@@ -7,6 +7,7 @@ import io.itara.agent.ItaraProxyHandler;
 import io.itara.agent.authentication.NoopAuthentication;
 import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
+import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
@@ -63,6 +64,28 @@ public class HttpTransportGroupingIntegrationTest {
     private static final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
             new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
 
+    // ItaraDispatcher and ItaraProxyHandler now each require a ComponentScope
+    // (see ADR 0021). Two node identities for the two dispatchers under test,
+    // plus one shared caller identity for every proxy built via proxyFor() —
+    // none of these tests exercise scope content itself.
+    private static final ComponentScope SCOPE_A = new ComponentScope.Factory()
+            .nodeId("calculatorNodeA")
+            .componentId(COMPONENT_A)
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
+    private static final ComponentScope SCOPE_B = new ComponentScope.Factory()
+            .nodeId("calculatorNodeB")
+            .componentId(COMPONENT_B)
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
+    private static final ComponentScope CALLER_SCOPE = new ComponentScope.Factory()
+            .nodeId("callerNode")
+            .componentId("caller")
+            .classLoader(Thread.currentThread().getContextClassLoader())
+            .build();
+
     private static int portA;
     private static int portB;
     private static ItaraHttpServer sharedServer;
@@ -79,10 +102,8 @@ public class HttpTransportGroupingIntegrationTest {
         portB = findFreePort();
 
         ItaraRegistry registry = ItaraRegistry.instance();
-        registry.registerActivator(COMPONENT_A,
-                CalculatorActivator.class, CalculatorService.class);
-        registry.registerActivator(COMPONENT_B,
-                CalculatorActivator.class, CalculatorService.class);
+        registry.registerActivator(COMPONENT_A, CalculatorActivator.class);
+        registry.registerActivator(COMPONENT_B, CalculatorActivator.class);
     }
 
     @AfterAll
@@ -165,24 +186,24 @@ public class HttpTransportGroupingIntegrationTest {
                     .getOrCreate("http", config);
 
             ItaraDispatcher dispatcherA = new ItaraDispatcher(
-                    COMPONENT_A, COMPONENT_A, "http", serializer, serializerConfig,
+                    "conn1", COMPONENT_A, "http", serializer, serializerConfig,
                     ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
                     NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
-                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG);
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG, SCOPE_A);
             ItaraDispatcher dispatcherB = new ItaraDispatcher(
-                    COMPONENT_B, COMPONENT_B, "http", serializer, serializerConfig,
+                    "conn2", COMPONENT_B, "http", serializer, serializerConfig,
                     ItaraRegistry.instance(), ExchangePattern.REQUEST_REPLY,
                     NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
-                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG);
+                    NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG, SCOPE_B);
 
-            transport.registerListener(COMPONENT_A, config, dispatcherA);
-            transport.registerListener(COMPONENT_B, config, dispatcherB);
+            transport.registerListener(config, dispatcherA);
+            transport.registerListener(config, dispatcherB);
             transport.start();
 
             // Proxy to component A
-            CalculatorService proxyA = proxyFor(COMPONENT_A, portA, transport, "http", serializer, serializerConfig);
+            CalculatorService proxyA = proxyFor("conn1", COMPONENT_A, "calculatorNodeA", portA, transport, "http", serializer, serializerConfig);
             // Proxy to component B
-            CalculatorService proxyB = proxyFor(COMPONENT_B, portA, transport, "http", serializer, serializerConfig);
+            CalculatorService proxyB = proxyFor("conn2", COMPONENT_B, "calculatorNodeB", portA, transport, "http", serializer, serializerConfig);
 
             // Both route correctly through the same server
             assertEquals(7,  proxyA.add(3, 4));
@@ -198,19 +219,19 @@ public class HttpTransportGroupingIntegrationTest {
                 .build();
     }
 
-    private static CalculatorService proxyFor(String componentId, int port,
+    private static CalculatorService proxyFor(String dispatchKey, String componentId, String nodeId, int port,
                                               HttpTransport transport, String transportId,
                                               ItaraSerializer serializer, ItaraSerializerConfig serializerConfig) {
         return (CalculatorService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        componentId, componentId, serializer, serializerConfig, transport, transportId,
+                        dispatchKey, componentId, nodeId, serializer, serializerConfig, transport, transportId,
                         new HttpTransportConfig("localhost", port, false),
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
                         NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
-                        null, null
+                        null, null, CALLER_SCOPE
                 )
         );
     }

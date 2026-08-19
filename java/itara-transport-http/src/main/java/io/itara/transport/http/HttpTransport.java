@@ -122,11 +122,10 @@ public class HttpTransport implements ItaraTransport {
     }
 
     @Override
-    public void registerListener(String componentId,
-                                 ItaraTransportConfig config,
+    public void registerListener(ItaraTransportConfig config,
                                  DispatchHandler dispatcher) {
-        dispatchers.put(componentId, dispatcher);
-        log.fine("[Itara/HTTP] registered listener for component '" + componentId + "'");
+        dispatchers.put(dispatcher.getDispatchKey(), dispatcher);
+        log.fine("[Itara/HTTP] registered listener for dispatch key='" + dispatcher.getDispatchKey() + "'");
     }
 
     @Override

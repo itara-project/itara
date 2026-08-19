@@ -8,7 +8,7 @@ import demo.order.api.OrderService;
 import demo.order.events.OrderReservedContract;
 import demo.payment.api.PaymentService;
 import io.itara.api.ItaraActivator;
-import io.itara.runtime.ItaraRegistry;
+import io.itara.runtime.ComponentLookup;
 
 import java.util.logging.Logger;
 
@@ -17,17 +17,17 @@ public class OrderActivator implements ItaraActivator {
     private static final Logger log = Logger.getLogger(OrderActivator.class.getName());
 
     @Override
-    public OrderService activate(ItaraRegistry registry) {
+    public OrderService activate() {
         log.info("[OrderActivator] Pulling dependencies from registry...");
-        InventoryService    inventory    = registry.get("inventory",    InventoryService.class);
-        PaymentService      payment      = registry.get("payment",      PaymentService.class);
-        FulfilmentService   fulfilment   = registry.get("fulfilment",   FulfilmentService.class);
+        InventoryService    inventory    = ComponentLookup.get("inventory",    InventoryService.class);
+        PaymentService      payment      = ComponentLookup.get("payment",      PaymentService.class);
+        FulfilmentService   fulfilment   = ComponentLookup.get("fulfilment",   FulfilmentService.class);
 
-        OrderCancelledContract orderCancelledContract = registry.get("fulfilment-events/order-cancelled",
+        OrderCancelledContract orderCancelledContract = ComponentLookup.get("fulfilment-events/order-cancelled",
                 OrderCancelledContract.class);
-        OrderFulfilledContract orderFulfilledContract = registry.get("fulfilment-events/order-fulfilled",
+        OrderFulfilledContract orderFulfilledContract = ComponentLookup.get("fulfilment-events/order-fulfilled",
                 OrderFulfilledContract.class);
-        OrderReservedContract orderReservedContract = registry.get("order-events/order-reserved",
+        OrderReservedContract orderReservedContract = ComponentLookup.get("order-events/order-reserved",
                 OrderReservedContract.class);
 
         log.info("[OrderActivator] Creating OrderServiceImpl");

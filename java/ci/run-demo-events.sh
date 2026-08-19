@@ -162,6 +162,7 @@ echo "[CI] Producer is ready."
 echo "[CI] Firing test event via HTTP..."
 curl -sf -X POST http://localhost:8081/itara/order-producer/placeOrder \
      -H "Content-Type: application/json" \
+     -H "x-itara-dispatch-key: order-producer-001" \
      -d '["cust-ci-001", 99.99]'
 echo "[CI] HTTP call completed."
 
