@@ -284,6 +284,7 @@ Add stock to the inventory in the microservices topologies:
 curl -X POST http://localhost:8082/itara/inventory/addItem \
      -H "Content-Type: application/json" \
      -H "x-itara-dispatch-key: external-to-inventory" \
+     -H "x-itara-target-method: addItem" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
 
@@ -293,6 +294,7 @@ And in the monolith and informed topologies:
 curl -X POST http://localhost:8081/itara/inventory/addItem \
      -H "Content-Type: application/json" \
      -H "x-itara-dispatch-key: external-to-inventory" \
+     -H "x-itara-target-method: addItem" \
      -d '["WIDGET-A", "Flux Capacitor", 100]'
 ```
 
@@ -304,6 +306,7 @@ Place an order:
 curl -X POST http://localhost:8081/itara/order/placeOrder \
      -H "Content-Type: application/json" \
      -H "x-itara-dispatch-key: external-to-order" \
+     -H "x-itara-target-method: placeOrder" \
      -d '["order-1", "WIDGET-A", 1, 80, "USD"]'
 ```
 

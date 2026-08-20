@@ -118,7 +118,8 @@ The one connection between components in this example, in `wiring.yaml`:
 
 ```yaml
 connections:
-  - from: "gatewayNode"
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
     to: "calculatorNode"
     transport:
       id: "http"
@@ -229,7 +230,10 @@ and call `calculator` for each request. You can call `gateway` to trigger
 the calculations via simple cURL commands:
 
 ```
-curl -X POST http://localhost:8080/itara/gateway/sum -H "x-itara-dispatch-key: external-to-gateway" -d "[6, 12]"
+curl -X POST http://localhost:8080/itara/gateway/sum \
+     -H "x-itara-dispatch-key: external-to-gateway" \
+     -H "x-itara-target-method: sum" \
+     -d "[6, 12]"
 ```
 
 That number crossed a real process boundary as protobuf-encoded bytes —
