@@ -2,6 +2,7 @@ package demo.transport;
 
 import io.itara.transport.http.HttpTransport;
 import io.itara.transport.http.HttpTransportConfig;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.spi.transport.ItaraTransportConfig;
 
 import java.time.Duration;
@@ -57,18 +58,17 @@ public class FlakyHttpTransport extends HttpTransport {
     }
 
     @Override
-    public byte[] send(String componentId,
-                       String methodName,
+    public byte[] send(ItaraCallTarget target,
                        byte[] payload,
                        Map<String, String> headers,
                        ItaraTransportConfig config,
                        Duration timeout) throws Exception {
         if (random.nextDouble() < failRate) {
             log.info("[Itara/FlakyHTTP] Simulating transient failure for "
-                    + methodName + " on " + componentId
+                    + target.getMethod() + " on " + target.getComponent()
                     + " (rate=" + (int)(failRate * 100) + "%)");
             throw new RuntimeException("[Itara/FlakyHTTP] Simulated transient failure");
         }
-        return super.send(componentId, methodName, payload, headers, config, timeout);
+        return super.send(target, payload, headers, config, timeout);
     }
 }
