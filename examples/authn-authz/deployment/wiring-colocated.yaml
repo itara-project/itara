@@ -1,0 +1,32 @@
+nodes:
+  - id: "gateway-aNode"
+    component: "gateway-a"
+  - id: "backendNode"
+    component: "backend"
+
+connections:
+  - id: "external-to-gateway-a"
+    to: "gateway-aNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8080"
+    serializer:
+      id: "json"
+
+  - id: "gateway-a-to-backend"
+    from: "gateway-aNode"
+    to: "backendNode"
+    transport:
+      id: "direct"
+    authentication:
+      id: "shared-secret"
+      params:
+        secret: "s3cr3t-a"
+        subject: "gateway-a"
+    authorization:
+      id: "rule-table"
+      params:
+        allow: "shout"
+        deny: "whisper"
