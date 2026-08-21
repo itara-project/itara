@@ -237,6 +237,17 @@ public class ItaraDispatcher implements DispatchHandler {
                     } catch (InvocationTargetException e) {
                         calleeScope.setError(true);
                         Throwable cause = e.getCause() != null ? e.getCause() : e;
+
+                        if (cause instanceof ItaraRemoteException) {
+                            // A chained outbound call itself failed and the component didn't
+                            // catch it — propagate that failure's own kind unchanged rather
+                            // than reclassifying it as RUNTIME. An ItaraRemoteException is
+                            // already exactly the boundary type this method exists to
+                            // produce; re-wrapping it here would silently discard PERMISSION
+                            // (or any other kind) every time a failure crosses one more hop.
+                            throw serialized((ItaraRemoteException) cause, methodName);
+                        }
+
                         throw serialized(new ItaraRemoteException(
                                         cause instanceof RuntimeException || cause instanceof Error
                                                 ? ItaraRemoteException.ErrorKind.RUNTIME
