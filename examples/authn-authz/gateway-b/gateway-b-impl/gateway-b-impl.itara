@@ -1,0 +1,5 @@
+[artifact]
+kind = "component"
+id = "gateway-b"
+version = "1.0.0"
+api-version = "1.x"

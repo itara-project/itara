@@ -1,0 +1,70 @@
+nodes:
+  - id: "gateway-aNode"
+    component: "gateway-a"
+  - id: "gateway-bNode"
+    component: "gateway-b"
+  - id: "backendNode"
+    component: "backend"
+
+connections:
+  - id: "external-to-gateway-a"
+    to: "gateway-aNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8080"
+    serializer:
+      id: "json"
+
+  - id: "external-to-gateway-b"
+    to: "gateway-bNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8090"
+    serializer:
+      id: "json"
+
+  - id: "gateway-a-to-backend"
+    from: "gateway-aNode"
+    to: "backendNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8082"
+    serializer:
+      id: "json"
+    authentication:
+      id: "shared-secret"
+      params:
+        secret: "${GATEWAY_A_SECRET:-s3cr3t-a}"
+        subject: "gateway-a"
+    authorization:
+      id: "rule-table"
+      params:
+        allow: "shout"
+        deny: "whisper"
+
+  - id: "gateway-b-to-backend"
+    from: "gateway-bNode"
+    to: "backendNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8082"
+    serializer:
+      id: "json"
+    authentication:
+      id: "shared-secret"
+      params:
+        secret: "${GATEWAY_B_SECRET:-not-the-real-secret}"
+        subject: "gateway-b"
+    authorization:
+      id: "rule-table"
+      params:
+        allow: "shout"
+        deny: "whisper"

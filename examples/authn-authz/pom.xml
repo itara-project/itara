@@ -1,0 +1,57 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.itara.examples</groupId>
+  <artifactId>authn-authz-example</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Itara Example: Authentication and Authorization</name>
+
+  <!--
+      Self-contained example, its own parent — not part of the main
+      itara-parent reactor. Depends on itara-common as an ordinary
+      Maven artifact, resolved from the local repository (build the
+      main project with `mvn install` first, from the repo root).
+
+      One parent, one `mvn clean install`, builds every module below.
+  -->
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <itara.version>1.0-SNAPSHOT</itara.version>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <modules>
+    <module>auth-plugins</module>
+    <module>backend</module>
+    <module>gateway-a</module>
+    <module>gateway-b</module>
+    <!-- Added as each component is built:
+    <module>backend/backend-api</module>
+    <module>backend/backend-impl</module>
+    <module>gateway-a/gateway-a-api</module>
+    <module>gateway-a/gateway-a-impl</module>
+    <module>gateway-b/gateway-b-api</module>
+    <module>gateway-b/gateway-b-impl</module>
+    -->
+  </modules>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.itara</groupId>
+        <artifactId>itara-common</artifactId>
+        <version>${itara.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
