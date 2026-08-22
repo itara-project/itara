@@ -14,7 +14,6 @@ import io.itara.transport.kafka.KafkaTransportFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -256,9 +255,6 @@ public class KafkaTransportGroupingIntegrationTest {
         }
 
         @Test
-        @Disabled("Known gap, tracked in issue #<fill-in> — KafkaTransport.registerListener() "
-                + "currently overwrites rather than fans out when two dispatchers share one "
-                + "dispatch key. Good first-contribution scope.")
         @DisplayName("multiple dispatchers registered under the same dispatch key — event-driven fan-out — all receive the message")
         void multipleDispatchersOnSameKeyAllReceiveTheEvent() throws Exception {
             String topic     = "itara.grouping.fanout";
