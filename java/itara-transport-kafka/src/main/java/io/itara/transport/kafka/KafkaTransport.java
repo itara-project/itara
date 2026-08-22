@@ -226,7 +226,7 @@ public class KafkaTransport implements ItaraTransport {
         }
 
         List<ListenerConfig> matchingListeners = listeners.get(dispatchKey);
-        if (matchingListeners == null) {
+        if (matchingListeners == null || matchingListeners.isEmpty()) {
             log.warning("[Itara/Kafka] Skipping message — no listener registered"
                     + " for dispatch key '" + dispatchKey + "'");
             return;
