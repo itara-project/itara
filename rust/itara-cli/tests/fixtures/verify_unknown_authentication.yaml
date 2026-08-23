@@ -1,0 +1,28 @@
+nodes:
+  - id: gatewayNode
+    component: gateway
+  - id: workerNode
+    component: worker
+
+connections:
+  - id: "external-to-gateway"
+    to: gatewayNode
+    transport:
+      id: http
+      params:
+        port: "8080"
+    serializer:
+      id: json
+  - id: "gateway-to-worker"
+    from: gatewayNode
+    to: workerNode
+    transport:
+      id: http
+      params:
+        port: "8081"
+    serializer:
+      id: json
+    authentication:
+      id: shared-secret
+      params:
+        secret: "s3cr3t"

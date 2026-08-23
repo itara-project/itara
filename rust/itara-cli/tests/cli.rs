@@ -469,6 +469,30 @@ mod verify {
     }
 
     #[test]
+    fn unknown_authentication_is_flagged_as_error() {
+        itara().args([
+            "verify",
+            "--metadata-dir", &fixture("metadata-http-only"),
+            &fixture("verify_unknown_authentication.yaml"),
+        ])
+            .assert()
+            .code(1)
+            .stdout(predicate::str::contains("unknown authentication type"));
+    }
+
+    #[test]
+    fn unknown_authorization_is_flagged_as_error() {
+        itara().args([
+            "verify",
+            "--metadata-dir", &fixture("metadata-http-only"),
+            &fixture("verify_unknown_authorization.yaml"),
+        ])
+            .assert()
+            .code(1)
+            .stdout(predicate::str::contains("unknown authorization type"));
+    }
+
+    #[test]
     fn multiple_errors_exits_nonzero() {
         itara().args(["verify", &fixture("verify_multiple_errors.yaml")])
             .assert().failure();

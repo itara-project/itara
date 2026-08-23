@@ -439,6 +439,8 @@ mod tests {
             transport: transport_entry("http", Some(port)),
             serializer: None,
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
 
@@ -450,6 +452,8 @@ mod tests {
             transport: transport_entry("direct", None),
             serializer: None,
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
 
