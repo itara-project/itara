@@ -13,7 +13,7 @@ This document specifies Itara — a platform for building distributed software s
 
 **Pronunciation:** Itara is pronounced *ee-tah-rah* — each vowel as in Latin or Hungarian: the *i* as in *machine*, the *a* as in *father*. Not *eye-tara*.
 
-This specification defines the component model, the wiring model, the agent contract, the transport interface, the serializer interface, the observer interface, and the context propagation model. The reference CLI — `itara-cli` — implements the wiring configuration validation described in §5 and serves as the reference for conforming tooling implementations. It does not prescribe any particular implementation language, framework, or deployment mechanism. The Java implementation maintained by the Itara project is the primary reference implementation. A Rust implementation is maintained alongside Java and serves as the reference for native language implementations. Conforming implementations MAY be built in any language or runtime environment.
+This specification defines the component model, the wiring model, the agent contract, the transport interface, the serializer interface, the observer interface, and the context propagation model. The reference CLI — `itara-cli` — implements the wiring configuration validation described in §11 and serves as the reference for conforming tooling implementations. It does not prescribe any particular implementation language, framework, or deployment mechanism. The Java implementation maintained by the Itara project is the primary reference implementation. A Rust implementation is maintained alongside Java and serves as the reference for native language implementations. Conforming implementations MAY be built in any language or runtime environment.
 
 ---
 
