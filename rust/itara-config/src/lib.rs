@@ -409,6 +409,49 @@ pub struct FailureSemanticsEntry {
     pub params: std::collections::HashMap<String, String>,
 }
 
+/// The authentication block of a connection entry in the wiring configuration.
+///
+/// Mirrors SerializerEntry's shape exactly.
+///
+/// Example YAML:
+///   authentication:
+///     id: shared-secret
+///     params:
+///       secret: "${GATEWAY_SECRET}"
+///
+/// Absent means the noop implementation is used (spec §15.1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthenticationEntry {
+    /// The authentication type identifier. Required.
+    pub id: String,
+
+    /// Implementation-specific parameters.
+    #[serde(default, deserialize_with = "deserialize_params")]
+    pub params: std::collections::HashMap<String, String>,
+}
+
+/// The authorization block of a connection entry in the wiring configuration.
+///
+/// Mirrors AuthenticationEntry's shape exactly.
+///
+/// Example YAML:
+///   authorization:
+///     id: rule-table
+///     params:
+///       allow: "shout"
+///       deny: "whisper"
+///
+/// Absent means the noop implementation is used (spec §16.1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthorizationEntry {
+    /// The authorization type identifier. Required.
+    pub id: String,
+
+    /// Implementation-specific parameters.
+    #[serde(default, deserialize_with = "deserialize_params")]
+    pub params: std::collections::HashMap<String, String>,
+}
+
 /// A connection declared in the wiring configuration.
 ///
 /// Defines how one node calls another, including the transport type and
@@ -454,6 +497,14 @@ pub struct ConnectionEntry {
     /// Optional failure semantics configuration for this connection.
     /// None means the noop implementation is used (§14.1).
     pub failure_semantics: Option<FailureSemanticsEntry>,
+
+    /// Optional authentication configuration for this connection.
+    /// None means the noop implementation is used (§15.1).
+    pub authentication: Option<AuthenticationEntry>,
+
+    /// Optional authorization configuration for this connection.
+    /// None means the noop implementation is used (§16.1).
+    pub authorization: Option<AuthorizationEntry>,
 }
 
 #[derive(Deserialize)]
@@ -467,6 +518,10 @@ struct ConnectionHelper {
     serializer: Option<SerializerEntry>,
     #[serde(default, rename = "failureSemantics")]
     failure_semantics: Option<FailureSemanticsEntry>,
+    #[serde(default)]
+    authentication: Option<AuthenticationEntry>,
+    #[serde(default)]
+    authorization: Option<AuthorizationEntry>,
 }
 
 impl<'de> serde::Deserialize<'de> for ConnectionEntry {
@@ -479,6 +534,8 @@ impl<'de> serde::Deserialize<'de> for ConnectionEntry {
             transport:  h.transport,
             serializer: h.serializer,
             failure_semantics:  h.failure_semantics,
+            authentication:    h.authentication,
+            authorization:     h.authorization,
         })
     }
 }
@@ -510,6 +567,18 @@ impl ConnectionEntry {
             .as_ref()
             .and_then(|fs| fs.timeout.as_ref())
             .is_some()
+    }
+
+    /// Returns the authentication type id for this connection.
+    /// Defaults to "noop" when no authentication block is declared.
+    pub fn authentication_id(&self) -> &str {
+        self.authentication.as_ref().map(|a| a.id.as_str()).unwrap_or("noop")
+    }
+
+    /// Returns the authorization type id for this connection.
+    /// Defaults to "noop" when no authorization block is declared.
+    pub fn authorization_id(&self) -> &str {
+        self.authorization.as_ref().map(|a| a.id.as_str()).unwrap_or("noop")
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -544,6 +613,24 @@ impl ConnectionEntry {
             if missing_id {
                 return Err(ConfigError::Invalid(format!(
                     "Connection to='{}' is missing required field 'serializer.id'.",
+                    self.to
+                )));
+            }
+        }
+        if let Some(auth) = &self.authentication {
+            if auth.id.trim().is_empty() {
+                return Err(ConfigError::Invalid(format!(
+                    "Connection to='{}' declares an authentication block with a blank 'id'. \
+                     Omit the block entirely to use the noop default, or supply a valid type identifier.",
+                    self.to
+                )));
+            }
+        }
+        if let Some(authz) = &self.authorization {
+            if authz.id.trim().is_empty() {
+                return Err(ConfigError::Invalid(format!(
+                    "Connection to='{}' declares an authorization block with a blank 'id'. \
+                     Omit the block entirely to use the noop default, or supply a valid type identifier.",
                     self.to
                 )));
             }
@@ -1484,6 +1571,210 @@ connections:
 "#;
         let config = parse_string(yaml).unwrap();
         assert!(!config.connections[0].has_timeout());
+    }
+
+    // ── Authentication ────────────────────────────────────────────────────────
+
+    #[test]
+    fn authentication_absent_is_none() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].authentication.is_none());
+        assert_eq!(config.connections[0].authentication_id(), "noop");
+    }
+
+    #[test]
+    fn authentication_parsed_with_id_and_params() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authentication:
+      id: shared-secret
+      params:
+        secret: "s3cr3t"
+        subject: "gateway"
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        let auth = config.connections[0].authentication.as_ref().unwrap();
+        assert_eq!(auth.id, "shared-secret");
+        assert_eq!(auth.params.get("secret").map(|s| s.as_str()), Some("s3cr3t"));
+        assert_eq!(auth.params.get("subject").map(|s| s.as_str()), Some("gateway"));
+        assert_eq!(config.connections[0].authentication_id(), "shared-secret");
+    }
+
+    #[test]
+    fn authentication_without_id_fails_parsing() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authentication:
+      params:
+        secret: "s3cr3t"
+    serializer:
+      id: json
+"#;
+        assert!(parse_string(yaml).is_err());
+    }
+
+    #[test]
+    fn authentication_blank_id_fails_validation() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authentication:
+      id: ""
+    serializer:
+      id: json
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("authentication block") && msg.contains("blank 'id'"),
+            "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn authentication_permitted_on_direct_connection() {
+        // Colocation is not a trust boundary (ADR 0025) — direct connections
+        // support authentication exactly like any other transport.
+        let yaml = r#"
+connections:
+  - id: "a-to-b"
+    from: a
+    to: b
+    transport:
+      id: direct
+    authentication:
+      id: shared-secret
+      params:
+        secret: "s3cr3t"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections[0].authentication_id(), "shared-secret");
+    }
+
+    // ── Authorization ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn authorization_absent_is_none() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert!(config.connections[0].authorization.is_none());
+        assert_eq!(config.connections[0].authorization_id(), "noop");
+    }
+
+    #[test]
+    fn authorization_parsed_with_id_and_params() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authorization:
+      id: rule-table
+      params:
+        allow: "shout"
+        deny: "whisper"
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        let authz = config.connections[0].authorization.as_ref().unwrap();
+        assert_eq!(authz.id, "rule-table");
+        assert_eq!(authz.params.get("allow").map(|s| s.as_str()), Some("shout"));
+        assert_eq!(authz.params.get("deny").map(|s| s.as_str()), Some("whisper"));
+        assert_eq!(config.connections[0].authorization_id(), "rule-table");
+    }
+
+    #[test]
+    fn authorization_without_id_fails_parsing() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authorization:
+      params:
+        allow: "shout"
+    serializer:
+      id: json
+"#;
+        assert!(parse_string(yaml).is_err());
+    }
+
+    #[test]
+    fn authorization_blank_id_fails_validation() {
+        let yaml = r#"
+connections:
+  - id: "gateway-to-calculator"
+    from: gateway
+    to: calculator
+    transport:
+      id: http
+    authorization:
+      id: ""
+    serializer:
+      id: json
+"#;
+        let result = parse_string(yaml);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("authorization block") && msg.contains("blank 'id'"),
+            "unexpected message: {}", msg);
+    }
+
+    #[test]
+    fn authorization_permitted_on_direct_connection() {
+        let yaml = r#"
+connections:
+  - id: "a-to-b"
+    from: a
+    to: b
+    transport:
+      id: direct
+    authorization:
+      id: rule-table
+      params:
+        allow: "shout"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections[0].authorization_id(), "rule-table");
     }
 
     // ── Connection id ─────────────────────────────────────────────────────────

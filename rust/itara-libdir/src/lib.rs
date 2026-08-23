@@ -10,7 +10,8 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ArtifactMeta {
-    /// kind = "component" | "api" | "events" | "transport" | "serializer" | "observer"
+    /// kind = "component" | "api" | "events" | "transport" | "serializer" |
+    ///        "observer" | "authentication" | "authorization"
     pub kind: String,
 
     /// Component id for components and apis (e.g. "calculator").
@@ -213,6 +214,28 @@ pub struct FailureSemanticsMeta {
     pub capabilities: FailureSemanticsCapabilities,
 }
 
+/// The [authentication] section of an authentication `.itara` metadata file.
+/// Only meaningful when artifact.kind = "authentication".
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthenticationMeta {
+    /// The authentication mechanism category, e.g. "shared-secret", "mtls",
+    /// "jwt". Distinct from artifact.id, which is the unique identifier of
+    /// a specific implementation artifact.
+    #[serde(default, rename = "type")]
+    pub authentication_type: Option<String>,
+}
+
+/// The [authorization] section of an authorization `.itara` metadata file.
+/// Only meaningful when artifact.kind = "authorization".
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthorizationMeta {
+    /// The authorization mechanism category, e.g. "rbac", "rule-table".
+    /// Distinct from artifact.id, which is the unique identifier of a
+    /// specific implementation artifact.
+    #[serde(default, rename = "type")]
+    pub authorization_type: Option<String>,
+}
+
 /// A single entry in the [api-dependencies] section of a component
 /// `.itara` metadata file.
 ///
@@ -278,6 +301,14 @@ pub struct MetadataFile {
 
     #[serde(default, rename = "failure-semantics")]
     pub failure_semantics: Option<FailureSemanticsMeta>,
+
+    /// The [authentication] section — present on kind = "authentication" artifacts.
+    #[serde(default)]
+    pub authentication: Option<AuthenticationMeta>,
+
+    /// The [authorization] section — present on kind = "authorization" artifacts.
+    #[serde(default)]
+    pub authorization: Option<AuthorizationMeta>,
 
     #[serde(default, rename = "api-dependencies")]
     pub api_dependencies: Option<ApiDependenciesMeta>,
@@ -544,6 +575,16 @@ impl MetadataIndex {
     /// Look up a failure-semantics artifact by its artifact.id.
     pub fn failure_semantics(&self, id: &str) -> Option<&MetadataFile> {
         self.entries.get(&("failure-semantics".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up an authentication artifact by its artifact.id.
+    pub fn authentication(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("authentication".to_string(), id.to_lowercase()))
+    }
+
+    /// Look up an authorization artifact by its artifact.id.
+    pub fn authorization(&self, id: &str) -> Option<&MetadataFile> {
+        self.entries.get(&("authorization".to_string(), id.to_lowercase()))
     }
 
     /// Look up an API artifact by its artifact.id.
@@ -1347,5 +1388,69 @@ message-formats = ["protobuf"]
         let dir = tempfile::tempdir().unwrap();
         let result = MetadataIndex::scan(dir.path()).unwrap();
         assert!(result.index.serializer("nonexistent").is_none());
+    }
+
+    #[test]
+    fn scan_authentication_lookup_by_artifact_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "shared-secret.itara", r#"
+[artifact]
+kind = "authentication"
+id = "shared-secret"
+version = "1.0.0"
+
+[authentication]
+type = "shared-secret"
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        let meta = result.index.authentication("shared-secret").unwrap();
+        assert_eq!(meta.artifact.id, "shared-secret");
+        assert_eq!(
+            meta.authentication.as_ref().unwrap().authentication_type.as_deref(),
+            Some("shared-secret")
+        );
+    }
+
+    #[test]
+    fn authentication_not_found_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = MetadataIndex::scan(dir.path()).unwrap();
+        assert!(result.index.authentication("nonexistent").is_none());
+    }
+
+    #[test]
+    fn scan_authorization_lookup_by_artifact_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+
+        write_temp(p, "rule-table.itara", r#"
+[artifact]
+kind = "authorization"
+id = "rule-table"
+version = "1.0.0"
+
+[authorization]
+type = "rule-table"
+"#);
+
+        let result = MetadataIndex::scan(p).unwrap();
+        assert!(result.parse_failures.is_empty());
+        let meta = result.index.authorization("rule-table").unwrap();
+        assert_eq!(meta.artifact.id, "rule-table");
+        assert_eq!(
+            meta.authorization.as_ref().unwrap().authorization_type.as_deref(),
+            Some("rule-table")
+        );
+    }
+
+    #[test]
+    fn authorization_not_found_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = MetadataIndex::scan(dir.path()).unwrap();
+        assert!(result.index.authorization("nonexistent").is_none());
     }
 }
