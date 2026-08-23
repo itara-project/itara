@@ -5,6 +5,25 @@ use regex::Regex;
 use serde::Deserialize;
 use yaml_merge_keys::merge_keys_serde;
 
+/// Recursively checks if a serde_yaml::Value contains any merge keys (<<).
+fn contains_merge_keys(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Mapping(map) => {
+            for (key, val) in map {
+                if key.as_str() == Some("<<") {
+                    return true;
+                }
+                if contains_merge_keys(val) {
+                    return true;
+                }
+            }
+            false
+        }
+        serde_yaml::Value::Sequence(seq) => seq.iter().any(contains_merge_keys),
+        _ => false,
+    }
+}
+
 // ── Error type ────────────────────────────────────────────────────────────────
 
 /// Thrown when the wiring configuration is malformed or contains invalid values.
@@ -211,73 +230,63 @@ impl Node {
     }
 }
 
-/// Private helper for deserialising a Node from YAML.
-///
-/// Collects all possible fields across all node types as Options.
-/// `kind` defaults to "component" when absent — backwards compatibility
-/// with existing wiring configs that have no `kind` field.
-///
-/// The custom Deserialize impl on Node uses this to dispatch to the
-/// correct variant and validate that variant-specific required fields
-/// are present, producing clear error messages.
+/// Internal helper for deserialising a Node from YAML using a tagged enum.
+/// This gives serde_path_to_error the correct field paths (e.g. nodes[0].component).
 #[derive(Deserialize)]
-struct NodeHelper {
-    id: String,
-    #[serde(default = "default_node_kind")]
-    kind: String,
-    // ComponentNode fields
-    component: Option<String>,
-    // VirtualNode fields
-    contract: Option<String>,
-    address: Option<String>,
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum NodeHelper {
+    Component(ComponentNodeHelper),
+    Virtual(VirtualNodeHelper),
 }
 
-fn default_node_kind() -> String {
-    "component".to_string()
+#[derive(Deserialize)]
+struct ComponentNodeHelper {
+    id: String,
+    component: String,
+}
+
+#[derive(Deserialize)]
+struct VirtualNodeHelper {
+    id: String,
+    contract: String,
+    address: String,
 }
 
 impl<'de> serde::Deserialize<'de> for Node {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         use serde::de::Error;
 
-        let h = NodeHelper::deserialize(d)?;
+        // Deserialize to a raw Value first to handle default kind
+        let mut value = serde_yaml::Value::deserialize(d)?;
 
-        match h.kind.to_lowercase().as_str() {
-            "component" => {
-                let component = h.component.ok_or_else(|| {
-                    D::Error::custom(format!(
-                        "component node '{}' is missing required field 'component'",
-                        h.id
-                    ))
-                })?;
-                Ok(Node::Component(ComponentNode {
-                    id: h.id,
-                    component,
-                }))
+        // Apply default kind = "component" for backwards compatibility
+        // Also normalize kind to lowercase for case-insensitive matching
+        if let serde_yaml::Value::Mapping(ref mut map) = value {
+            if let Some(kind_val) = map.get_mut(&serde_yaml::Value::String("kind".to_string())) {
+                if let serde_yaml::Value::String(kind_str) = kind_val {
+                    *kind_str = kind_str.to_lowercase();
+                }
+            } else {
+                map.insert(
+                    serde_yaml::Value::String("kind".to_string()),
+                    serde_yaml::Value::String("component".to_string()),
+                );
             }
-            "virtual" => {
-                let contract = h.contract.ok_or_else(|| {
-                    D::Error::custom(format!(
-                        "virtual node '{}' is missing required field 'contract'",
-                        h.id
-                    ))
-                })?;
-                let address = h.address.ok_or_else(|| {
-                    D::Error::custom(format!(
-                        "virtual node '{}' is missing required field 'address'",
-                        h.id
-                    ))
-                })?;
-                Ok(Node::Virtual(VirtualNode {
-                    id: h.id,
-                    contract,
-                    address,
-                }))
-            }
-            other => Err(D::Error::unknown_variant(
-                other,
-                &["component", "virtual"],
-            )),
+        }
+
+        // Now deserialize into the tagged enum - this gives correct field paths
+        let helper = NodeHelper::deserialize(value).map_err(|e| D::Error::custom(e.to_string()))?;
+
+        match helper {
+            NodeHelper::Component(h) => Ok(Node::Component(ComponentNode {
+                id: h.id,
+                component: h.component,
+            })),
+            NodeHelper::Virtual(h) => Ok(Node::Virtual(VirtualNode {
+                id: h.id,
+                contract: h.contract,
+                address: h.address,
+            })),
         }
     }
 }
@@ -789,23 +798,37 @@ pub fn parse_string(yaml: &str) -> Result<WiringConfig, ConfigError> {
         return Ok(WiringConfig::default());
     }
 
-    // serde_yaml operates at the event stream level and does not resolve
-    // YAML merge keys (<<) or aliases into the final value graph.
-    // Parse to a raw Value first, resolve merge keys, then deserialize.
+    // First, parse to a raw Value to detect whether merge keys (<<) are present.
+    // This is cheap and avoids unnecessarily falling back to the Value pipeline.
     let raw: serde_yaml::Value = serde_yaml::from_str(&substituted).map_err(|e| {
         ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
     })?;
 
-    let resolved = merge_keys_serde(raw).map_err(|e| {
-        ConfigError::Invalid(format!("Failed to resolve YAML merge keys: {}", e))
-    })?;
+    if contains_merge_keys(&raw) {
+        // Merge-key path: resolve merge keys, then deserialize via serde_path_to_error.
+        // This preserves structural field paths (e.g. nodes[0].component) but loses
+        // original YAML line/column information.
+        let resolved = merge_keys_serde(raw).map_err(|e| {
+            ConfigError::Invalid(format!("Failed to resolve YAML merge keys: {}", e))
+        })?;
 
-    let config: WiringConfig = serde_yaml::from_value(resolved).map_err(|e| {
-        ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
-    })?;
+        let config: WiringConfig = serde_path_to_error::deserialize(resolved).map_err(|e| {
+            ConfigError::Invalid(format!("Failed to parse wiring config: {}", e))
+        })?;
 
-    config.validate()?;
-    Ok(config)
+        config.validate()?;
+        Ok(config)
+    } else {
+        // Direct path: deserialize straight from the string using serde_yaml's
+        // Deserializer, wrapped with serde_path_to_error. This preserves BOTH
+        // original line/column information AND structural field paths.
+        let deserializer = serde_yaml::Deserializer::from_str(&substituted);
+        let config: WiringConfig = serde_path_to_error::deserialize(deserializer)
+            .map_err(|e| ConfigError::Invalid(format!("Failed to parse wiring config: {}", e)))?;
+
+        config.validate()?;
+        Ok(config)
+    }
 }
 
 /// Filter the full config to only the nodes and connections relevant
@@ -1883,5 +1906,364 @@ nodes:
     component: "gateway"
 "#;
         assert!(parse_string(yaml).is_ok());
+    }
+
+    // ── Parse error structural paths (serde_path_to_error) ─────────────────────
+
+    #[test]
+    fn parse_error_includes_serde_path() {
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("nodes[0]"),
+            "Error should contain serde path 'nodes[0]', got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn missing_component_field_shows_structural_path() {
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        // Error should contain the structural path (nodes[0]) and the field name (component)
+        assert!(msg.contains("nodes[0]"), "Error should contain nodes[0], got: {}", msg);
+        assert!(msg.contains("component"), "Error should mention missing field 'component', got: {}", msg);
+    }
+
+    #[test]
+    fn missing_virtual_contract_field_shows_structural_path() {
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+    kind: virtual
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("nodes[0]"), "Error should contain nodes[0], got: {}", msg);
+        assert!(msg.contains("contract"), "Error should mention missing field 'contract', got: {}", msg);
+    }
+
+    #[test]
+    fn missing_virtual_address_field_shows_structural_path() {
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+    kind: virtual
+    contract: "test/contract"
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("nodes[0]"), "Error should contain nodes[0], got: {}", msg);
+        assert!(msg.contains("address"), "Error should mention missing field 'address', got: {}", msg);
+    }
+
+    #[test]
+    fn valid_component_node_without_kind_still_parses() {
+        let yaml = r#"
+nodes:
+  - id: "orderServiceNode"
+    component: "order-service"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 1);
+        assert!(matches!(config.nodes[0], Node::Component(_)));
+        assert_eq!(config.nodes[0].as_component().unwrap().component, "order-service");
+    }
+
+    #[test]
+    fn valid_virtual_node_still_parses() {
+        let yaml = r#"
+nodes:
+  - id: "orderPlacedChannel"
+    kind: virtual
+    contract: "order-events/order-placed"
+    address: "demo.events.order-placed"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.virtual_nodes().len(), 1);
+        let vn = config.virtual_nodes()[0];
+        assert_eq!(vn.id, "orderPlacedChannel");
+        assert_eq!(vn.contract, "order-events/order-placed");
+        assert_eq!(vn.address, "demo.events.order-placed");
+    }
+
+    #[test]
+    fn component_node_with_explicit_kind_still_parses() {
+        let yaml = r#"
+nodes:
+  - id: "inventoryNode"
+    kind: component
+    component: "inventory"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 1);
+        assert!(matches!(config.nodes[0], Node::Component(_)));
+        assert_eq!(config.nodes[0].as_component().unwrap().component, "inventory");
+    }
+
+    #[test]
+    fn unknown_kind_still_produces_clear_error() {
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+    kind: unknown
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("unknown"), "Error should mention unknown variant, got: {}", msg);
+        assert!(msg.contains("component") && msg.contains("virtual"), "Error should list valid variants, got: {}", msg);
+    }
+
+    // ── Regression tests for line/column + structural path preservation ─────────
+
+    #[test]
+    fn direct_path_missing_field_shows_line_column() {
+        // YAML without merge keys — should use direct path with line/column info.
+        // Test a deserialization error - missing required field 'to' in connection
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+    component: "test"
+connections:
+  - id: "test-to-calc"
+    from: "testNode"
+    transport:
+      id: http
+    serializer:
+      id: json
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        // Direct path should include line/column from serde_yaml
+        // The error should mention the missing 'to' field with line info
+        assert!(msg.contains("to"), "Error should mention missing field 'to', got: {}", msg);
+        // Structural path should be present
+        assert!(msg.contains("connections[0]"), "Error should contain structural path connections[0], got: {}", msg);
+        // Line and column information should be present
+        assert!(msg.contains("line 6"), "Error should contain line 6, got: {}", msg);
+        assert!(msg.contains("column 5"), "Error should contain column 5, got: {}", msg);
+    }
+
+    #[test]
+    fn direct_path_node_missing_component_shows_structural_path() {
+        // Missing component field in a component node (no merge keys)
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        // Should have structural path from serde_path_to_error
+        assert!(msg.contains("nodes[0]"), "Error should contain nodes[0], got: {}", msg);
+        assert!(msg.contains("component"), "Error should mention missing field 'component', got: {}", msg);
+    }
+
+    #[test]
+    fn merge_key_config_still_works() {
+        // YAML with merge keys should still parse correctly
+        let yaml = r#"
+defaults: &httpDefaults
+  id: http
+  params:
+    host: localhost
+    port: "8081"
+nodes:
+  - id: "gatewayNode"
+    component: "gateway"
+  - id: "calculatorNode"
+    component: "calculator"
+connections:
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
+    to: "calculatorNode"
+    transport:
+      <<: *httpDefaults
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 2);
+        assert_eq!(config.connections.len(), 1);
+        let conn = &config.connections[0];
+        assert_eq!(conn.transport.id, "http");
+        assert_eq!(conn.transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
+        assert_eq!(conn.transport.params.get("port").map(|s| s.as_str()), Some("8081"));
+    }
+
+    #[test]
+    fn merge_key_config_error_shows_structural_path() {
+        // YAML with merge keys and invalid node kind — should show structural path
+        let yaml = r#"
+defaults: &httpDefaults
+  id: http
+  params:
+    host: localhost
+    port: "8081"
+nodes:
+  - id: "gatewayNode"
+    kind: invalid_kind
+    component: "gateway"
+connections:
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
+    to: "calculatorNode"
+    transport:
+      <<: *httpDefaults
+    serializer:
+      id: json
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        // Should mention the unknown variant with structural path
+        assert!(msg.contains("nodes[0]"), "Error should contain nodes[0], got: {}", msg);
+        assert!(msg.contains("unknown") || msg.contains("invalid_kind"), "Error should mention invalid kind, got: {}", msg);
+    }
+
+    #[test]
+    fn merge_key_config_missing_transport_field_shows_structural_path() {
+        // YAML with merge keys, missing required field in transport
+        let yaml = r#"
+defaults: &httpDefaults
+  id: http
+  params:
+    host: localhost
+    port: "8081"
+nodes:
+  - id: "gatewayNode"
+    component: "gateway"
+  - id: "calculatorNode"
+    component: "calculator"
+connections:
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
+    to: "calculatorNode"
+    transport:
+      <<: *httpDefaults
+      # missing 'id' - but merge key provides it
+    serializer:
+      id: json
+"#;
+        // This should actually work because merge key provides id
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections[0].transport.id, "http");
+    }
+
+    #[test]
+    fn merge_key_config_missing_serializer_shows_structural_path() {
+        // YAML with merge keys, missing serializer for non-direct connection
+        let yaml = r#"
+defaults: &httpDefaults
+  id: http
+  params:
+    host: localhost
+    port: "8081"
+nodes:
+  - id: "gatewayNode"
+    component: "gateway"
+  - id: "calculatorNode"
+    component: "calculator"
+connections:
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
+    to: "calculatorNode"
+    transport:
+      <<: *httpDefaults
+    # missing serializer
+"#;
+        let err = parse_string(yaml).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("serializer"), "Error should mention missing serializer, got: {}", msg);
+    }
+
+    #[test]
+    fn virtual_node_without_kind_defaults_to_component() {
+        // Ensure backward compatibility: node without kind defaults to component
+        let yaml = r#"
+nodes:
+  - id: "testNode"
+    component: "test-component"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 1);
+        assert!(matches!(config.nodes[0], Node::Component(_)));
+        assert_eq!(config.nodes[0].as_component().unwrap().component, "test-component");
+    }
+
+    #[test]
+    fn virtual_node_explicit_kind_virtual_works() {
+        let yaml = r#"
+nodes:
+  - id: "testChannel"
+    kind: virtual
+    contract: "test/contract"
+    address: "test.address"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 1);
+        assert!(matches!(config.nodes[0], Node::Virtual(_)));
+        let vn = config.nodes[0].as_virtual().unwrap();
+        assert_eq!(vn.contract, "test/contract");
+        assert_eq!(vn.address, "test.address");
+    }
+
+    #[test]
+    fn case_insensitive_kind_works() {
+        // kind: Component, COMPONENT, Virtual, VIRTUAL should all work
+        let yaml = r#"
+nodes:
+  - id: "node1"
+    kind: Component
+    component: "comp1"
+  - id: "node2"
+    kind: VIRTUAL
+    contract: "test/contract"
+    address: "test.address"
+  - id: "node3"
+    kind: component
+    component: "comp3"
+  - id: "node4"
+    kind: virtual
+    contract: "test/contract2"
+    address: "test.address2"
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.nodes.len(), 4);
+        assert!(matches!(config.nodes[0], Node::Component(_)));
+        assert!(matches!(config.nodes[1], Node::Virtual(_)));
+        assert!(matches!(config.nodes[2], Node::Component(_)));
+        assert!(matches!(config.nodes[3], Node::Virtual(_)));
+    }
+
+    #[test]
+    fn anchor_alias_without_merge_key_uses_direct_path() {
+        // Anchors/aliases without merge keys should use direct path
+        let yaml = r#"
+anchors:
+  host: &myHost "localhost"
+nodes:
+  - id: "gatewayNode"
+    component: "gateway"
+connections:
+  - id: "gateway-to-calculator"
+    from: "gatewayNode"
+    to: "calculatorNode"
+    transport:
+      id: http
+      params:
+        host: *myHost
+        port: "8081"
+    serializer:
+      id: json
+"#;
+        let config = parse_string(yaml).unwrap();
+        assert_eq!(config.connections[0].transport.params.get("host").map(|s| s.as_str()), Some("localhost"));
     }
 }

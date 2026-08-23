@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -64,7 +65,7 @@ public class KafkaTransport implements ItaraTransport {
     private static final Duration POLL_TIMEOUT = Duration.ofMillis(100);
 
     // Accumulated during registerListener(), consumed by start()
-    private final Map<String, ListenerConfig> listeners = new ConcurrentHashMap<>();
+    private final Map<String, List<ListenerConfig>> listeners = new ConcurrentHashMap<>();
     private final Set<String> topics = new HashSet<>();
 
     private final String bootstrapServers;
@@ -132,10 +133,11 @@ public class KafkaTransport implements ItaraTransport {
     public void registerListener(ItaraTransportConfig config,
                                  DispatchHandler dispatcher) {
         KafkaTransportConfig kafkaConfig = (KafkaTransportConfig) config;
-        listeners.put(dispatcher.getDispatchKey(), new ListenerConfig(
-                dispatcher,
-                kafkaConfig.getFailureAction(),
-                kafkaConfig.getDlaTopic()));
+        listeners.computeIfAbsent(dispatcher.getDispatchKey(), ignored -> new ArrayList<>())
+                .add(new ListenerConfig(
+                        dispatcher,
+                        kafkaConfig.getFailureAction(),
+                        kafkaConfig.getDlaTopic()));
         topics.add(kafkaConfig.getTopic());
         log.fine("[Itara/Kafka] registered listener for dispatch key='" + dispatcher.getDispatchKey()
                 + "' on topic='" + kafkaConfig.getTopic() + "'");
@@ -225,8 +227,8 @@ public class KafkaTransport implements ItaraTransport {
             return;
         }
 
-        ListenerConfig listener = listeners.get(dispatchKey);
-        if (listener == null) {
+        List<ListenerConfig> matchingListeners = listeners.get(dispatchKey);
+        if (matchingListeners == null || matchingListeners.isEmpty()) {
             log.warning("[Itara/Kafka] Skipping message — no listener registered"
                     + " for dispatch key '" + dispatchKey + "'");
             return;
@@ -235,10 +237,25 @@ public class KafkaTransport implements ItaraTransport {
         log.info("[Itara/Kafka] <- " + methodName + " on " + targetComponentId
                 + " (dispatchKey=" + dispatchKey + ")");
 
-        try {
-            listener.dispatcher.dispatch(record.value(), headers, null);
-        } catch (Exception e) {
-            handleDispatchFailure(targetComponentId, methodName, record, headers, listener, e);
+        RuntimeException redeliveryFailure = null;
+        for (ListenerConfig listener : matchingListeners) {
+            try {
+                listener.dispatcher.dispatch(record.value(), headers, null);
+            } catch (Exception e) {
+                try {
+                    handleDispatchFailure(targetComponentId, methodName, record, headers, listener, e);
+                } catch (RuntimeException redeliveryException) {
+                    if (redeliveryFailure == null) {
+                        redeliveryFailure = redeliveryException;
+                    } else {
+                        redeliveryFailure.addSuppressed(redeliveryException);
+                    }
+                }
+            }
+        }
+
+        if (redeliveryFailure != null) {
+            throw redeliveryFailure;
         }
     }
 
