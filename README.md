@@ -91,10 +91,11 @@ nodes:
     component: calculator
 
 connections:
-  - from: gatewayNode
+  - id: "gateway-to-calculator"
+    from: gatewayNode
     to:   calculatorNode
     transport:
-      type: direct      # or: http, kafka — code does not change
+      id: direct      # or: http, kafka — code does not change
 ```
 
 ---
@@ -106,7 +107,7 @@ Itara is designed to be adopted incrementally — one component at a time, one s
 A component needs three things to participate:
  
 - An **API artifact** — a plain interface declaring the contract
-- An **activator** — a single factory method that receives the registry and returns the implementation
+- An **activator** — a single factory method that takes no arguments and returns the implementation
 - A **wiring config entry** — declaring the node and its connections 
 
 The only Itara dependency a component ever introduces is the core library — `itara-common` in Java, `itara-core` in Rust. The business logic implementation itself requires no Itara imports at all. Only the activator, the single composition root of a component, touches the registry. Spring Boot works alongside Itara without any adapter — they operate at different layers and do not interfere with each other.
@@ -219,7 +220,8 @@ logic is unaware of it.
  
 ```yaml
 connections:
-  - from: orderNode
+  - id: "order-to-notification"
+    from: orderNode
     to: notificationNode
     transport:
       type: http
@@ -391,7 +393,7 @@ warning. All other checks still run.
 Errors cause `verify` to exit non-zero — a natural CI gate. Warnings are
 reported but do not block.
  
-See [SPEC §12](spec/SPEC.md#12-tooling) for the full tooling specification
+See [SPEC §11](spec/SPEC.md#11-tooling) for the full tooling specification
 and [ADR 0008](docs/adr/0008-metadata-file-over-meta-inf.md) for the
 metadata format the CLI reads.
 
@@ -424,26 +426,55 @@ Itara is not a service mesh, a sidecar, a container orchestrator, or a replaceme
 - Master wiring config — one file, each process self-selects its slice; YAML
   anchors and merge keys supported for reusable config blocks
 - Inbound HTTP server — any component can accept external calls via config
-- Pluggable serializer SPI (JSON ships out of the box)
-- Pluggable observer SPI with custom span support — OTel bridge ships out of
-  the box; distributed traces in Kibana across JVMs and Rust processes
+- Pluggable serializer SPI (JSON ships out of the box), with a separate
+  serializer type and artifact identity — multiple implementations of the
+  same type can coexist without ambiguity
+- Pluggable message format — Protocol Buffers ships as the first
+  implementation. Contract types are generated from `.proto` schemas;
+  message format and serializer selection are independent axes, so a
+  message-format-typed contract isn't locked to one serializer implementation
+- Classloader isolation — independently developed Java components with
+  conflicting transitive dependencies colocate in one process via `direct`
+  connections, with no code changes to either. Isolated and shared
+  classloader strategies are selectable per deployment
+- Authentication and authorization SPIs — pluggable, opt-in, connection-level.
+  A `PERMISSION` error kind surfaces rejections uniformly regardless of
+  whether authentication or authorization was the cause. Behaves identically
+  for colocated and distributed connections — colocation is a placement
+  decision, not a trust boundary
+- Component scope — every executing component has an agent-established scope
+  defining which other components it can reach. No component can supply its
+  own identity or reach a connection that wasn't declared; this is enforced
+  structurally, not by checking for misuse after the fact
+- Pluggable observer SPI with custom span support — an OTel observer
+  implementation ships out of the box; distributed traces in Kibana across
+  JVMs and Rust processes
 - Itara-native correlation IDs (`itaraTraceId` / `itaraSpanId`)
-- W3C traceparent propagation
 - Spring Boot coexistence — components can be fetched from the Itara registry
-and returned as Spring beans; no dedicated integration or adapter exists
+  and returned as Spring beans; no dedicated integration or adapter exists
 - `itara-cli` — `itara inspect` visualises topology and deployment groups;
-  `itara verify` catches wiring config errors and API version compatibility
-  mismatches before deployment
-**Planned for v0.3:**
+  `itara verify` catches wiring config errors, API version compatibility
+  mismatches, connection and node id violations, and message-format /
+  serializer compatibility issues before deployment
+- Maven archetypes for common component project shapes
+- `examples/` — focused, standalone demonstrations alongside the main demo:
+  colocating independently developed Spring Boot services, using the
+  protobuf message format, and authentication/authorization in practice
+
+**Planned for v0.4 — adoption:**
+- Getting-started documentation and migration guides for writing components,
+  migrating existing code, and writing plugins
+- Tooling to reduce hand-authored `.itara` and wiring-config friction
+- A versioning strategy — wiring configuration revisions, and a component
+  serving multiple API versions simultaneously
+- Tooling that surfaces the topology-governance story directly — richer
+  `verify`/`inspect` output, topology rendered in a well-known diagram
+  format
+
+**Planned:**
 - Service discovery SPI
 - Header handling SPI
 - Pluggable HTTP server
-- Observability metrics design
-- Registry integration and `.itara` file tooling
-
-**Planned:**
-- Language-neutral contract descriptor — protobuf integration is the planned
-  first approach
 - Controller (Orca) — runtime topology management, closing the declare →
   validate → apply → reconcile loop that IaC brought to infrastructure
 - Go, Python, C++ implementations
