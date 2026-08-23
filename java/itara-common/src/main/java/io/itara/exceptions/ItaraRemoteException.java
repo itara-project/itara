@@ -61,7 +61,16 @@ public class ItaraRemoteException extends RuntimeException {
          * transport layer itself failed. The caller should treat this as
          * a transient infrastructure failure and may retry with backoff.
          */
-        TRANSPORT
+        TRANSPORT,
+
+        /**
+         * Authentication rejected the call, or authorization denied it
+         * (spec §15.6, §16.5; ADR 0026). Both share this single kind — the
+         * caller does not need to distinguish "who are you" failures from
+         * "you're not allowed to do that" failures, and neither gets a
+         * dedicated exception type.
+         */
+        PERMISSION
     }
 
     private final ErrorKind errorKind;

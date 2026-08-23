@@ -14,7 +14,8 @@ import java.util.logging.Logger;
  *     local (ItaraLocalProxyHandler) or remote (ItaraProxyHandler), and
  *     registerOutboundConnection() so get() can find it from the calling
  *     side
- *   - Local components:   registerActivator() with the activator class
+ *   - Local components: registerComponentScope() with that node's own
+ *     ComponentScope, and registerActivator() with the activator class
  *
  * Two explicit retrieval methods reflect two fundamentally different use cases:
  *
@@ -29,11 +30,6 @@ import java.util.logging.Logger;
  *                            the correct scope before calling this — so this
  *                            method itself never needs to think about scope at all.
  *
- * preRegister()/the old componentId-keyed proxies map still exist and are
- * still populated by the agent, but nothing reads them anymore — ObservabilityDecorator
- * and the old get() mechanism are dead code, kept only until their removal is its own
- * cleanup step.
- *
  * Singleton — one registry per JVM, accessed via ItaraRegistry.instance().
  */
 public class ItaraRegistry {
@@ -44,10 +40,9 @@ public class ItaraRegistry {
 
     // Every connection's proxy (local and remote alike), keyed by the
     // connection's own id — see ItaraLocalProxyHandler, ItaraProxyHandler.
-    // Populated by the agent for every declared connection, additively
-    // alongside `proxies` above — nothing yet resolves through this map at
-    // call time; that is separate, later work (componentId -> connectionId
-    // resolution via the caller's own ComponentScope).
+    // Populated by the agent for every declared connection. This is what
+    // get() actually resolves through, once it has translated a target
+    // identifier to a connection id via outboundConnections below.
     private final Map<String, Object> connectionProxies = new ConcurrentHashMap<>();
 
     // The index get() actually resolves through: fromNodeId -> (target
@@ -227,13 +222,19 @@ public class ItaraRegistry {
     /**
      * Retrieve a component for use by application code or activators.
      *
-     * Remote components: returns the pre-registered proxy immediately
-     * (preRegister put it in the map; computeIfAbsent never fires).
-     * Local components: activates on first call, wraps in ObservabilityDecorator
-     * if observers are registered. Atomic — concurrent callers receive the same instance.
+     * Resolves via the caller's own active ComponentScope (ADR 0021) — the
+     * scope's node id, plus the requested targetIdentifier, look up the
+     * declared connection id via outboundConnections, which in turn
+     * resolves to that connection's own pre-built proxy in connectionProxies.
+     * Local or remote, direct or transport-based: the caller cannot tell
+     * which, and does not need to — each connection's own proxy
+     * (ItaraLocalProxyHandler or ItaraProxyHandler) already owns everything
+     * call-specific, built once at startup.
      *
-     * @throws IllegalStateException if the component id is not registered
-     *         in this JVM slice — indicates a topology config error.
+     * @throws IllegalStateException if no active ComponentScope, or if no
+     *         connection is declared from the caller's own node to
+     *         targetIdentifier — either a caller invoked from an unscoped
+     *         thread, or a topology/wiring config error.
      */
     public <T> T get(String targetIdentifier, Class<T> type) {
         ComponentScope caller = ComponentScope.current();

@@ -1,12 +1,17 @@
 package io.itara.integration;
 
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.authentication.NoopAuthentication;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.DispatchHandler;
 import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.identity.ItaraTransportCredential;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -65,6 +70,10 @@ public class KafkaTransportIntegrationTest {
     private static final String COMPONENT_ID   = "order-events/order-placed";
     private static final String METHOD_NAME    = "onOrderPlaced";
     private static final String CONSUMER_GROUP = "itara-integration-test";
+    private static final String NODE_ID = "order-events-node";
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
     private static final String DISPATCH_KEY   = "test-conn";
 
     // ItaraProxyHandler now requires the calling node's own ComponentScope
@@ -113,9 +122,11 @@ public class KafkaTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ OrderPlacedContractProxy.class },
                 new ItaraProxyHandler(
-                        DISPATCH_KEY, COMPONENT_ID, serializer, serializerConfig, producerTransport, "kafka",
+                        DISPATCH_KEY, COMPONENT_ID, NODE_ID, serializer, serializerConfig, producerTransport,
+                        "kafka",
                         producerConfig, ExchangePattern.FIRE_AND_FORGET,
                         new NoopFailureSemantics(),
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                         null,
                         null,
                         PRODUCER_SCOPE
@@ -220,7 +231,7 @@ public class KafkaTransportIntegrationTest {
         }
 
         @Override
-        public byte[] dispatch(String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
+        public byte[] dispatch(byte[] requestBytes, Map<String, String> headers, ItaraTransportCredential credential) throws Exception {
             return new byte[0];
         }
     }
@@ -233,7 +244,7 @@ public class KafkaTransportIntegrationTest {
         }
 
         @Override
-        public byte[] dispatch(String methodName, byte[] requestBytes, Map<String, String> headers) throws Exception {
+        public byte[] dispatch(byte[] requestBytes, Map<String, String> headers, ItaraTransportCredential credential) throws Exception {
             receivedPayloads.add(new String(requestBytes));
             receivedHeaders.add(Map.copyOf(headers));
             if (latch != null) latch.countDown();

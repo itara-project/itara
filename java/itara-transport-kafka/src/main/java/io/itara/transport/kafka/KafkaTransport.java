@@ -2,6 +2,7 @@ package io.itara.transport.kafka;
 
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.DispatchKeyPropagation;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.transport.ItaraTransportConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -93,8 +94,7 @@ public class KafkaTransport implements ItaraTransport {
      * consumer-side dispatcher knows which method to invoke.
      */
     @Override
-    public byte[] send(String componentId,
-                       String methodName,
+    public byte[] send(ItaraCallTarget target,
                        byte[] payload,
                        Map<String, String> headers,
                        ItaraTransportConfig config,
@@ -103,6 +103,8 @@ public class KafkaTransport implements ItaraTransport {
         KafkaTransportConfig kafkaConfig = (KafkaTransportConfig) config;
         String topic            = kafkaConfig.getTopic();
         String bootstrapServers = kafkaConfig.getBootstrapServers();
+        String componentId = target.getComponent();
+        String methodName  = target.getMethod();
 
         ensureProducer(bootstrapServers);
 
@@ -238,7 +240,7 @@ public class KafkaTransport implements ItaraTransport {
         RuntimeException redeliveryFailure = null;
         for (ListenerConfig listener : matchingListeners) {
             try {
-                listener.dispatcher.dispatch(methodName, record.value(), headers);
+                listener.dispatcher.dispatch(record.value(), headers, null);
             } catch (Exception e) {
                 try {
                     handleDispatchFailure(targetComponentId, methodName, record, headers, listener, e);

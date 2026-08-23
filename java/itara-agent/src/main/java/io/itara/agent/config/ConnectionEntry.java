@@ -1,13 +1,9 @@
 package io.itara.agent.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.annotation.Nulls;
 import io.itara.spi.failuresemantics.FailureSemanticsConfig;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -88,6 +84,9 @@ public class ConnectionEntry {
      */
     private FailureSemanticsEntry failureSemantics;
 
+    private AuthenticationEntry authentication;
+    private AuthorizationEntry authorization;
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
@@ -108,11 +107,17 @@ public class ConnectionEntry {
         this.failureSemantics = failureSemantics;
     }
 
+    public AuthenticationEntry getAuthentication() { return authentication; }
+    public void setAuthentication(AuthenticationEntry authentication) { this.authentication = authentication; }
+
+    public AuthorizationEntry getAuthorization() { return authorization; }
+    public void setAuthorization(AuthorizationEntry authorization) { this.authorization = authorization; }
+
     /**
      * Returns the failure semantics type id for this connection.
      * Defaults to "noop" if no failureSemantics block is declared.
      */
-    public String getFailureSemanticsType() {
+    public String getFailureSemanticsId() {
         return failureSemantics != null ? failureSemantics.getId() : "noop";
     }
 
@@ -124,6 +129,22 @@ public class ConnectionEntry {
         return failureSemantics != null
                 ? failureSemantics.toSpiConfig()
                 : FailureSemanticsConfig.builder().build();
+    }
+
+    /**
+     * Returns the authentication type id for this connection.
+     * Defaults to "noop" if no authentication block is declared.
+     */
+    public String getAuthenticationId() {
+        return authentication != null ? authentication.getId() : "noop";
+    }
+
+    /**
+     * Returns the authorization type id for this connection.
+     * Defaults to "noop" if no authorization block is declared.
+     */
+    public String getAuthorizationId() {
+        return authorization != null ? authorization.getId() : "noop";
     }
 
     /**
@@ -144,7 +165,10 @@ public class ConnectionEntry {
     public String toString() {
         return "ConnectionEntry{id='" + id + "', from='" + from + "', to='" + to
                 + "', transport.id='" + (transport != null ? transport.getId() : null)
-                + "', serializer.id='" + (serializer != null ? serializer.getId() : null) + "'}";
+                + "', serializer.id='" + (serializer != null ? serializer.getId() : null)
+                + "', authentication.id='" + (authentication != null ? authentication.getId() : null)
+                + "', authorization.id='" + (authorization != null ? authorization.getId() : null)
+                + "'}";
     }
 
     public void validate() {
@@ -174,6 +198,8 @@ public class ConnectionEntry {
             throw new ConfigurationException(
                     "[Itara] Connection to='" + to + "' is missing required field 'serializer.id'.");
         }
+        if (authentication != null) authentication.validate(to);
+        if (authorization != null) authorization.validate(to);
     }
 
     public boolean isRelatedToAnyOfNodes(List<String> nodeIds) {

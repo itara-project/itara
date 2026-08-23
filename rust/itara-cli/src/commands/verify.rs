@@ -14,6 +14,8 @@ const VALID_CHECKS: &[&str] = &[
     "direct-external-conflict",
     "outbound-ambiguity",
     "unknown-transport",
+    "unknown-authentication",
+    "unknown-authorization",
     "virtual-no-producers",
     "virtual-no-consumers",
     "virtual-transport-mismatch",
@@ -53,7 +55,8 @@ pub struct Args {
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
     ///               connection-id-uniqueness, self-connections,
     ///               direct-external-conflict, outbound-ambiguity,
-    ///               unknown-transport, virtual-no-producers,
+    ///               unknown-transport, unknown-authentication, unknown-authorization,
+    ///               virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
@@ -64,7 +67,8 @@ pub struct Args {
     /// Valid values: orphaned-nodes, orphaned-connections, duplicate-ids,
     ///               connection-id-uniqueness, self-connections,
     ///               direct-external-conflict, outbound-ambiguity,
-    ///               unknown-transport, virtual-no-producers,
+    ///               unknown-transport, unknown-authentication, unknown-authorization,
+    ///               virtual-no-producers,
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
@@ -179,6 +183,8 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter, meta: Option<&Met
 
     if let Some(meta) = meta {
         if filter.should_run("unknown-transport")          { check_unknown_transports(config, meta, &mut issues); }
+        if filter.should_run("unknown-authentication")      { check_unknown_authentication(config, meta, &mut issues); }
+        if filter.should_run("unknown-authorization")       { check_unknown_authorization(config, meta, &mut issues); }
         if filter.should_run("api-version-compatibility")  { check_api_version_compatibility(config, meta, &mut issues); }
         if filter.should_run("timeout-capability")         { check_timeout_capability(config, meta, &mut issues); }
         if filter.should_run("transport-interrupt-safety") { check_transport_interrupt_safety(config, meta, &mut issues); }
@@ -353,6 +359,38 @@ fn check_unknown_transports(config: &WiringConfig, meta: &MetadataIndex, issues:
                 "connection to '{}' has unknown transport type '{}' \
                  — no matching transport metadata found",
                 conn.to, t,
+            )));
+        }
+    }
+}
+
+fn check_unknown_authentication(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
+    for conn in &config.connections {
+        let a = conn.authentication_id();
+        if a.eq_ignore_ascii_case("noop") {
+            continue; // built-in default, no metadata artifact
+        }
+        if meta.authentication(a).is_none() {
+            issues.push(Issue::error(format!(
+                "connection to '{}' has unknown authentication type '{}' \
+                 — no matching authentication metadata found",
+                conn.to, a,
+            )));
+        }
+    }
+}
+
+fn check_unknown_authorization(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
+    for conn in &config.connections {
+        let a = conn.authorization_id();
+        if a.eq_ignore_ascii_case("noop") {
+            continue; // built-in default, no metadata artifact
+        }
+        if meta.authorization(a).is_none() {
+            issues.push(Issue::error(format!(
+                "connection to '{}' has unknown authorization type '{}' \
+                 — no matching authorization metadata found",
+                conn.to, a,
             )));
         }
     }
@@ -1003,6 +1041,8 @@ mod tests {
             transport: transport_entry("http", Some(port)),
             serializer: default_serializer(),
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
  
@@ -1014,6 +1054,8 @@ mod tests {
             transport: transport_entry("direct", None),
             serializer: None,
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
 
@@ -1025,6 +1067,8 @@ mod tests {
             transport: transport_entry("kafka", None),
             serializer: default_serializer(),
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
  
@@ -1036,6 +1080,8 @@ mod tests {
             transport: transport_entry(transport, Some(port)),
             serializer: default_serializer(),
             failure_semantics: None,
+            authentication: None,
+            authorization: None,
         }
     }
 
@@ -1044,6 +1090,18 @@ mod tests {
     /// "json" default the other helpers use.
     fn with_serializer_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
         conn.serializer = Some(SerializerEntry { id: id.into(), params: Default::default() });
+        conn
+    }
+
+    /// Overrides the authentication id on an already-built connection.
+    fn with_authentication_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
+        conn.authentication = Some(itara_config::AuthenticationEntry { id: id.into(), params: Default::default() });
+        conn
+    }
+
+    /// Overrides the authorization id on an already-built connection.
+    fn with_authorization_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
+        conn.authorization = Some(itara_config::AuthorizationEntry { id: id.into(), params: Default::default() });
         conn
     }
 
@@ -1201,6 +1259,8 @@ mod tests {
                 transport: transport_entry("direct", None),
                 serializer: None,
                 failure_semantics: None,
+                authentication: None,
+                authorization: None,
             }],
         );
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
@@ -1223,6 +1283,8 @@ mod tests {
                 transport: transport_entry("direct", None),
                 serializer: None,
                 failure_semantics: None,
+                authentication: None,
+                authorization: None,
             }],
         );
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
@@ -1560,6 +1622,8 @@ mod tests {
                     transport: transport_entry("http", Some(8081)),
                     serializer: default_serializer(),
                     failure_semantics: None,
+                    authentication: None,
+                    authorization: None,
                 },
             ],
         );
@@ -1599,6 +1663,92 @@ mod tests {
             .filter(|i| i.message.contains("unknown transport"))
             .collect();
         assert!(transport_issues.is_empty());
+    }
+
+    // ── Unknown authentication ────────────────────────────────────────────────
+
+    #[test]
+    fn unknown_authentication_flagged() {
+        let idx = index_from_toml(&[]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![with_authentication_id(http(Some("a"), "b", 8080), "shared-secret")],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().any(|i| i.is_error() && i.message.contains("unknown authentication type")));
+    }
+
+    #[test]
+    fn known_authentication_not_flagged() {
+        let idx = index_from_toml(&[r#"
+[artifact]
+kind = "authentication"
+id = "shared-secret"
+version = "1.0.0"
+
+[authentication]
+type = "shared-secret"
+"#]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![with_authentication_id(http(Some("a"), "b", 8080), "shared-secret")],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().all(|i| !i.message.contains("unknown authentication type")));
+    }
+
+    #[test]
+    fn noop_authentication_exempt_from_unknown_check() {
+        let idx = index_from_toml(&[]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![http(Some("a"), "b", 8080)], // no authentication block — defaults to noop
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().all(|i| !i.message.contains("unknown authentication type")));
+    }
+
+    // ── Unknown authorization ─────────────────────────────────────────────────
+
+    #[test]
+    fn unknown_authorization_flagged() {
+        let idx = index_from_toml(&[]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![with_authorization_id(http(Some("a"), "b", 8080), "rule-table")],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().any(|i| i.is_error() && i.message.contains("unknown authorization type")));
+    }
+
+    #[test]
+    fn known_authorization_not_flagged() {
+        let idx = index_from_toml(&[r#"
+[artifact]
+kind = "authorization"
+id = "rule-table"
+version = "1.0.0"
+
+[authorization]
+type = "rule-table"
+"#]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![with_authorization_id(http(Some("a"), "b", 8080), "rule-table")],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().all(|i| !i.message.contains("unknown authorization type")));
+    }
+
+    #[test]
+    fn noop_authorization_exempt_from_unknown_check() {
+        let idx = index_from_toml(&[]);
+        let cfg = config(
+            vec![node("a", "ca"), node("b", "cb")],
+            vec![http(Some("a"), "b", 8080)],
+        );
+        let issues = collect_issues(&cfg, &CheckFilter::All, Some(&idx));
+        assert!(issues.iter().all(|i| !i.message.contains("unknown authorization type")));
     }
 
     // ── MetadataIndex test helper ─────────────────────────────────────────────
@@ -1645,6 +1795,8 @@ mod tests {
                 max_retry: None,
                 params: Default::default(),
             }),
+            authentication: None,
+            authorization: None,
         }
     }
 

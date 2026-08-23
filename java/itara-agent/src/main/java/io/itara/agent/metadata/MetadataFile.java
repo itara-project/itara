@@ -41,6 +41,8 @@ public class MetadataFile {
     private ApiDependenciesMeta apiDependencies;
     private ContractMeta contract;
     private SerializerMeta serializer;
+    private AuthenticationMeta authentication;
+    private AuthorizationMeta authorization;
 
 
     public ArtifactMeta getArtifact() { return artifact; }
@@ -82,6 +84,12 @@ public class MetadataFile {
     public SerializerMeta getSerializer()               { return serializer; }
     public void setSerializer(SerializerMeta serializer){ this.serializer = serializer; }
 
+    public AuthenticationMeta getAuthentication()                  { return authentication; }
+    public void setAuthentication(AuthenticationMeta authentication) { this.authentication = authentication; }
+
+    public AuthorizationMeta getAuthorization()                    { return authorization; }
+    public void setAuthorization(AuthorizationMeta authorization)  { this.authorization = authorization; }
+
     @Override
     public String toString() {
         return "MetadataFile{artifact=" + artifact + ", runtime=" + runtime
@@ -90,6 +98,8 @@ public class MetadataFile {
                 + ", serializer=" + serializer
                 + ", transport=" + transport
                 + ", failureSemantics=" + failureSemantics
+                + ", authentication=" + authentication
+                + ", authorization=" + authorization
                 + ", apiDependencies=" + apiDependencies
                 + ", implementedEventContracts=" + implementedEventContracts + "}";
     }

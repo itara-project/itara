@@ -10,6 +10,8 @@ import io.itara.agent.config.WiringConfig;
 import io.itara.agent.metadata.ItaraMetadataIndex;
 import io.itara.agent.metadata.MetadataFile;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
+import io.itara.runtime.AuthenticationRegistry;
+import io.itara.runtime.AuthorizationRegistry;
 import io.itara.runtime.ComponentScope;
 import io.itara.runtime.DispatchHandler;
 import io.itara.runtime.ExchangePattern;
@@ -19,6 +21,12 @@ import io.itara.runtime.ObservabilityFacade;
 import io.itara.runtime.ReconstructibleExceptionRegistry;
 import io.itara.runtime.SerializerRegistry;
 import io.itara.runtime.TransportRegistry;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -30,6 +38,7 @@ import io.itara.spi.transport.TransportConfig;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -39,10 +48,7 @@ import java.util.logging.Logger;
  * Startup sequence:
  *   1. Load wiring config
  *   2. Build metadata index from .itara files (itara.metadata.dir)
- *   3. Scan classpath for @ComponentInterface contracts
- *   3b. For each local component, read [implemented-event-contracts]
- *       from its .itara metadata and register registry aliases so the
- *       dispatcher can find the implementation by event contract id
+ *   3. Scan classpath for @ComponentInterface and @EventContractInterface contracts
  *   4. Scan META-INF/itara/activator for local activator classes,
  *      resolving component identity (id, version, api-version) via the
  *      metadata index built in step 2
@@ -53,13 +59,22 @@ import java.util.logging.Logger;
  *       semantics implementations
  *   7c. Load META-INF/itara/exception-factory — discover reconstructible
  *       exception factories from API artifact jars
+ *   7d. Load META-INF/itara/authentication — discover available authentication impls
+ *   7e. Load META-INF/itara/authorization — discover available authorization impls
  *   8. Initialize ObservabilityFacade
- *   9. Register ComponentFactory — activates and wraps instances in
- *      observability decorator for all four events on direct calls
- *  10. Register activators for local components
- *  11. Process connections:
- *        - direct:   nothing to do, factory handles decoration on first get()
- *        - other:    use TransportRegistry to create proxy or start listener
+ *   9. For each local component: build and register its own ComponentScope,
+ *      register its activator, and register a registry alias for every
+ *      event contract it implements (from [implemented-event-contracts] in
+ *      its .itara metadata) — all in the same pass, before any listener
+ *      starts in step 11
+ *  10. Process connections:
+ *        - direct:  build an ItaraLocalProxyHandler, register its proxy
+ *                    and its outbound-connection entry — no transport
+ *                    involved.
+ *        - other:   use TransportRegistry to build a proxy (outbound) or
+ *                    register a dispatcher listener (inbound), with
+ *                    authentication/authorization wired in for both
+ *  11. Start all transports
  *  12. Hand control to the application (main runs normally)
  *
  * JVM arguments:
@@ -101,6 +116,8 @@ public class ItaraAgent {
         ItaraRegistry registry = ItaraRegistry.instance();
         TransportRegistry transportRegistry = TransportRegistry.instance();
         SerializerRegistry serializerRegistry = SerializerRegistry.instance();
+        AuthenticationRegistry authenticationRegistry = AuthenticationRegistry.instance();
+        AuthorizationRegistry authorizationRegistry = AuthorizationRegistry.instance();
 
         // ── Step 1: Load wiring config ─────────────────────────────────────
         log.fine("[Itara] loading wiring config path=" + System.getProperty(ConfigLoader.CONFIG_PROPERTY));
@@ -148,6 +165,14 @@ public class ItaraAgent {
         log.fine("[Itara] loading reconstructible exception factories");
         ReconstructibleExceptionFactoryLoader.load(systemClassLoader);
 
+        // ── Step 7d: Load authentication factories (META-INF/itara/authentication)
+        log.fine("[Itara] loading authentication factories");
+        AuthenticationLoader.load(itaraClassLoader);
+
+        // ── Step 7e: Load authorization factories (META-INF/itara/authorization)
+        log.fine("[Itara] loading authorization factories");
+        AuthorizationLoader.load(itaraClassLoader);
+
         // ── Step 8: Initialize ObservabilityFacade ─────────────────────────
         ObservabilityFacade.initialize();
 
@@ -193,6 +218,19 @@ public class ItaraAgent {
         // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
+
+                AuthenticationConfig rawAuthenticationConfig = buildAuthenticationConfig(conn);
+                ItaraAuthenticationConfig authenticationConfig =
+                        authenticationRegistry.parseConfig(conn.getAuthenticationId(), rawAuthenticationConfig);
+                ItaraAuthentication authentication =
+                        authenticationRegistry.getOrCreate(conn.getAuthenticationId(), authenticationConfig);
+
+                AuthorizationConfig rawAuthorizationConfig = buildAuthorizationConfig(conn);
+                ItaraAuthorizationConfig authorizationConfig =
+                        authorizationRegistry.parseConfig(conn.getAuthorizationId(), rawAuthorizationConfig);
+                ItaraAuthorization authorization =
+                        authorizationRegistry.getOrCreate(conn.getAuthorizationId(), authorizationConfig);
+
                 if (conn.isDirect()) {
                     Node toNode   = config.findNode(conn.getTo()).orElseThrow();
                     Node fromNode = config.findNode(conn.getFrom()).orElseThrow(); // external check is done during config validation
@@ -219,7 +257,9 @@ public class ItaraAgent {
                     Object proxy = Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope)
+                            new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope,
+                                    authentication, authenticationConfig, authentication, authenticationConfig,
+                                    authorization, authorizationConfig)
                     );
                     registry.registerConnectionProxy(conn.getId(), proxy);
                     registry.registerOutboundConnection(fromNode.getId(), componentId, conn.getId());
@@ -281,7 +321,9 @@ public class ItaraAgent {
                             break;
                     }
                     DispatchHandler dispatcher = new ItaraDispatcher(
-                            dispatchKey, componentId, transportId, serializer, serializerConfig, registry, pattern, scope);
+                            dispatchKey, componentId, transportId, serializer, serializerConfig,
+                            registry, pattern, authentication, authenticationConfig, authorization,
+                            authorizationConfig, scope);
                     transport.registerListener(transportConfig, dispatcher);
 
                     log.info("[Itara] connection established id=" + transportId
@@ -303,7 +345,7 @@ public class ItaraAgent {
 
                     ItaraFailureSemantics failureSemantics =
                             FailureSemanticsRegistry.instance().create(
-                                    conn.getFailureSemanticsType(),
+                                    conn.getFailureSemanticsId(),
                                     conn.getFailureSemanticsConfig());
 
                     MetadataFile apiMetadata = ItaraMetadataIndex.instance()
@@ -333,8 +375,9 @@ public class ItaraAgent {
                     Object proxy = Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
-                            new ItaraProxyHandler(dispatchKey, contractId, serializer, serializerConfig, transport, transportId,
-                                    transportConfig, pattern, failureSemantics, apiMetadata, exceptionFactory, fromScope)
+                            new ItaraProxyHandler(dispatchKey, contractId, toNode.getId(), serializer, serializerConfig,
+                                    transport, transportId, transportConfig, pattern, failureSemantics, authentication,
+                                    authenticationConfig, apiMetadata, exceptionFactory, fromScope)
                     );
                     registry.registerConnectionProxy(conn.getId(), proxy);
                     registry.registerOutboundConnection(fromNode.getId(), contractId, conn.getId());
@@ -390,5 +433,33 @@ public class ItaraAgent {
         return SerializerConfig.builder()
                 .params(conn.getSerializer().getParams())
                 .build();
+    }
+
+    /**
+     * Builds an AuthenticationConfig for a connection.
+     *
+     * Absent authentication block → empty params, same shape as
+     * buildSerializerConfig. ConnectionEntry.getAuthenticationId() already
+     * defaults to "noop" regardless of whether the block is present.
+     */
+    private static AuthenticationConfig buildAuthenticationConfig(ConnectionEntry conn) {
+        Map<String, String> params = conn.getAuthentication() != null
+                ? conn.getAuthentication().getParams()
+                : Collections.emptyMap();
+        return AuthenticationConfig.builder().params(params).build();
+    }
+
+    /**
+     * Builds an AuthorizationConfig for a connection.
+     *
+     * Absent authorization block → empty params, same shape as
+     * buildSerializerConfig. ConnectionEntry.getAuthorizationId() already
+     * defaults to "noop" regardless of whether the block is present.
+     */
+    private static AuthorizationConfig buildAuthorizationConfig(ConnectionEntry conn) {
+        Map<String, String> params = conn.getAuthorization() != null
+                ? conn.getAuthorization().getParams()
+                : Collections.emptyMap();
+        return AuthorizationConfig.builder().params(params).build();
     }
 }

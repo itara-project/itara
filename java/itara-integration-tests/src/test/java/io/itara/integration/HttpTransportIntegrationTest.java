@@ -5,6 +5,8 @@ import demo.calculator.api.CalculatorService;
 import demo.calculator.component.CalculatorActivator;
 import io.itara.agent.ItaraDispatcher;
 import io.itara.agent.ItaraProxyHandler;
+import io.itara.agent.authentication.NoopAuthentication;
+import io.itara.agent.authorization.NoopAuthorization;
 import io.itara.agent.failuresemantics.NoopFailureSemantics;
 import io.itara.exceptions.ItaraReconstructibleException;
 import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
@@ -15,6 +17,12 @@ import io.itara.runtime.ExchangePattern;
 import io.itara.runtime.ItaraRegistry;
 import io.itara.runtime.ObservabilityFacade;
 import io.itara.serializer.json.JsonSerializerFactory;
+import io.itara.spi.authentication.AuthenticationConfig;
+import io.itara.spi.authentication.ItaraAuthentication;
+import io.itara.spi.authentication.ItaraAuthenticationConfig;
+import io.itara.spi.authorization.AuthorizationConfig;
+import io.itara.spi.authorization.ItaraAuthorization;
+import io.itara.spi.authorization.ItaraAuthorizationConfig;
 import io.itara.spi.serializer.ItaraSerializer;
 import io.itara.spi.serializer.ItaraSerializerConfig;
 import io.itara.spi.serializer.SerializerConfig;
@@ -57,13 +65,20 @@ class HttpTransportIntegrationTest {
 
     private static final String COMPONENT_ID = "calculator";
     private static final String CONN_ID = "conn-001";
+    private static final String NODE_ID = "calculatorNode";
+    private static final ItaraAuthentication NOOP_AUTHENTICATION = new NoopAuthentication();
+    private static final ItaraAuthenticationConfig NOOP_AUTHENTICATION_CONFIG =
+            new NoopAuthentication.Factory().parseConfig(AuthenticationConfig.builder().build());
+    private static final ItaraAuthorization NOOP_AUTHORIZATION = new NoopAuthorization();
+    private static final ItaraAuthorizationConfig NOOP_AUTHORIZATION_CONFIG =
+            new NoopAuthorization.Factory().parseConfig(AuthorizationConfig.builder().build());
 
     // ItaraDispatcher and ItaraProxyHandler now each require a ComponentScope,
     // received already-built rather than derived internally (see ADR 0021,
     // ComponentScope). One node's worth of identity per role is enough for
     // every test in this file — none of them exercise scope content itself.
     private static final ComponentScope DISPATCHER_SCOPE = new ComponentScope.Factory()
-            .nodeId("calculatorNode")
+            .nodeId(NODE_ID)
             .componentId(COMPONENT_ID)
             .classLoader(Thread.currentThread().getContextClassLoader())
             .build();
@@ -99,7 +114,10 @@ class HttpTransportIntegrationTest {
 
         // Inbound — dispatcher owns the pipeline, transport delivers bytes to it
         ItaraDispatcher dispatcher = new ItaraDispatcher(
-                CONN_ID, COMPONENT_ID, "http", serializer, serializerConfig, registry, ExchangePattern.REQUEST_REPLY,
+                CONN_ID, COMPONENT_ID, "http", serializer, serializerConfig, registry,
+                ExchangePattern.REQUEST_REPLY,
+                NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
+                NOOP_AUTHORIZATION, NOOP_AUTHORIZATION_CONFIG,
                 DISPATCHER_SCOPE
         );
         Map<String, DispatchHandler> dispatchers = new HashMap<>();
@@ -111,10 +129,11 @@ class HttpTransportIntegrationTest {
                 Thread.currentThread().getContextClassLoader(),
                 new Class<?>[]{ CalculatorService.class },
                 new ItaraProxyHandler(
-                        CONN_ID, COMPONENT_ID, serializer, serializerConfig, transport, "http",
+                        CONN_ID, COMPONENT_ID, NODE_ID, serializer, serializerConfig, transport, "http",
                         config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                         null,
                         null,
                         PROXY_FROM_SCOPE
@@ -189,6 +208,7 @@ class HttpTransportIntegrationTest {
                 new ItaraProxyHandler(
                         "nonexistent-conn-id",
                         "nonexistent-component",
+                        NODE_ID,
                         serializer,
                         serializerConfig,
                         new HttpTransport(config),
@@ -196,6 +216,7 @@ class HttpTransportIntegrationTest {
                         config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                         null,
                         null,
                         PROXY_FROM_SCOPE
@@ -220,6 +241,7 @@ class HttpTransportIntegrationTest {
                 new ItaraProxyHandler(
                         CONN_ID,
                         COMPONENT_ID,
+                        NODE_ID,
                         serializer,
                         serializerConfig,
                         new HttpTransport(config),
@@ -227,6 +249,7 @@ class HttpTransportIntegrationTest {
                         config,
                         ExchangePattern.REQUEST_REPLY,
                         new NoopFailureSemantics(),
+                        NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                         null,
                         null,
                         PROXY_FROM_SCOPE
@@ -275,10 +298,11 @@ class HttpTransportIntegrationTest {
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
                             CONN_ID,
-                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
+                            COMPONENT_ID, NODE_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                             null,
                             new CalculatorExceptionFactory(),
                             PROXY_FROM_SCOPE
@@ -292,10 +316,11 @@ class HttpTransportIntegrationTest {
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
                             CONN_ID,
-                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
+                            COMPONENT_ID, NODE_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                             null,
                             null,
                             PROXY_FROM_SCOPE
@@ -353,10 +378,11 @@ class HttpTransportIntegrationTest {
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
                             CONN_ID,
-                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
+                            COMPONENT_ID, NODE_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                             null,
                             emptyFactory,
                             PROXY_FROM_SCOPE
@@ -408,10 +434,11 @@ class HttpTransportIntegrationTest {
                     new Class<?>[]{ CalculatorService.class },
                     new ItaraProxyHandler(
                             CONN_ID,
-                            COMPONENT_ID, serializer, serializerConfig, new HttpTransport(config), "http",
+                            COMPONENT_ID, NODE_ID, serializer, serializerConfig, new HttpTransport(config), "http",
                             config,
                             ExchangePattern.REQUEST_REPLY,
                             new NoopFailureSemantics(),
+                            NOOP_AUTHENTICATION, NOOP_AUTHENTICATION_CONFIG,
                             null,
                             wrongTypeFactory,
                             PROXY_FROM_SCOPE

@@ -76,7 +76,7 @@ public class TransportRegistryTest {
         TestTransport() { instanceId = ++instanceCount; }
 
         @Override
-        public byte[] send(String componentId, String methodName, byte[] payload,
+        public byte[] send(ItaraCallTarget target, byte[] payload,
                            Map<String, String> headers, ItaraTransportConfig config,
                            Duration timeout) { return new byte[0]; }
 
@@ -323,7 +323,7 @@ public class TransportRegistryTest {
         @Override public void stop()  { stopCount++; }
 
         @Override
-        public byte[] send(String componentId, String methodName, byte[] payload,
+        public byte[] send(ItaraCallTarget target, byte[] payload,
                            Map<String, String> headers, ItaraTransportConfig config,
                            Duration timeout) { return new byte[0]; }
 

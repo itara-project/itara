@@ -287,6 +287,43 @@ read by the proxy at startup, so methods that cannot be safely repeated are
 protected without any explicit handling in the business logic.
 
 ---
+ 
+## Identity
+ 
+**The claimed or verified origin of a call — a property of the node, not
+the deployment unit it happens to run in.**
+ 
+Colocated nodes do not automatically share an identity just because they
+share a process (see Colocation); different identity rules can still
+apply to each.
+ 
+---
+ 
+## Authentication
+ 
+**Verifying that a caller's claimed identity (see Identity) is genuine, at
+the topology layer.**
+ 
+Authentication is connection-level and pluggable: an implementation
+receives whatever identity signal is available for a connection and either
+produces a verified identity or rejects the call outright. Used without
+qualification, this term refers to authenticating a calling node, not an
+end user or account.
+ 
+---
+ 
+## Authorization
+ 
+**Deciding whether an authenticated caller is permitted to invoke a
+specific operation — a topology-layer concern about which node may call
+what.**
+ 
+Authorization is connection-level and pluggable: an implementation reads
+the identity authentication produced, together with the operation being
+invoked, and decides allow or deny. Used without qualification, this term
+refers to node-to-node permission, not end-user permission.
+
+---
 
 ## Agent
 

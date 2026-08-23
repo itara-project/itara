@@ -1,0 +1,4 @@
+[artifact]
+kind = "api"
+id = "gateway-b"
+version = "1.0.0"

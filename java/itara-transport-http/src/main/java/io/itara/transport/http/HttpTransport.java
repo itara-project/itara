@@ -2,6 +2,7 @@ package io.itara.transport.http;
 
 import io.itara.exceptions.ItaraRemoteException;
 import io.itara.runtime.DispatchHandler;
+import io.itara.runtime.ItaraCallTarget;
 import io.itara.spi.transport.ItaraTransport;
 import io.itara.spi.transport.ItaraTransportConfig;
 
@@ -47,8 +48,7 @@ public class HttpTransport implements ItaraTransport {
     }
 
     @Override
-    public byte[] send(String componentId,
-                       String methodName,
+    public byte[] send(ItaraCallTarget target,
                        byte[] payload,
                        Map<String, String> headers,
                        ItaraTransportConfig config,
@@ -57,6 +57,8 @@ public class HttpTransport implements ItaraTransport {
         HttpTransportConfig httpConfig = (HttpTransportConfig) config;
         String host = httpConfig.getHost();
         int port    = httpConfig.getPort();
+        String componentId = target.getComponent();
+        String methodName  = target.getMethod();
 
         if (host == null || host.isBlank()) {
             throw new IllegalStateException(

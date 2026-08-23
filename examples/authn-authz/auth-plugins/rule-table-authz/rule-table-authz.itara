@@ -1,0 +1,7 @@
+[artifact]
+kind = "authorization"
+id = "rule-table-authz-example"
+version = "1.0.0"
+
+[authorization]
+type = "rule-table"
