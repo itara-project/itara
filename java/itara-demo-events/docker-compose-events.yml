@@ -72,19 +72,19 @@ services:
       dockerfile: Dockerfile
     container_name: itara-events-consumer
     volumes:
-      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
-      - ./order-event-api/target/order-event-api-1.0-SNAPSHOT.jar:/app/order-event-api.jar:ro
-      - ./payment-event-api/target/payment-event-api-1.0-SNAPSHOT.jar:/app/payment-event-api.jar:ro
-      - ./order-consumer/target/order-consumer-1.0-SNAPSHOT.jar:/app/order-consumer.jar:ro
+      - ../itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
+      - ./order-event-api/target/order-event-api-0.1.0.jar:/app/order-event-api.jar:ro
+      - ./payment-event-api/target/payment-event-api-0.1.0.jar:/app/payment-event-api.jar:ro
+      - ./order-consumer/target/order-consumer-0.1.0.jar:/app/order-consumer.jar:ro
       - ./wiring-events-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
       - ./order-event-api/order-event-api.itara:/app/metafiles/order-event-api.itara:ro
       - ./payment-event-api/payment-event-api.itara:/app/metafiles/payment-event-api.itara:ro
       - ./order-consumer/order-consumer.itara:/app/metafiles/order-consumer.itara:ro
-      - ./order-consumer-api/target/order-consumer-api-1.0-SNAPSHOT.jar:/app/order-consumer-api.jar:ro
+      - ./order-consumer-api/target/order-consumer-api-0.1.0.jar:/app/order-consumer-api.jar:ro
       - ./order-consumer-api/order-consumer-api.itara:/app/metafiles/order-consumer-api.itara:ro
     environment:
       - ITARA_LOG_LEVEL=INFO
@@ -105,8 +105,8 @@ services:
       - "-Ditara.metadata.dir=/app/metafiles"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/order-event-api.jar:/app/payment-event-api.jar:/app/order-consumer.jar:/app/order-consumer-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "io.itara.runtime.ItaraMain"
+      - "/app/itara-core.jar:/app/order-event-api.jar:/app/payment-event-api.jar:/app/order-consumer.jar:/app/order-consumer-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "dev.itara.runtime.ItaraMain"
     depends_on:
       kafka:
         condition: service_healthy
@@ -120,13 +120,13 @@ services:
       dockerfile: Dockerfile
     container_name: itara-events-producer
     volumes:
-      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
-      - ./order-event-api/target/order-event-api-1.0-SNAPSHOT.jar:/app/order-event-api.jar:ro
-      - ./payment-event-api/target/payment-event-api-1.0-SNAPSHOT.jar:/app/payment-event-api.jar:ro
-      - ./order-producer-api/target/order-producer-api-1.0-SNAPSHOT.jar:/app/order-producer-api.jar:ro
-      - ./order-producer-component/target/order-producer-component-1.0-SNAPSHOT.jar:/app/order-producer-component.jar:ro
+      - ../itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
+      - ./order-event-api/target/order-event-api-0.1.0.jar:/app/order-event-api.jar:ro
+      - ./payment-event-api/target/payment-event-api-0.1.0.jar:/app/payment-event-api.jar:ro
+      - ./order-producer-api/target/order-producer-api-0.1.0.jar:/app/order-producer-api.jar:ro
+      - ./order-producer-component/target/order-producer-component-0.1.0.jar:/app/order-producer-component.jar:ro
       - ./wiring-events-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
@@ -155,8 +155,8 @@ services:
       - "-Ditara.metadata.dir=/app/metafiles"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/order-event-api.jar:/app/payment-event-api.jar:/app/order-producer-api.jar:/app/order-producer-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "io.itara.runtime.ItaraMain"
+      - "/app/itara-core.jar:/app/order-event-api.jar:/app/payment-event-api.jar:/app/order-producer-api.jar:/app/order-producer-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "dev.itara.runtime.ItaraMain"
     depends_on:
       kafka:
         condition: service_healthy

@@ -10,8 +10,8 @@ combinations of project shape you're likely to want:
 | `itara-archetype-component-api` | The API module, standalone | Polyrepo setups — the API contract needs to live in its own repo, separate from any implementation |
 | `itara-archetype-component-impl` | The implementation module, standalone | Polyrepo setups — implementing a component whose API artifact already exists elsewhere |
 
-All four are published under `groupId=io.itara`, alongside the rest of the
-Itara reference implementation, currently at `version=1.0-SNAPSHOT`.
+All four are published under `groupId=dev.itara`, alongside the rest of the
+Itara reference implementation, currently at `version=0.1.0`.
 
 ---
 
@@ -23,11 +23,11 @@ Itara's, and is never defaulted.
 
 In addition, every archetype asks for:
 
-| Parameter | Meaning | Default |
-|---|---|---|
+| Parameter | Meaning                                                                                                                                                             | Default |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
 | `componentName` | PascalCase name used to derive generated class/interface names (e.g. `Calculator` → interface `Calculator`, impl `CalculatorImpl`, activator `CalculatorActivator`) | *(required)* |
-| `javaVersion` | Target Java version, used for `maven.compiler.source`/`target` | `21` |
-| `itaraVersion` | Version of `itara-common` (and other `io.itara` artifacts) to depend on | *(required — no default, since versions change frequently pre-1.0)* |
+| `javaVersion` | Target Java version, used for `maven.compiler.source`/`target`                                                                                                      | `21` |
+| `itaraVersion` | Version of `itara-core` (and other `dev.itara` artifacts) to depend on                                                                                              | *(required — no default, since versions change frequently pre-1.0)* |
 
 `itara-archetype-component-impl` additionally asks for the coordinates of the
 API artifact it implements, since — unlike the two-module archetype — there's
@@ -47,16 +47,16 @@ Generates a single-module events artifact with one example event contract.
 
 ```bash
 mvn archetype:generate \
-  -DarchetypeGroupId=io.itara \
+  -DarchetypeGroupId=dev.itara \
   -DarchetypeArtifactId=itara-archetype-events \
-  -DarchetypeVersion=1.0-SNAPSHOT \
+  -DarchetypeVersion=0.1.0 \
   -DgroupId=com.example \
   -DartifactId=order-events \
-  -Dversion=1.0-SNAPSHOT \
+  -Dversion=0.1.0 \
   -Dpackage=com.example.events \
   -DcomponentName=OrderEvents \
   -DjavaVersion=21 \
-  -DitaraVersion=1.0-SNAPSHOT \
+  -DitaraVersion=0.1.0 \
   -DinteractiveMode=false
 ```
 
@@ -74,16 +74,16 @@ submodules.
 
 ```bash
 mvn archetype:generate \
-  -DarchetypeGroupId=io.itara \
+  -DarchetypeGroupId=dev.itara \
   -DarchetypeArtifactId=itara-archetype-component \
-  -DarchetypeVersion=1.0-SNAPSHOT \
+  -DarchetypeVersion=0.1.0 \
   -DgroupId=com.example \
   -DartifactId=calculator \
-  -Dversion=1.0-SNAPSHOT \
+  -Dversion=0.1.0 \
   -Dpackage=com.example.calculator \
   -DcomponentName=Calculator \
   -DjavaVersion=21 \
-  -DitaraVersion=1.0-SNAPSHOT \
+  -DitaraVersion=0.1.0 \
   -DinteractiveMode=false
 ```
 
@@ -105,16 +105,16 @@ added to `artifactId` — name it whatever you'd name the repo/module.
 
 ```bash
 mvn archetype:generate \
-  -DarchetypeGroupId=io.itara \
+  -DarchetypeGroupId=dev.itara \
   -DarchetypeArtifactId=itara-archetype-component-api \
-  -DarchetypeVersion=1.0-SNAPSHOT \
+  -DarchetypeVersion=0.1.0 \
   -DgroupId=com.example \
   -DartifactId=calculator-api \
-  -Dversion=1.0-SNAPSHOT \
+  -Dversion=0.1.0 \
   -Dpackage=com.example.calculator \
   -DcomponentName=Calculator \
   -DjavaVersion=21 \
-  -DitaraVersion=1.0-SNAPSHOT \
+  -DitaraVersion=0.1.0 \
   -DinteractiveMode=false
 ```
 
@@ -130,19 +130,19 @@ else) via `apiGroupId`/`apiArtifactId`/`apiVersion`.
 
 ```bash
 mvn archetype:generate \
-  -DarchetypeGroupId=io.itara \
+  -DarchetypeGroupId=dev.itara \
   -DarchetypeArtifactId=itara-archetype-component-impl \
-  -DarchetypeVersion=1.0-SNAPSHOT \
+  -DarchetypeVersion=0.1.0 \
   -DgroupId=com.example \
   -DartifactId=calculator-component \
-  -Dversion=1.0-SNAPSHOT \
+  -Dversion=0.1.0 \
   -Dpackage=com.example.calculator \
   -DcomponentName=Calculator \
   -DjavaVersion=21 \
-  -DitaraVersion=1.0-SNAPSHOT \
+  -DitaraVersion=0.1.0 \
   -DapiGroupId=com.example \
   -DapiArtifactId=calculator-api \
-  -DapiVersion=1.0-SNAPSHOT \
+  -DapiVersion=0.1.0 \
   -DinteractiveMode=false
 ```
 

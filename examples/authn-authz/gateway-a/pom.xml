@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.itara.examples</groupId>
+        <groupId>dev.itara.examples</groupId>
         <artifactId>authn-authz-example</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>

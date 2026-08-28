@@ -1,7 +1,7 @@
 package com.example.inventory;
 
 import com.example.inventory.api.InventoryClient;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 import org.springframework.context.ConfigurableApplicationContext;
 
 public class InventoryActivator implements ItaraActivator {

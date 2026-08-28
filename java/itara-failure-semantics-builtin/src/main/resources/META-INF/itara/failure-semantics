@@ -1,2 +1,2 @@
 # Built-in failure semantics implementation for Itara (Resilience4j-backed)
-io.itara.failuresemantics.builtin.BuiltInFailureSemanticsFactory
+dev.itara.failuresemantics.builtin.BuiltInFailureSemanticsFactory

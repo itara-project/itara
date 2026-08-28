@@ -3,21 +3,21 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.itara.test-fixtures</groupId>
+        <groupId>dev.itara.test-fixtures</groupId>
         <artifactId>conflict-b</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>conflict-b-component</artifactId>
 
     <dependencies>
         <dependency>
-            <groupId>io.itara.test-fixtures</groupId>
+            <groupId>dev.itara.test-fixtures</groupId>
             <artifactId>conflict-b-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.itara</groupId>
-            <artifactId>itara-common</artifactId>
+            <groupId>dev.itara</groupId>
+            <artifactId>itara-core</artifactId>
         </dependency>
         <dependency>
             <!-- The private, conflicting dependency — goes in components/conflict-b/ only -->

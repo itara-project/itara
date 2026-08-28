@@ -1,7 +1,7 @@
 package demo.payment.api;
 
-import io.itara.api.ComponentInterface;
-import io.itara.api.ContractMethod;
+import dev.itara.api.ComponentInterface;
+import dev.itara.api.ContractMethod;
 
 /**
  * Contract for the payment component.

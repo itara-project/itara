@@ -1,7 +1,7 @@
 package ${package}.component;
 
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ItaraRegistry;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ItaraRegistry;
 // TODO: confirm this import matches the actual package the API artifact
 // declares its interface in — inferred here as ${package}.api.${componentName}.
 import ${package}.api.${componentName};

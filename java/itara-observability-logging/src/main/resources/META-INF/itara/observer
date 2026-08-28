@@ -1,2 +1,2 @@
 # Itara logging-only observer implementation
-io.itara.observability.logging.LoggingObserver
+dev.itara.observability.logging.LoggingObserver

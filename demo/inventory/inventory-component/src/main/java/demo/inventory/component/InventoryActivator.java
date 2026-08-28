@@ -2,7 +2,7 @@ package demo.inventory.component;
 
 import demo.inventory.api.InventoryService;
 import demo.inventory.db.DatabaseManager;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 
 import java.util.logging.Logger;
 

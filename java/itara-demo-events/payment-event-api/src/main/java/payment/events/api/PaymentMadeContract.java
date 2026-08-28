@@ -1,6 +1,6 @@
 package payment.events.api;
 
-import io.itara.api.EventContractInterface;
+import dev.itara.api.EventContractInterface;
 
 @EventContractInterface(id = "payment-made")
 public interface PaymentMadeContract {

@@ -1,6 +1,6 @@
 package demo.inventory.api;
 
-import io.itara.exceptions.ItaraReconstructibleException;
+import dev.itara.exceptions.ItaraReconstructibleException;
 
 /**
  * Thrown when a reservation cannot be satisfied due to insufficient stock.

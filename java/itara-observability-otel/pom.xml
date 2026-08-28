@@ -6,9 +6,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.itara</groupId>
+        <groupId>dev.itara</groupId>
         <artifactId>itara-parent</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -17,8 +17,8 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.itara</groupId>
-            <artifactId>itara-common</artifactId>
+            <groupId>dev.itara</groupId>
+            <artifactId>itara-core</artifactId>
         </dependency>
 
         <!--
@@ -65,7 +65,7 @@
                 Shade the OTel API into the jar so the observer is
                 self-contained in itara.lib.dir.
 
-                itara-common is excluded — it must remain on the parent
+                itara-core is excluded — it must remain on the parent
                 classloader as the shared interface boundary.
 
                 The OTel SDK is test-scoped and never shaded.
@@ -83,7 +83,7 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <excludes>
-                                    <exclude>io.itara:itara-common</exclude>
+                                    <exclude>dev.itara:itara-core</exclude>
                                     <exclude>io.opentelemetry:*</exclude>
                                 </excludes>
                             </artifactSet>

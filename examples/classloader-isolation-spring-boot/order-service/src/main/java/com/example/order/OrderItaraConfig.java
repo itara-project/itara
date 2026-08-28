@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 
-import io.itara.runtime.ComponentLookup;
+import dev.itara.runtime.ComponentLookup;
 
 /**
  * Bootstrap class used only when this component is activated by Itara.

@@ -1,7 +1,7 @@
 package demo.notification.component;
 
 import demo.notification.api.NotificationService;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 
 import java.util.logging.Logger;
 

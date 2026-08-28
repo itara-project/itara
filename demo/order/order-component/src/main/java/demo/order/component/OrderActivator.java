@@ -7,8 +7,8 @@ import demo.inventory.api.InventoryService;
 import demo.order.api.OrderService;
 import demo.order.events.OrderReservedContract;
 import demo.payment.api.PaymentService;
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ComponentLookup;
 
 import java.util.logging.Logger;
 

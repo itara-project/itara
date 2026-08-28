@@ -17,9 +17,9 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ../java/itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../java/itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
       - ./inventory/inventory-api/target/inventory-api-1.0-SNAPSHOT.jar:/app/inventory-api.jar:ro
       - ./fulfilment/fulfilment-api/target/fulfilment-api-1.0-SNAPSHOT.jar:/app/fulfilment-api.jar:ro
       - ./order/order-api/target/order-api-1.0-SNAPSHOT.jar:/app/order-api.jar:ro
@@ -57,8 +57,8 @@ services:
       - "-Ditara.nodes=inventoryNode,fulfilmentNode,orderNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/order-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "io.itara.runtime.ItaraMain"
+      - "/app/itara-core.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/inventory-api.jar:/app/fulfilment-api.jar:/app/order-api.jar:/app/payment-api.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "dev.itara.runtime.ItaraMain"
     networks:
       - itara-net
  
@@ -67,9 +67,9 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../java/itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../java/itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../java/itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
+      - ../java/itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../java/itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../java/itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
       - ./notification/notification-api/target/notification-api-1.0-SNAPSHOT.jar:/app/notification-api.jar:ro
       - ./notification/notification-component/target/notification-component-1.0-SNAPSHOT.jar:/app/notification-component.jar:ro
       - ./order-events/target/order-events-1.0-SNAPSHOT.jar:/app/order-events.jar:ro
@@ -98,8 +98,8 @@ services:
       - "-Ditara.nodes=notificationNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/notification-api.jar:/app/notification-component.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "io.itara.runtime.ItaraMain"
+      - "/app/itara-core.jar:/app/notification-api.jar:/app/notification-component.jar:/app/order-events.jar:/app/fulfilment-events.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "dev.itara.runtime.ItaraMain"
     networks:
       - itara-net
  

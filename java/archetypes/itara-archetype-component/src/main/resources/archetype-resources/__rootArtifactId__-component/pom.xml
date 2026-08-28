@@ -16,8 +16,8 @@
             <artifactId>${rootArtifactId}-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.itara</groupId>
-            <artifactId>itara-common</artifactId>
+            <groupId>dev.itara</groupId>
+            <artifactId>itara-core</artifactId>
         </dependency>
     </dependencies>
 </project>

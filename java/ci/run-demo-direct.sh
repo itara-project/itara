@@ -6,13 +6,13 @@
 
 set -euo pipefail
 
-AGENT=itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-COMMON=itara-common/target/itara-common-1.0-SNAPSHOT.jar
-#OTEL=itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar
-CALC_API=itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar
-CALC_IMPL=itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar
-GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
-GW_IMPL=itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar
+AGENT=itara-agent/target/itara-agent-0.1.0.jar
+CORE=itara-core/target/itara-core-0.1.0.jar
+#OTEL=itara-observability-otel/target/itara-observability-otel-0.1.0.jar
+CALC_API=itara-demo/calculator-api/target/calculator-api-0.1.0.jar
+CALC_IMPL=itara-demo/calculator-component/target/calculator-component-0.1.0.jar
+GW_API=itara-demo/gateway-api/target/gateway-api-0.1.0.jar
+GW_IMPL=itara-demo/gateway-component/target/gateway-component-0.1.0.jar
 CONFIG=itara-demo/wiring-direct.yaml
 
 # ── Setup: build libs dir with transport, serializer and observability jars ───────────────────────────────
@@ -45,7 +45,7 @@ java \
   -Ditara.nodes="calculatorNode,gatewayNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$CALC_API:$CALC_IMPL:$GW_API:$GW_IMPL" \
+  -cp "$CORE:$CALC_API:$CALC_IMPL:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain
 
 echo "[CI] Direct topology demo completed successfully."

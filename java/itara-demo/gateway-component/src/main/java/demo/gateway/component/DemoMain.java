@@ -1,7 +1,7 @@
 package demo.gateway.component;
 
 import demo.gateway.api.GatewayService;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.runtime.ComponentLookup;
 
 import java.util.logging.Logger;
 
@@ -20,7 +20,7 @@ import java.util.logging.Logger;
  * Run with:
  *   java -javaagent:itara-agent.jar
  *        -Ditara.config=wiring-direct.yaml
- *        -cp itara-common.jar;calculator-api.jar;calculator-component.jar;gateway-api.jar;gateway-component.jar
+ *        -cp itara-core.jar;calculator-api.jar;calculator-component.jar;gateway-api.jar;gateway-component.jar
  *        demo.gateway.component.DemoMain
  */
 public class DemoMain {

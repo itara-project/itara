@@ -1,7 +1,7 @@
 package demo.calculator.component;
 
 import demo.calculator.api.CalculatorService;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 
 import java.util.logging.Logger;
 

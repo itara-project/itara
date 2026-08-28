@@ -1,6 +1,6 @@
 package demo.calculator.api;
 
-import io.itara.exceptions.ItaraReconstructibleException;
+import dev.itara.exceptions.ItaraReconstructibleException;
 
 /**
  * Thrown when a calculator operation cannot be performed due to invalid input.

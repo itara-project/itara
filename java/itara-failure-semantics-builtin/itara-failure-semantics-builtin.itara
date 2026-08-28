@@ -1,7 +1,7 @@
 [artifact]
 kind        = "failure-semantics"
 id          = "built-in"
-version     = "1.0-SNAPSHOT"
+version     = "0.1.0"
 api-version = "0.x"
 
 [runtime]

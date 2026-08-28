@@ -1,7 +1,7 @@
 package com.example.conflicta.api;
 
-import io.itara.api.ComponentInterface;
-import io.itara.api.ContractMethod;
+import dev.itara.api.ComponentInterface;
+import dev.itara.api.ContractMethod;
 
 @ComponentInterface(id = "conflict-a")
 public interface ConflictAService {

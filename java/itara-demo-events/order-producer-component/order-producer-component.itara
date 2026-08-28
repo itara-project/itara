@@ -1,7 +1,7 @@
 [artifact]
 kind = "component"
 id = "order-producer"
-version = "1.0-SNAPSHOT"
+version = "0.1.0"
 
 [runtime]
 language = "java"

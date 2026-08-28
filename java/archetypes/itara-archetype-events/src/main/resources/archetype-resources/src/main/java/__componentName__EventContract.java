@@ -1,6 +1,6 @@
 package ${package};
 
-import io.itara.api.EventContractInterface;
+import dev.itara.api.EventContractInterface;
 
 /**
  * Example event contract. An events artifact may contain many contracts —
