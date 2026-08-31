@@ -1,6 +1,6 @@
 package demo.events.consumer.api;
 
-import io.itara.api.ComponentInterface;
+import dev.itara.api.ComponentInterface;
 
 @ComponentInterface(id = "order-consumer")
 public interface OrderConsumerService {

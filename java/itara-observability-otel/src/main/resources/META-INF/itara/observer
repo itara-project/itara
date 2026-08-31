@@ -1,2 +1,2 @@
 # OTel observer — discovered by ObserverLoader via the standard observer path
-io.itara.observability.otel.OtelObserver
+dev.itara.observability.otel.OtelObserver

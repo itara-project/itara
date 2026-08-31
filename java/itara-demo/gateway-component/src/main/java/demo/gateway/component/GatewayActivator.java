@@ -2,8 +2,8 @@ package demo.gateway.component;
 
 import demo.calculator.api.CalculatorService;
 import demo.gateway.api.GatewayService;
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ComponentLookup;
 
 import java.util.logging.Logger;
 

@@ -1,6 +1,6 @@
 package demo.fulfilment.events;
 
-import io.itara.api.EventContractInterface;
+import dev.itara.api.EventContractInterface;
 
 @EventContractInterface(id = "order-cancelled")
 public interface OrderCancelledContract {

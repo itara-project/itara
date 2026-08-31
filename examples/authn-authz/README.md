@@ -84,7 +84,7 @@ authn-authz/
     wiring-distributed.yaml        ← 3 nodes, http, all three components
     wiring-colocated.yaml          ← 2 nodes, direct, gateway-a + backend only
     metafiles/                     ← .itara files for every artifact, both scenarios
-    lib/                           ← shared classloader: itara-common + every -api jar
+    lib/                           ← shared classloader: itara-core + every -api jar
     itara-libs/                    ← Itara plugins: http transport, json serializer,
                                        both example auth plugins
     components/                    ← -impl jars, one subdirectory per component id,
@@ -143,7 +143,7 @@ GATEWAY_A_SECRET=s3cr3t-a GATEWAY_B_SECRET=backend-b-expected-secret java \
   -Ditara.lib.dir="deployment/itara-libs" \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*:deployment/components/backend/*" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 **2. Start `gateway-a`** in a second terminal, once `backend` shows
@@ -158,7 +158,7 @@ GATEWAY_A_SECRET=s3cr3t-a java \
   -Ditara.lib.dir="deployment/itara-libs" \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*:deployment/components/gateway-a/*" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 **3. Start `gateway-b`** in a third terminal. Deliberately: no
@@ -175,7 +175,7 @@ java \
   -Ditara.lib.dir="deployment/itara-libs" \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*:deployment/components/gateway-b/*" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 On PowerShell, replace the leading `VAR=value` prefixes with
@@ -244,7 +244,7 @@ ITARA_COMPONENTS_DIR=deployment/components java \
   -Ditara.lib.dir="deployment/itara-libs" \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 On PowerShell: `$env:ITARA_COMPONENTS_DIR="deployment/components"; java ...`.
 

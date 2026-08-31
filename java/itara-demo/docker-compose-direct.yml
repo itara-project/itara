@@ -11,12 +11,12 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
-      - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
-      - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
-      - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
+      - ../itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ./calculator-api/target/calculator-api-0.1.0.jar:/app/calculator-api.jar:ro
+      - ./calculator-component/target/calculator-component-0.1.0.jar:/app/calculator-component.jar:ro
+      - ./gateway-api/target/gateway-api-0.1.0.jar:/app/gateway-api.jar:ro
+      - ./gateway-component/target/gateway-component-0.1.0.jar:/app/gateway-component.jar:ro
       - ./wiring-direct.yaml:/app/config/wiring-direct.yaml:ro
       - ./libs:/app/libs:ro
       - ./calculator-api/calculator-api.itara:/app/metafiles/calculator-api.itara:ro
@@ -30,5 +30,5 @@ services:
       - "-Ditara.nodes=calculatorNode,gatewayNode"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/gateway-api.jar:/app/gateway-component.jar"
+      - "/app/itara-core.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/gateway-api.jar:/app/gateway-component.jar"
       - "demo.gateway.component.DemoMain"

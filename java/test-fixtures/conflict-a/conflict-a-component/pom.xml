@@ -3,25 +3,25 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.itara.test-fixtures</groupId>
+        <groupId>dev.itara.test-fixtures</groupId>
         <artifactId>conflict-a</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>conflict-a-component</artifactId>
 
     <dependencies>
         <dependency>
-            <groupId>io.itara.test-fixtures</groupId>
+            <groupId>dev.itara.test-fixtures</groupId>
             <artifactId>conflict-a-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.itara.test-fixtures</groupId>
+            <groupId>dev.itara.test-fixtures</groupId>
             <artifactId>conflict-b-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.itara</groupId>
-            <artifactId>itara-common</artifactId>
+            <groupId>dev.itara</groupId>
+            <artifactId>itara-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.example.shared</groupId>

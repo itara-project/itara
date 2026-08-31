@@ -1,6 +1,6 @@
 package demo.order.events;
 
-import io.itara.api.EventContractInterface;
+import dev.itara.api.EventContractInterface;
 
 @EventContractInterface(id = "order-reserved")
 public interface OrderReservedContract {

@@ -1,0 +1,392 @@
+package dev.itara.runtime;
+
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Logger;
+
+/**
+ * Single point of contact for all observability in the Itara runtime.
+ *
+ * <p>Singleton — initialized once by the agent at startup via initialize().
+ * After initialization, all proxies, dispatchers, and decorators access
+ * it via instance().
+ *
+ * <p>Lives in itara-core so transports and decorators can access it
+ * without depending on the agent module.
+ *
+ * <p>Responsibility split:
+ * <ul>
+ * <li>{@link ItaraContext} — owns the per-thread context stack (push/pop/current)</li>
+ * <li>{@link ContextPropagation} — owns Itara-native header serialization/deserialization</li>
+ * <li>{@code ObservabilityFacade} — orchestrates: drives the ItaraContext stack, fans out
+ * to all observers, captures timestamps, returns scopes</li>
+ * <li>{@link ItaraObserver} SPI — receives events and manages its own internal state</li>
+ * </ul>
+ *
+ * <p>Every method that opens a context returns an {@link ItaraScope}. Call sites use
+ * try-with-resources — the scope fires the matching close event and pops the
+ * ItaraContext stack on exit. This makes leaked contexts structurally
+ * impossible as long as scopes are used correctly.
+ *
+ * <p>Typical call site shapes:
+ *
+ * <p>Proxy (direct):
+ * <pre>{@code
+ * try (var s = facade.fireCallSent(c, m, "direct", exchangePattern)) {
+ *     try (var s2 = facade.fireCallReceived(c, m, "direct", exchangePattern)) {
+ *         try { invoke(); } catch (Throwable t) { s2.setError(true); s.setError(true); throw t; }
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>Proxy (remote caller):
+ * <pre>{@code
+ * try (var s = facade.fireCallSent(c, m, transport, exchangePattern)) {
+ *     Map<String,String> headers = facade.buildOutboundHeaders();
+ *     try { send(headers); } catch (Throwable t) { s.setError(true); throw t; }
+ * }
+ * }</pre>
+ *
+ * <p>Dispatcher (remote callee):
+ * <pre>{@code
+ * try (var s = facade.restoreInboundContext(headers, exchangePattern)) {
+ *     // deserialization happens here — context is already current
+ *     try (var s2 = facade.fireCallReceived(c, m, transport, exchangePattern)) {
+ *         try { invoke(); } catch (Throwable t) { s2.setError(true); throw t; }
+ *     }
+ * }
+ * }</pre>
+ */
+public final class ObservabilityFacade {
+
+    private static final Logger log = Logger.getLogger(ObservabilityFacade.class.getName());
+
+    private static volatile ObservabilityFacade INSTANCE;
+
+    private final ObserverRegistry registry;
+
+    private ObservabilityFacade() {
+        this.registry = ObserverRegistry.instance();
+    }
+
+    /**
+     * Initializes the singleton.
+     * Called once by the agent during premain, before any component
+     * activators run. Must be called before instance() is used.
+     */
+    public static void initialize() {
+        if (INSTANCE != null) {
+            log.warning("[Itara] observability facade already initialized — "
+                    + "ignoring duplicate initialization.");
+            return;
+        }
+        INSTANCE = new ObservabilityFacade();
+        log.fine("[Itara] observability facade initialized");
+    }
+
+    /**
+     * Returns the singleton instance.
+     *
+     * @return the singleton instance
+     * @throws IllegalStateException if initialize() has not been called
+     */
+    public static ObservabilityFacade instance() {
+        if (INSTANCE == null) {
+            throw new IllegalStateException(
+                    "[Itara] ObservabilityFacade not initialized. "
+                            + "initialize() must be called during agent startup.");
+        }
+        return INSTANCE;
+    }
+
+    /** For testing only. */
+    public static void resetForTest() {
+        INSTANCE = null;
+    }
+
+    // ── Inbound context (callee/dispatcher side) ───────────────────────────
+
+    /**
+     * Restores the ItaraContext from inbound transport headers and pushes
+     * it onto the thread's context stack. Notifies each observer via
+     * restoreContext() so they can rebuild their own propagation state
+     * (e.g. OTel W3C parent linkage) before fireCallReceived fires.
+     *
+     * <p>The returned scope pops the context when closed. Use in a
+     * try-with-resources block that wraps both deserialization and
+     * fireCallReceived — this makes the context available for future
+     * deserialization measurement as well as the callee span.
+     *
+     * @param headers         the full inbound header map from the transport
+     * @param exchangePattern the pattern this call is being received under;
+     *                        passed through to {@link ContextPropagation#fromHeaders}
+     * @return a scope that pops the restored context on close
+     */
+    public ItaraScope restoreInboundContext(Map<String, String> headers, ExchangePattern exchangePattern) {
+        ItaraContext ctx = ContextPropagation.fromHeaders(headers, exchangePattern);
+        ItaraContext.push(ctx);
+
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.restoreContext(headers, exchangePattern);
+            } catch (Exception e) {
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=restoreContext error=" + e.getMessage());
+            }
+        }
+        return new InboundScope();
+    }
+
+    // ── Outbound headers (proxy/caller side, non-direct only) ─────────────
+
+    /**
+     * Assembles the outbound header map to pass to the transport.
+     * Called after fireCallSent, only for non-direct transports.
+     *
+     * <p>Merges Itara-native headers (itaraTraceId, itaraSpanId, requestId,
+     * correlationId, sourceNode, edgePath) with per-observer headers
+     * (e.g. OTel traceparent/tracestate). Observer headers are merged in
+     * registration order — later registrations win on key collision.
+     *
+     * @return merged header map, never null
+     */
+    public Map<String, String> buildOutboundHeaders() {
+        Map<String, String> headers = new HashMap<>(ContextPropagation.toHeaders(ItaraContext.current()));
+
+        for (var observer : registry.getObservers()) {
+            try {
+                headers.putAll(observer.serializeContext());
+            } catch (Exception e) {
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=serializeContext error=" + e.getMessage());
+            }
+        }
+        return headers;
+    }
+
+    // ── Caller side ────────────────────────────────────────────────────────
+
+    /**
+     * Fires CALL_SENT. Creates a child ItaraContext (or root if none is
+     * active) and pushes it onto the thread's stack.
+     *
+     * <p>The returned scope fires RETURN_RECEIVED and pops the context when
+     * closed. Always use in a try-with-resources block.
+     *
+     * @param componentId     the component being called
+     * @param methodName      the method being called
+     * @param transport       the transport carrying this call, or {@code "direct"}
+     *                        for an in-process call
+     * @param exchangePattern the pattern this call is being made under
+     * @return a scope that fires RETURN_RECEIVED and pops the context on close
+     */
+    public ItaraScope fireCallSent(String componentId,
+                                   String methodName,
+                                   String transport,
+                                   ExchangePattern exchangePattern) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newCallerSpan()
+                : ItaraContext.newRoot(componentId);
+        ItaraContext.push(ctx);
+
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.onCallSent(ctx, componentId, methodName,
+                        transport, exchangePattern, timestamp);
+            } catch (Exception e) {
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCallSent error=" + e.getMessage());
+            }
+        }
+        return new CallerScope(componentId, methodName);
+    }
+
+    // ── Callee side ────────────────────────────────────────────────────────
+
+    /**
+     * Fires CALL_RECEIVED. Creates a child ItaraContext from whatever is
+     * current (the restored inbound context for remote calls, the caller's
+     * context for direct calls) and pushes it.
+     *
+     * <p>The returned scope fires RETURN_SENT and pops the context when
+     * closed. Always use in a try-with-resources block.
+     *
+     * @param componentId     the component receiving the call
+     * @param methodName      the method being invoked
+     * @param transport       the transport this call arrived on, or
+     *                        {@code "direct"} for an in-process call
+     * @param exchangePattern the pattern this call is being received under
+     * @return a scope that fires RETURN_SENT and pops the context on close
+     */
+    public ItaraScope fireCallReceived(String componentId,
+                                       String methodName,
+                                       String transport,
+                                       ExchangePattern exchangePattern) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newChildSpan(componentId)
+                : ItaraContext.newRoot(componentId);
+        ItaraContext.push(ctx);
+
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.onCallReceived(ctx, componentId, methodName,
+                        transport, exchangePattern, timestamp);
+            } catch (Exception e) {
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCallReceived error=" + e.getMessage());
+            }
+        }
+        return new CalleeScope(componentId, methodName);
+    }
+
+    // ── Custom events ────────────────────────────────────────────────────────
+
+    /**
+     * Opens a custom span as a child of the currently active context.
+     *
+     * <p>Creates a new child ItaraContext (inheriting trace and request ids,
+     * not extending edgePath), pushes it, fires onCustomSpan on all
+     * observers, and returns a scope that fires onCustomSpanClosed and
+     * pops the context when closed.
+     *
+     * <p>Always use in a try-with-resources block. setError(true) should be
+     * called on the scope before it closes if the work inside threw.
+     *
+     * <p>If no context is currently active — which should not happen in normal
+     * call paths — a new root context is created. This is a safety fallback,
+     * not an expected path.
+     *
+     * @param name       a short descriptive name for the span, e.g. "retry-attempt"
+     * @param attributes freeform key-value pairs to attach to the span,
+     *                   e.g. {"attempt": "2"}. Must not be null.
+     * @return a scope that closes the span and pops the context on close
+     */
+    public ItaraScope openCustomSpan(String name, Map<String, String> attributes) {
+        ItaraContext parent = ItaraContext.current();
+        ItaraContext ctx = (parent != null)
+                ? parent.newCustomSpan()
+                : ItaraContext.newRoot(name);
+        ItaraContext.push(ctx);
+
+        long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+        for (var observer : registry.getObservers()) {
+            try {
+                observer.onCustomSpan(ctx, name, attributes, timestamp);
+            } catch (Exception e) {
+                log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                        + " event=onCustomSpan error=" + e.getMessage());
+            }
+        }
+        return new CustomSpanScope(name);
+    }
+
+    // ── Scope implementations ──────────────────────────────────────────────
+
+    /** Scope returned by restoreInboundContext — pops on close, no event. */
+    private final class InboundScope implements ItaraScope {
+        @Override public void setError(boolean error) { /* no-op */ }
+
+        @Override
+        public void close() {
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onInboundContextReleased();
+                } catch (Exception e) {
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onInboundContextReleased error=" + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by fireCallSent — fires RETURN_RECEIVED and pops. */
+    private final class CallerScope implements ItaraScope {
+        private final String componentId;
+        private final String methodName;
+        private boolean error = false;
+
+        CallerScope(String componentId, String methodName) {
+            this.componentId = componentId;
+            this.methodName  = methodName;
+        }
+
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onReturnReceived(ctx, componentId, methodName, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onReturnReceived error=" + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by fireCallReceived — fires RETURN_SENT and pops. */
+    private final class CalleeScope implements ItaraScope {
+        private final String componentId;
+        private final String methodName;
+        private boolean error = false;
+
+        CalleeScope(String componentId, String methodName) {
+            this.componentId = componentId;
+            this.methodName  = methodName;
+        }
+
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onReturnSent(ctx, componentId, methodName, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onReturnSent error=" + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+
+    /** Scope returned by openCustomSpan — fires onCustomSpanClosed and pops. */
+    private final class CustomSpanScope implements ItaraScope {
+        private final String name;
+        private boolean error = false;
+
+        CustomSpanScope(String name) {
+            this.name = name;
+        }
+
+        @Override public void setError(boolean error) { this.error = error; }
+
+        @Override
+        public void close() {
+            ItaraContext ctx = ItaraContext.current();
+            long timestamp = Instant.now().toEpochMilli() * 1_000_000L;
+            for (var observer : registry.getObservers()) {
+                try {
+                    observer.onCustomSpanClosed(ctx, name, timestamp, error);
+                } catch (Exception e) {
+                    log.warning("[Itara] observer threw observer=" + observer.getClass().getSimpleName()
+                            + " event=onCustomSpanClosed error=" + e.getMessage());
+                }
+            }
+            ItaraContext.pop();
+        }
+    }
+}

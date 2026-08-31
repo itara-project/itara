@@ -158,7 +158,7 @@ unfamiliar:
 ```
 deployment/
   lib/                                    ← shared classloader
-    itara-common.jar
+    itara-core.jar
     itara-serializer-protobuf.jar
 
   agent/
@@ -185,7 +185,7 @@ so their jars don't need to be copied into the deployment directory,
 they are added to the classpath in the startup commands.
 
 `itara-serializer-protobuf`'s shaded jar bundles `protobuf-java` itself
-(it's excluded only from `itara-common`, per that module's own `pom.xml`),
+(it's excluded only from `itara-core`, per that module's own `pom.xml`),
 so it needs to be on the system classpath. The rest of the Itara plugins,
 the HTTP transport and the JSON serializer, will be loaded by the
 Itara-specific classloader for isolation.
@@ -206,7 +206,7 @@ java \
   -Ditara.lib.dir=deployment/itara-libs \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*:calculator/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:calculator/calculator-impl/target/calculator-impl-1.0-SNAPSHOT.jar" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 **2. Start `gateway`** in a second terminal, once `calculator` shows
@@ -220,7 +220,7 @@ java \
   -Ditara.lib.dir=deployment/itara-libs \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*:calculator/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:gateway/gateway-impl/target/gateway-impl-1.0-SNAPSHOT.jar:gateway/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 ## What to expect

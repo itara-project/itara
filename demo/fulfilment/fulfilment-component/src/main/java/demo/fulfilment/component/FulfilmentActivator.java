@@ -1,7 +1,7 @@
 package demo.fulfilment.component;
 
 import demo.fulfilment.api.FulfilmentService;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 
 import java.util.logging.Logger;
 

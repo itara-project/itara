@@ -1,6 +1,6 @@
 package demo.events.api;
 
-import io.itara.api.EventContractInterface;
+import dev.itara.api.EventContractInterface;
 
 /**
  * Event contract for the order-placed event.

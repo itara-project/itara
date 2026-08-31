@@ -1,7 +1,7 @@
 package ${package}.component;
 
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ItaraRegistry;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ItaraRegistry;
 import ${package}.api.${componentName};
 
 public class ${componentName}Activator implements ItaraActivator {

@@ -1,9 +1,9 @@
 package demo.transport;
 
-import io.itara.transport.http.HttpTransport;
-import io.itara.transport.http.HttpTransportConfig;
-import io.itara.runtime.ItaraCallTarget;
-import io.itara.spi.transport.ItaraTransportConfig;
+import dev.itara.transport.http.HttpTransport;
+import dev.itara.transport.http.HttpTransportConfig;
+import dev.itara.runtime.ItaraCallTarget;
+import dev.itara.spi.transport.ItaraTransportConfig;
 
 import java.time.Duration;
 import java.util.Map;

@@ -2,8 +2,8 @@ package com.example.gateway;
 
 import com.example.calculator.api.CalculatorService;
 import com.example.gateway.api.GatewayClient;
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ComponentLookup;
 
 public class GatewayActivator implements ItaraActivator {
 

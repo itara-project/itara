@@ -18,15 +18,15 @@
 
 set -euo pipefail
 
-AGENT=itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-COMMON=itara-common/target/itara-common-1.0-SNAPSHOT.jar
+AGENT=itara-agent/target/itara-agent-0.1.0.jar
+CORE=itara-core/target/itara-core-0.1.0.jar
 
-EVENTS_API=itara-demo-events/order-event-api/target/order-event-api-1.0-SNAPSHOT.jar
-PAYMENT_EVENTS_API=itara-demo-events/payment-event-api/target/payment-event-api-1.0-SNAPSHOT.jar
-PRODUCER_API=itara-demo-events/order-producer-api/target/order-producer-api-1.0-SNAPSHOT.jar
-PRODUCER_IMPL=itara-demo-events/order-producer-component/target/order-producer-component-1.0-SNAPSHOT.jar
-CONSUMER_API=itara-demo-events/order-consumer-api/target/order-consumer-api-1.0-SNAPSHOT.jar
-CONSUMER_IMPL=itara-demo-events/order-consumer/target/order-consumer-1.0-SNAPSHOT.jar
+EVENTS_API=itara-demo-events/order-event-api/target/order-event-api-0.1.0.jar
+PAYMENT_EVENTS_API=itara-demo-events/payment-event-api/target/payment-event-api-0.1.0.jar
+PRODUCER_API=itara-demo-events/order-producer-api/target/order-producer-api-0.1.0.jar
+PRODUCER_IMPL=itara-demo-events/order-producer-component/target/order-producer-component-0.1.0.jar
+CONSUMER_API=itara-demo-events/order-consumer-api/target/order-consumer-api-0.1.0.jar
+CONSUMER_IMPL=itara-demo-events/order-consumer/target/order-consumer-0.1.0.jar
 
 WIRING=itara-demo-events/wiring-events-local.yaml
 
@@ -85,8 +85,8 @@ java \
   -Ditara.nodes="orderConsumerNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$EVENTS_API:$PAYMENT_EVENTS_API:$CONSUMER_API:$CONSUMER_IMPL" \
-  io.itara.runtime.ItaraMain \
+  -cp "$CORE:$EVENTS_API:$PAYMENT_EVENTS_API:$CONSUMER_API:$CONSUMER_IMPL" \
+  dev.itara.runtime.ItaraMain \
   > "$CONSUMER_LOG" 2>&1 &
 
 CONSUMER_PID=$!
@@ -126,8 +126,8 @@ java \
   -Ditara.nodes="orderProducerNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$EVENTS_API:$PAYMENT_EVENTS_API:$PRODUCER_API:$PRODUCER_IMPL" \
-  io.itara.runtime.ItaraMain \
+  -cp "$CORE:$EVENTS_API:$PAYMENT_EVENTS_API:$PRODUCER_API:$PRODUCER_IMPL" \
+  dev.itara.runtime.ItaraMain \
   > "$PRODUCER_LOG" 2>&1 &
 
 PRODUCER_PID=$!

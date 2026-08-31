@@ -1,7 +1,7 @@
 package com.example.order;
 
 import com.example.order.api.OrderClient;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 

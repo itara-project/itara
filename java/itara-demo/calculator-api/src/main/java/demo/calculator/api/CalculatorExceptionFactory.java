@@ -1,7 +1,7 @@
 package demo.calculator.api;
 
-import io.itara.exceptions.ItaraReconstructibleException;
-import io.itara.exceptions.ItaraReconstructibleExceptionFactory;
+import dev.itara.exceptions.ItaraReconstructibleException;
+import dev.itara.exceptions.ItaraReconstructibleExceptionFactory;
 
 import java.util.Optional;
 

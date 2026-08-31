@@ -98,11 +98,11 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
-      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
-      - ./calculator-component/target/calculator-component-1.0-SNAPSHOT.jar:/app/calculator-component.jar:ro
+      - ../itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
+      - ./calculator-api/target/calculator-api-0.1.0.jar:/app/calculator-api.jar:ro
+      - ./calculator-component/target/calculator-component-0.1.0.jar:/app/calculator-component.jar:ro
       - ./wiring-http-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
@@ -128,8 +128,8 @@ services:
       - "-Ditara.metadata.dir=/app/metafiles"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
-      - "io.itara.runtime.ItaraMain"
+      - "/app/itara-core.jar:/app/calculator-api.jar:/app/calculator-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "dev.itara.runtime.ItaraMain"
     depends_on:
       otel-collector:
         condition: service_started
@@ -141,12 +141,12 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../itara-common/target/itara-common-1.0-SNAPSHOT.jar:/app/itara-common.jar:ro
-      - ../itara-agent/target/itara-agent-1.0-SNAPSHOT.jar:/app/itara-agent.jar:ro
-      - ../itara-observability-otel/target/itara-observability-otel-1.0-SNAPSHOT.jar:/app/itara-observability-otel.jar:ro
-      - ./calculator-api/target/calculator-api-1.0-SNAPSHOT.jar:/app/calculator-api.jar:ro
-      - ./gateway-api/target/gateway-api-1.0-SNAPSHOT.jar:/app/gateway-api.jar:ro
-      - ./gateway-component/target/gateway-component-1.0-SNAPSHOT.jar:/app/gateway-component.jar:ro
+      - ../itara-core/target/itara-core-0.1.0.jar:/app/itara-core.jar:ro
+      - ../itara-agent/target/itara-agent-0.1.0.jar:/app/itara-agent.jar:ro
+      - ../itara-observability-otel/target/itara-observability-otel-0.1.0.jar:/app/itara-observability-otel.jar:ro
+      - ./calculator-api/target/calculator-api-0.1.0.jar:/app/calculator-api.jar:ro
+      - ./gateway-api/target/gateway-api-0.1.0.jar:/app/gateway-api.jar:ro
+      - ./gateway-component/target/gateway-component-0.1.0.jar:/app/gateway-component.jar:ro
       - ./wiring-http-docker.yaml:/app/config/wiring.yaml:ro
       - ./libs:/app/libs:ro
       - ./otel-libs:/app/otel-libs:ro
@@ -173,9 +173,9 @@ services:
       - "-Ditara.metadata.dir=/app/metafiles"
       - "-javaagent:/app/itara-agent.jar"
       - "-cp"
-      - "/app/itara-common.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
+      - "/app/itara-core.jar:/app/calculator-api.jar:/app/gateway-api.jar:/app/gateway-component.jar:/app/otel-libs/*:/app/itara-observability-otel.jar"
       #- "demo.gateway.component.DemoMain"
-      - "io.itara.runtime.ItaraMain"
+      - "dev.itara.runtime.ItaraMain"
     depends_on:
       calculator:
         condition: service_started

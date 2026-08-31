@@ -2,7 +2,7 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.itara.examples</groupId>
+  <groupId>dev.itara.examples</groupId>
   <artifactId>authn-authz-example</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
@@ -10,7 +10,7 @@
 
   <!--
       Self-contained example, its own parent — not part of the main
-      itara-parent reactor. Depends on itara-common as an ordinary
+      itara-parent reactor. Depends on itara-core as an ordinary
       Maven artifact, resolved from the local repository (build the
       main project with `mvn install` first, from the repo root).
 
@@ -20,7 +20,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <itara.version>1.0-SNAPSHOT</itara.version>
+    <itara.version>0.1.0</itara.version>
     <junit.version>5.10.2</junit.version>
   </properties>
 
@@ -42,8 +42,8 @@
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>io.itara</groupId>
-        <artifactId>itara-common</artifactId>
+        <groupId>dev.itara</groupId>
+        <artifactId>itara-core</artifactId>
         <version>${itara.version}</version>
       </dependency>
       <dependency>

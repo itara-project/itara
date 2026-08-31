@@ -1,10 +1,10 @@
 package demo.events.producer;
 
 import demo.events.api.OrderCancelledContract;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 import demo.events.api.OrderPlacedContract;
 import demo.events.producer.api.OrderProducerService;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.runtime.ComponentLookup;
 import payment.events.api.PaymentMadeContract;
 
 public class OrderProducerActivator implements ItaraActivator {

@@ -123,7 +123,7 @@ mvn clean install
 ```
 deployment/
   lib/                              ← system classloader (shared)
-    itara-common.jar
+    itara-core.jar
     order-api.jar
     inventory-api.jar
     tomcat-embed-core-10.1.31.jar
@@ -194,7 +194,7 @@ ITARA_COMPONENTS_DIR=deployment/components java \
   -Ditara.lib.dir=deployment/itara-libs \
   -javaagent:deployment/agent/itara-agent.jar \
   -cp "deployment/lib/*" \
-  io.itara.runtime.ItaraMain
+  dev.itara.runtime.ItaraMain
 ```
 
 On PowerShell: `$env:ITARA_COMPONENTS_DIR="deployment/components"; java ...`.

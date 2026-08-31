@@ -1,9 +1,9 @@
 package demo.transport;
 
-import io.itara.spi.transport.ItaraTransport;
-import io.itara.spi.transport.ItaraTransportConfig;
-import io.itara.transport.http.HttpTransportConfig;
-import io.itara.transport.http.HttpTransportFactory;
+import dev.itara.spi.transport.ItaraTransport;
+import dev.itara.spi.transport.ItaraTransportConfig;
+import dev.itara.transport.http.HttpTransportConfig;
+import dev.itara.transport.http.HttpTransportFactory;
 
 public class FlakyHttpTransportFactory extends HttpTransportFactory {
 

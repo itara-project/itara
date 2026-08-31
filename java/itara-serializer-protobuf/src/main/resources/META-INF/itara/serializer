@@ -1,2 +1,2 @@
 # Itara Protobuf serializer implementation
-io.itara.serializer.protobuf.ProtoSerializerFactory
+dev.itara.serializer.protobuf.ProtoSerializerFactory

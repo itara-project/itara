@@ -2,8 +2,8 @@ package com.example.conflicta.component;
 
 import com.example.conflicta.api.ConflictAService;
 import com.example.conflictb.api.ConflictBService;
-import io.itara.api.ItaraActivator;
-import io.itara.runtime.ComponentLookup;
+import dev.itara.api.ItaraActivator;
+import dev.itara.runtime.ComponentLookup;
 
 public class ConflictAActivator implements ItaraActivator {
 

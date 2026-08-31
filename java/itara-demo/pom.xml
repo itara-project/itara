@@ -5,13 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.itara</groupId>
+        <groupId>dev.itara</groupId>
         <artifactId>itara-parent</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <groupId>io.itara.demo</groupId>
+    <groupId>dev.itara.demo</groupId>
     <artifactId>itara-demo</artifactId>
     <packaging>pom</packaging>
     <name>Itara Demo</name>
@@ -26,12 +26,12 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>io.itara.demo</groupId>
+                <groupId>dev.itara.demo</groupId>
                 <artifactId>calculator-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.itara.demo</groupId>
+                <groupId>dev.itara.demo</groupId>
                 <artifactId>gateway-api</artifactId>
                 <version>${project.version}</version>
             </dependency>

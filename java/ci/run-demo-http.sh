@@ -12,12 +12,12 @@
 
 set -euo pipefail
 
-AGENT=itara-agent/target/itara-agent-1.0-SNAPSHOT.jar
-COMMON=itara-common/target/itara-common-1.0-SNAPSHOT.jar
-CALC_API=itara-demo/calculator-api/target/calculator-api-1.0-SNAPSHOT.jar
-CALC_IMPL=itara-demo/calculator-component/target/calculator-component-1.0-SNAPSHOT.jar
-GW_API=itara-demo/gateway-api/target/gateway-api-1.0-SNAPSHOT.jar
-GW_IMPL=itara-demo/gateway-component/target/gateway-component-1.0-SNAPSHOT.jar
+AGENT=itara-agent/target/itara-agent-0.1.0.jar
+CORE=itara-core/target/itara-core-0.1.0.jar
+CALC_API=itara-demo/calculator-api/target/calculator-api-0.1.0.jar
+CALC_IMPL=itara-demo/calculator-component/target/calculator-component-0.1.0.jar
+GW_API=itara-demo/gateway-api/target/gateway-api-0.1.0.jar
+GW_IMPL=itara-demo/gateway-component/target/gateway-component-0.1.0.jar
 CALC_CONFIG=itara-demo/wiring-http.yaml
 GW_CONFIG=itara-demo/wiring-http.yaml
 
@@ -66,8 +66,8 @@ java \
   -Ditara.nodes="calculatorNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$CALC_API:$CALC_IMPL" \
-  io.itara.runtime.ItaraMain \
+  -cp "$CORE:$CALC_API:$CALC_IMPL" \
+  dev.itara.runtime.ItaraMain \
   > "$CALC_LOG" 2>&1 &
 
 CALC_PID=$!
@@ -111,7 +111,7 @@ java \
   -Ditara.nodes="gatewayNode" \
   -Ditara.metadata.dir=$META_DIR \
   -javaagent:$AGENT \
-  -cp "$COMMON:$CALC_API:$GW_API:$GW_IMPL" \
+  -cp "$CORE:$CALC_API:$GW_API:$GW_IMPL" \
   demo.gateway.component.DemoMain
 
 echo "[CI] HTTP topology demo completed successfully."

@@ -1,7 +1,7 @@
 package com.example.calculator;
 
 import com.example.calculator.api.CalculatorService;
-import io.itara.api.ItaraActivator;
+import dev.itara.api.ItaraActivator;
 
 public class CalculatorActivator implements ItaraActivator {
 

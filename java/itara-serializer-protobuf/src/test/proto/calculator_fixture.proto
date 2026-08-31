@@ -11,7 +11,7 @@ syntax = "proto3";
 // something protoc generated for us.
 package itara.test.fixtures;
 
-option java_package = "io.itara.serializer.protobuf.fixtures";
+option java_package = "dev.itara.serializer.protobuf.fixtures";
 option java_multiple_files = true;
 
 // A single-argument request, matching ProtoItaraSerializer's "at most one
