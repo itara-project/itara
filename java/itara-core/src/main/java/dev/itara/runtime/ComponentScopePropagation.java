@@ -67,6 +67,7 @@ public final class ComponentScopePropagation {
      * thread right now.
      *
      * @param task the task to wrap
+     * @param <T>  the task's own result type
      * @return a wrapped task that opens the captured scope before running,
      *         or the original task unchanged if no scope is currently active
      */

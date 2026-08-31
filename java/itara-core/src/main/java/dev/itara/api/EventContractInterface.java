@@ -40,6 +40,8 @@ public @interface EventContractInterface {
      * This contract's id, unique within its events artifact. Combined
      * with the artifact's collection id to form the full contract
      * reference used in the wiring config.
+     *
+     * @return this contract's id
      */
     String id();
 }

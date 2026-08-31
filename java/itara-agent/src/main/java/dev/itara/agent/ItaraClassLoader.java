@@ -25,6 +25,7 @@ public class ItaraClassLoader extends URLClassLoader {
 
     private static final Logger log = Logger.getLogger(ItaraClassLoader.class.getName());
 
+    /** JVM system property naming the directory to load Itara plugin jars from. */
     public static final String LIB_DIR_PROPERTY = "itara.lib.dir";
 
     static {

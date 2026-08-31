@@ -21,13 +21,25 @@ import java.util.Optional;
  */
 public class NoopAuthorization implements ItaraAuthorization {
 
+    /** Constructs the no-op authorization implementation. */
+    public NoopAuthorization() {}
+
     @Override
     public AuthorizationDecision authorize(ItaraAuthorizationConfig config, Optional<ItaraIdentity> identity,
                                            ItaraCallTarget target, Map<String, String> headers) {
         return AuthorizationDecision.permit();
     }
 
+
+    /**
+     * Config is accepted but ignored — the noop strategy has no
+     * configurable behaviour. Stateless, so every connection using it
+     * shares one grouping key (and therefore one instance).
+     */
     public static final class Factory implements ItaraAuthorizationFactory {
+
+        /** Constructs the factory for the no-op authorization implementation. */
+        public Factory() {}
 
         @Override
         public String id() {

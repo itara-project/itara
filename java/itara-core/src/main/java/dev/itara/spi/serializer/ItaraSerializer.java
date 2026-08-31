@@ -47,6 +47,8 @@ public interface ItaraSerializer {
      * Must match the id field within the connection's serializer block
      * in the wiring config.
      * Examples: "json", "java"
+     *
+     * @return the serializer type string this implementation handles
      */
     String type();
 

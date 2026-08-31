@@ -58,11 +58,11 @@ public class ItaraRegistry {
 
     // Every local node's own ComponentScope, keyed by component id — a
     // node id would be equally valid as the key (see ComponentScope), but
-    // component id is what ComponentIdentity.claim() and every other
+    // component id is what ComponentLookup.getSelf() and every other
     // component-facing lookup already uses, and no two local nodes in one
     // deployment unit ever share a component id, so this is unambiguous.
     // Populated by the agent in the same pass that builds each scope;
-    // read by ComponentIdentity.claim() for standalone entry-point code.
+    // read by ComponentLookup.getSelf() for standalone entry-point code.
     private final Map<String, ComponentScope> componentScopes = new ConcurrentHashMap<>();
 
     // Raw activated instances — served to the dispatcher only
@@ -80,7 +80,11 @@ public class ItaraRegistry {
 
     private ItaraRegistry() {}
 
-    /** @return the singleton registry instance for this JVM */
+    /**
+     * Returns the singleton registry instance for this JVM.
+     *
+     * @return the singleton registry instance for this JVM
+     */
     public static ItaraRegistry instance() {
         return INSTANCE;
     }
@@ -98,6 +102,9 @@ public class ItaraRegistry {
      * gets here, so a collision at this point indicates a registry-level
      * bug, not a config error; this class should not silently trust that
      * upstream validation ran.
+     *
+     * @param connectionId the connection's own id
+     * @param proxy        the connection's own proxy — local or remote alike
      */
     public void registerConnectionProxy(String connectionId, Object proxy) {
         Object existing = connectionProxies.putIfAbsent(connectionId, proxy);
@@ -120,6 +127,11 @@ public class ItaraRegistry {
      * targetIdentifier, never a node id (ADR 0023's reasoning, extended to
      * this index — the outbound-ambiguity rule decided a while back,
      * enforced here for the first time).
+     *
+     * @param fromNodeId       the local node with the outbound connection
+     * @param targetIdentifier the component or event-contract id this
+     *                         connection resolves to
+     * @param connectionId     the connection's own id
      */
     public void registerOutboundConnection(String fromNodeId, String targetIdentifier, String connectionId) {
         Map<String, String> fromCaller = outboundConnections.computeIfAbsent(
@@ -146,6 +158,9 @@ public class ItaraRegistry {
      * one deployment unit share a component id, so a collision here means
      * this was called twice for the same component, not a legitimate
      * second node.
+     *
+     * @param componentId the local node's own component id
+     * @param scope       the local node's own ComponentScope
      */
     public void registerComponentScope(String componentId, ComponentScope scope) {
         ComponentScope existing = componentScopes.putIfAbsent(componentId, scope);
@@ -163,6 +178,8 @@ public class ItaraRegistry {
      * component-facing code, which reach a scope only implicitly, by
      * already running inside one.
      *
+     * @param componentId the local node's own component id
+     * @return the local node's own ComponentScope
      * @throws IllegalStateException if componentId has no registered scope
      *         — not a local component in this JVM slice.
      */
@@ -183,6 +200,9 @@ public class ItaraRegistry {
      * getSelf()). This preserves Spring and framework compatibility: the
      * activator runs after the application context is ready, not during
      * premain.
+     *
+     * @param id             the component id being registered
+     * @param activatorClass the activator class to instantiate on first activation
      */
     public void registerActivator(String id, Class<? extends ItaraActivator> activatorClass) {
         activators.put(id, activatorClass);
@@ -193,6 +213,9 @@ public class ItaraRegistry {
      * Registers an alias so that lookups by aliasId delegate to canonicalId.
      * Used to map event contract ids to consumer component ids.
      * e.g. "order-events/order-placed" -> "order-consumer"
+     *
+     * @param aliasId     the id lookups will arrive under
+     * @param canonicalId the id to actually resolve through
      */
     public void registerAlias(String aliasId, String canonicalId) {
         aliases.put(aliasId, canonicalId);
@@ -209,6 +232,10 @@ public class ItaraRegistry {
      * Also usable directly, by connection id, for tests or anything else
      * that already knows exactly which connection it wants.
      *
+     * @param connectionId the connection id to look up
+     * @param type         the interface type to return the proxy as
+     * @param <T>          the interface type to return the proxy as
+     * @return the connection's own proxy
      * @throws IllegalStateException if no connection with this id was
      *         registered — a topology/wiring bug, not a runtime condition
      *         to recover from.
@@ -235,6 +262,11 @@ public class ItaraRegistry {
      * (ItaraLocalProxyHandler or ItaraProxyHandler) already owns everything
      * call-specific, built once at startup.
      *
+     * @param targetIdentifier the component id, or event-contract id, to
+     *                         resolve a connection to
+     * @param type             the interface type to return the proxy as
+     * @param <T>              the interface type to return the proxy as
+     * @return a proxy for the resolved connection
      * @throws IllegalStateException if no active ComponentScope, or if no
      *         connection is declared from the caller's own node to
      *         targetIdentifier — either a caller invoked from an unscoped
@@ -273,6 +305,10 @@ public class ItaraRegistry {
      * <p>computeIfAbsent guarantees a single instance even under concurrent
      * dispatch — all listeners share the same activated instance.
      *
+     * @param id   the local component's id
+     * @param type the interface type to return the instance as
+     * @param <T>  the interface type to return the instance as
+     * @return the raw activated instance
      * @throws IllegalStateException if the component is not a local component
      *         registered in this JVM slice.
      */
@@ -318,7 +354,7 @@ public class ItaraRegistry {
         }
     }
 
-// TODO(good-first-issue): activateAllLocal() gives boot-time
+    // TODO(good-first-issue): activateAllLocal() gives boot-time
     // fail-fast activation (see ItaraMain). It calls get(), which now
     // requires an active ComponentScope. It needs replacement: a
     // registry-maintained list of every registered proxy and dispatcher,

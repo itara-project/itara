@@ -21,6 +21,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransportMeta {
 
+    /** Required for deserialization. */
+    public TransportMeta() {}
+
     /**
      * The transport category — describes the communication protocol.
      * Examples: "http", "kafka", "amqp".
@@ -33,14 +36,30 @@ public class TransportMeta {
 
     private TransportCapabilities capabilities = TransportCapabilities.defaults();
 
-    /** @return the transport category, e.g. "http" */
+    /**
+     * Returns the transport category, e.g. "http".
+     *
+     * @return the transport category, e.g. "http"
+     */
     public String getType()                        { return type; }
-    /** @param type the transport category, e.g. "http" */
+    /**
+     * Sets the transport category, e.g. "http".
+     *
+     * @param type the transport category, e.g. "http"
+     */
     public void setType(String type)               { this.type = type; }
 
-    /** @return this transport's declared capabilities */
+    /**
+     * Returns this transport's declared capabilities.
+     *
+     * @return this transport's declared capabilities
+     */
     public TransportCapabilities getCapabilities() { return capabilities; }
-    /** @param c this transport's declared capabilities; null falls back to {@link TransportCapabilities#defaults()} */
+    /**
+     * Sets this transport's declared capabilities; null falls back to {@link TransportCapabilities#defaults()}.
+     *
+     * @param c this transport's declared capabilities; null falls back to {@link TransportCapabilities#defaults()}
+     */
     public void setCapabilities(TransportCapabilities c) {
         this.capabilities = c != null ? c : TransportCapabilities.defaults();
     }

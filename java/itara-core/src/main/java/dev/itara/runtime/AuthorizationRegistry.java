@@ -34,7 +34,11 @@ public class AuthorizationRegistry {
 
     private AuthorizationRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static AuthorizationRegistry instance() {
         return INSTANCE;
     }
@@ -43,6 +47,8 @@ public class AuthorizationRegistry {
      * Register an authorization factory.
      * Called by AuthorizationLoader during agent startup before any
      * connections are processed.
+     *
+     * @param factory the factory to register
      */
     public void registerFactory(ItaraAuthorizationFactory factory) {
         factories.put(factory.id().toLowerCase(), factory);

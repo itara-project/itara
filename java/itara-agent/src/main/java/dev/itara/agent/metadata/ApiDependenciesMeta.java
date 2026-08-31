@@ -27,16 +27,31 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiDependenciesMeta {
 
+    /** Required for deserialization. */
+    public ApiDependenciesMeta() {}
+
     private List<ApiDependency> calls = Collections.emptyList();
 
-    /** @return the API contracts this component depends on; never null */
+    /**
+     * Returns the API contracts this component depends on; never null.
+     *
+     * @return the API contracts this component depends on; never null
+     */
     public List<ApiDependency> getCalls() { return calls; }
-    /** @param calls the API contracts this component depends on; null is treated as empty */
+    /**
+     * Sets the API contracts this component depends on; null is treated as empty.
+     *
+     * @param calls the API contracts this component depends on; null is treated as empty
+     */
     public void setCalls(List<ApiDependency> calls) {
         this.calls = calls != null ? calls : Collections.emptyList();
     }
 
-    /** @return an instance with no declared API dependencies, for when the section is absent */
+    /**
+     * Returns an instance with no declared API dependencies, for when the section is absent.
+     *
+     * @return an instance with no declared API dependencies, for when the section is absent
+     */
     public static ApiDependenciesMeta ofEmpty() {
         return new ApiDependenciesMeta();
     }

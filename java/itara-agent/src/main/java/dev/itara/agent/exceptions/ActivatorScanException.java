@@ -8,12 +8,18 @@ package dev.itara.agent.exceptions;
  */
 public class ActivatorScanException extends RuntimeException {
 
-    /** @param message description of the scan failure */
+    /**
+     * Constructs a scan exception.
+     *
+     * @param message description of the scan failure
+     */
     public ActivatorScanException(String message) {
         super(message);
     }
 
     /**
+     * Constructs a scan exception with a cause.
+     *
      * @param message description of the scan failure
      * @param cause   the underlying cause
      */

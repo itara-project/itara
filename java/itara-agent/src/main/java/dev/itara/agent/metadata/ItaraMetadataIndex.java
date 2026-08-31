@@ -37,6 +37,7 @@ public class ItaraMetadataIndex {
 
     private static final Logger log = Logger.getLogger(ItaraMetadataIndex.class.getName());
 
+    /** JVM system property naming the directory of `.itara` metadata files. */
     public static final String METADATA_DIR_PROPERTY = "itara.metadata.dir";
 
     private static final TomlMapper MAPPER = new TomlMapper();
@@ -63,7 +64,11 @@ public class ItaraMetadataIndex {
     private ItaraMetadataIndex() {
     }
 
-    /** @return the singleton index instance */
+    /**
+     * Returns the singleton index instance.
+     *
+     * @return the singleton index instance
+     */
     public static ItaraMetadataIndex instance() {
         return INSTANCE;
     }
@@ -135,6 +140,8 @@ public class ItaraMetadataIndex {
      * Looks up the metadata for a version-independent artifact name
      * (e.g. "inventory-component").
      *
+     * @param artifactName the version-independent artifact name to look up
+     * @return the artifact's metadata, or empty if no entry exists for this name
      * @throws IllegalStateException if {@link #build()} has not been
      *                                called yet.
      */
@@ -152,6 +159,9 @@ public class ItaraMetadataIndex {
      *
      * <p>Returns the first match — component ids are expected to be unique
      * within a deployment's metadata directory.
+     *
+     * @param componentId the component id to look up
+     * @return the component's metadata, or empty if no matching entry exists
      */
     public Optional<MetadataFile> lookupByComponentId(String componentId) {
         ensureBuilt();
@@ -173,6 +183,9 @@ public class ItaraMetadataIndex {
      *
      * <p>Returns the first match — API ids are expected to be unique within
      * a deployment's metadata directory.
+     *
+     * @param apiId the API artifact id to look up
+     * @return the artifact's metadata, or empty if no matching entry exists
      */
     public Optional<MetadataFile> lookupByContractId(String apiId) {
         ensureBuilt();
@@ -200,9 +213,14 @@ public class ItaraMetadataIndex {
      * Derives the version-independent artifact name from a jar's file
      * name, for use as a lookup key into this index.
      *
-     *   inventory-component-0.1.0.jar  ->  inventory-component
-     *   gateway-0.1.0.jar                     ->  gateway
-     *   pricing-service.jar                   ->  pricing-service
+     * <pre>{@code
+     * inventory-component-0.1.0.jar  ->  inventory-component
+     * gateway-0.1.0.jar              ->  gateway
+     * pricing-service.jar            ->  pricing-service
+     * }</pre>
+     *
+     * @param jarFileName the jar's own file name, with or without its .jar extension
+     * @return the version-independent artifact name
      */
     public static String versionIndependentNameFromJar(String jarFileName) {
         String stem = stripExtension(jarFileName);

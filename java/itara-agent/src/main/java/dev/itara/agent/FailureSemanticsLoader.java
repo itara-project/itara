@@ -33,6 +33,9 @@ import java.util.logging.Logger;
  */
 public class FailureSemanticsLoader {
 
+    /** Not instantiated — all methods are static. */
+    private FailureSemanticsLoader() {}
+
     private static final Logger log = Logger.getLogger(FailureSemanticsLoader.class.getName());
 
     private static final String RESOURCE_PATH = "META-INF/itara/failure-semantics";

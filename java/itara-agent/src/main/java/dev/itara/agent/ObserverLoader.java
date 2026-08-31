@@ -20,10 +20,9 @@ import java.util.logging.Logger;
  * implementation, one per line. Lines starting with # are comments.
  *
  * <p>Example (in itara-agent.jar):
- * <pre>{@code
  *   # Default logging observer
  *   dev.itara.agent.observer.LoggingObserver
- * }</pre>
+ *
  * <p>The agent calls ObserverLoader.load() during premain, before any
  * connections are processed. Discovered observers are registered in
  * ObserverRegistry and receive events for the lifetime of the JVM.
@@ -32,6 +31,9 @@ import java.util.logging.Logger;
  * independently, and all receive every event.
  */
 public class ObserverLoader {
+
+    /** Not instantiated — all methods are static. */
+    private ObserverLoader() {}
 
     private static final Logger log = Logger.getLogger(ObserverLoader.class.getName());
 

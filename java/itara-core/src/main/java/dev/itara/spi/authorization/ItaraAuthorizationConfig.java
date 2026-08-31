@@ -24,6 +24,8 @@ public interface ItaraAuthorizationConfig {
      *
      * <p>Two configs with equal grouping keys share one authorization
      * instance. Two configs with unequal keys each get their own instance.
+     *
+     * @return the grouping key for this configuration
      */
     ItaraAuthorizationGroupingKey groupingKey();
 }

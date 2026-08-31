@@ -14,17 +14,36 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class RuntimeMeta {
 
+    /** Required for deserialization. */
+    public RuntimeMeta() {}
+
     private String language = "";
     private String compiler = "";
 
-    /** @return the implementation language, e.g. "java" */
+    /**
+     * Returns the implementation language, e.g. "java".
+     *
+     * @return the implementation language, e.g. "java"
+     */
     public String getLanguage() { return language; }
-    /** @param language the implementation language, e.g. "java" */
+    /**
+     * Sets the implementation language, e.g. "java".
+     *
+     * @param language the implementation language, e.g. "java"
+     */
     public void setLanguage(String language) { this.language = language; }
 
-    /** @return the compiler/language version used to build this artifact */
+    /**
+     * Returns the compiler/language version used to build this artifact.
+     *
+     * @return the compiler/language version used to build this artifact
+     */
     public String getCompiler() { return compiler; }
-    /** @param compiler the compiler/language version used to build this artifact */
+    /**
+     * Sets the compiler/language version used to build this artifact.
+     *
+     * @param compiler the compiler/language version used to build this artifact
+     */
     public void setCompiler(String compiler) { this.compiler = compiler; }
 
     @Override

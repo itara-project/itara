@@ -11,12 +11,18 @@ package dev.itara.agent.config;
  */
 public class ConfigurationException extends RuntimeException {
 
-    /** @param message description of the configuration error, with enough context to locate it */
+    /**
+     * Constructs a configuration exception.
+     *
+     * @param message description of the configuration error, with enough context to locate it
+     */
     public ConfigurationException(String message) {
         super(message);
     }
 
     /**
+     * Constructs a configuration exception with a cause.
+     *
      * @param message description of the configuration error, with enough context to locate it
      * @param cause   the underlying cause
      */

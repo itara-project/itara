@@ -6,10 +6,14 @@ package dev.itara.agent.exceptions;
  */
 public class ComponentDirectoryNotFoundException extends ActivatorScanException {
 
+    /** The component whose directory was expected. */
     private final String componentId;
+    /** The path that was expected to exist. */
     private final String expectedPath;
 
     /**
+     * Constructs a directory-not-found exception.
+     *
      * @param componentId  the component whose directory was expected
      * @param expectedPath the path that was expected to exist
      */
@@ -21,12 +25,20 @@ public class ComponentDirectoryNotFoundException extends ActivatorScanException 
         this.expectedPath = expectedPath;
     }
 
-    /** @return the component whose directory was expected */
+    /**
+     * Returns the component whose directory was expected.
+     *
+     * @return the component whose directory was expected
+     */
     public String getComponentId() {
         return componentId;
     }
 
-    /** @return the path that was expected to exist */
+    /**
+     * Returns the path that was expected to exist.
+     *
+     * @return the path that was expected to exist
+     */
     public String getExpectedPath() {
         return expectedPath;
     }

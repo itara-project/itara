@@ -31,5 +31,11 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface ContractMethod {
+
+    /**
+     * Whether this method is safe to retry.
+     *
+     * @return whether this method is safe to retry
+     */
     boolean idempotent() default false;
 }

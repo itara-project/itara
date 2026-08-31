@@ -37,13 +37,26 @@
                 <artifactId>maven-javadoc-plugin</artifactId>
             </plugin>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-gpg-plugin</artifactId>
-            </plugin>
-            <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>
+
+    <!-- GPG signing lives here, not in the plugins list above, so an
+         ordinary `mvn install` never touches GPG at all — no key needed,
+         no passphrase prompt. Only `mvn <goal> -Prelease` signs anything. -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

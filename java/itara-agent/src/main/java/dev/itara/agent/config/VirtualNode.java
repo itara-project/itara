@@ -38,14 +38,30 @@ public class VirtualNode extends Node {
         setKind(NodeKind.VIRTUAL);
     }
 
-    /** @return the event contract this channel carries */
+    /**
+     * Returns the event contract this channel carries.
+     *
+     * @return the event contract this channel carries
+     */
     public String getContract()              { return contract; }
-    /** @param contract the event contract this channel carries */
+    /**
+     * Sets the event contract this channel carries.
+     *
+     * @param contract the event contract this channel carries
+     */
     public void setContract(String contract) { this.contract = contract; }
 
-    /** @return the broker-specific channel address */
+    /**
+     * Returns the broker-specific channel address.
+     *
+     * @return the broker-specific channel address
+     */
     public String getAddress()             { return address; }
-    /** @param address the broker-specific channel address */
+    /**
+     * Sets the broker-specific channel address.
+     *
+     * @param address the broker-specific channel address
+     */
     public void setAddress(String address) { this.address = address; }
 
     /**

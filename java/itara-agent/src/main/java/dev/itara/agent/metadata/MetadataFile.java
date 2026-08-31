@@ -32,6 +32,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class MetadataFile {
 
+    /** Required for deserialization. */
+    public MetadataFile() {}
+
     private ArtifactMeta artifact;
     private RuntimeMeta runtime;
     private ItaraSpecMeta itara;
@@ -51,75 +54,179 @@ public class MetadataFile {
     private AuthorizationMeta authorization;
 
 
-    /** @return the required [artifact] section, or null if not yet set */
+    /**
+     * Returns the required [artifact] section, or null if not yet set.
+     *
+     * @return the required [artifact] section, or null if not yet set
+     */
     public ArtifactMeta getArtifact() { return artifact; }
-    /** @param artifact the required [artifact] section */
+    /**
+     * Sets the required [artifact] section.
+     *
+     * @param artifact the required [artifact] section
+     */
     public void setArtifact(ArtifactMeta artifact) { this.artifact = artifact; }
 
-    /** @return the optional [runtime] section, or null if absent */
+    /**
+     * Returns the optional [runtime] section, or null if absent.
+     *
+     * @return the optional [runtime] section, or null if absent
+     */
     public RuntimeMeta getRuntime() { return runtime; }
-    /** @param runtime the optional [runtime] section */
+    /**
+     * Sets the optional [runtime] section.
+     *
+     * @param runtime the optional [runtime] section
+     */
     public void setRuntime(RuntimeMeta runtime) { this.runtime = runtime; }
 
-    /** @return the optional [itara] section, or null if absent */
+    /**
+     * Returns the optional [itara] section, or null if absent.
+     *
+     * @return the optional [itara] section, or null if absent
+     */
     public ItaraSpecMeta getItara() { return itara; }
-    /** @param itara the optional [itara] section */
+    /**
+     * Sets the optional [itara] section.
+     *
+     * @param itara the optional [itara] section
+     */
     public void setItara(ItaraSpecMeta itara) { this.itara = itara; }
 
-    /** @return the optional [serializers] section, or null if absent */
+    /**
+     * Returns the optional [serializers] section, or null if absent.
+     *
+     * @return the optional [serializers] section, or null if absent
+     */
     public SerializersMeta getSerializers() { return serializers; }
-    /** @param serializers the optional [serializers] section */
+    /**
+     * Sets the optional [serializers] section.
+     *
+     * @param serializers the optional [serializers] section
+     */
     public void setSerializers(SerializersMeta serializers) { this.serializers = serializers; }
 
-    /** @return the optional [implemented-event-contracts] section; never null */
+    /**
+     * Returns the optional [implemented-event-contracts] section; never null.
+     *
+     * @return the optional [implemented-event-contracts] section; never null
+     */
     public ImplementedEventContractsMeta getImplementedEventContracts() {
         return implementedEventContracts;
     }
-    /** @param m the optional [implemented-event-contracts] section */
+    /**
+     * Sets the optional [implemented-event-contracts] section.
+     *
+     * @param m the optional [implemented-event-contracts] section
+     */
     public void setImplementedEventContracts(ImplementedEventContractsMeta m) {
         this.implementedEventContracts = m;
     }
 
-    /** @return the optional [methods] section; never null */
+    /**
+     * Returns the optional [methods] section; never null.
+     *
+     * @return the optional [methods] section; never null
+     */
     public MethodsMeta getMethods() { return methods; }
-    /** @param methods the optional [methods] section; null falls back to {@link MethodsMeta#ofEmpty()} */
+    /**
+     * Sets the optional [methods] section; null falls back to {@link MethodsMeta#ofEmpty()}.
+     *
+     * @param methods the optional [methods] section; null falls back to {@link MethodsMeta#ofEmpty()}
+     */
     public void setMethods(MethodsMeta methods) {
         this.methods = methods != null ? methods : MethodsMeta.ofEmpty();
     }
 
-    /** @return the optional [transport] section, or null if absent */
+    /**
+     * Returns the optional [transport] section, or null if absent.
+     *
+     * @return the optional [transport] section, or null if absent
+     */
     public TransportMeta getTransport()              { return transport; }
-    /** @param transport the optional [transport] section */
+    /**
+     * Sets the optional [transport] section.
+     *
+     * @param transport the optional [transport] section
+     */
     public void setTransport(TransportMeta transport){ this.transport = transport; }
 
-    /** @return the optional [failure-semantics] section, or null if absent */
+    /**
+     * Returns the optional [failure-semantics] section, or null if absent.
+     *
+     * @return the optional [failure-semantics] section, or null if absent
+     */
     public FailureSemanticsMeta getFailureSemantics()               { return failureSemantics; }
-    /** @param fs the optional [failure-semantics] section */
+    /**
+     * Sets the optional [failure-semantics] section.
+     *
+     * @param fs the optional [failure-semantics] section
+     */
     public void setFailureSemantics(FailureSemanticsMeta fs)        { this.failureSemantics = fs; }
 
-    /** @return the optional [api-dependencies] section, or null if absent */
+    /**
+     * Returns the optional [api-dependencies] section, or null if absent.
+     *
+     * @return the optional [api-dependencies] section, or null if absent
+     */
     public ApiDependenciesMeta getApiDependencies()                 { return apiDependencies; }
-    /** @param a the optional [api-dependencies] section */
+    /**
+     * Sets the optional [api-dependencies] section.
+     *
+     * @param a the optional [api-dependencies] section
+     */
     public void setApiDependencies(ApiDependenciesMeta a)           { this.apiDependencies = a; }
 
-    /** @return the optional [contract] section, or null if absent */
+    /**
+     * Returns the optional [contract] section, or null if absent.
+     *
+     * @return the optional [contract] section, or null if absent
+     */
     public ContractMeta getContract()               { return contract; }
-    /** @param contract the optional [contract] section */
+    /**
+     * Sets the optional [contract] section.
+     *
+     * @param contract the optional [contract] section
+     */
     public void setContract(ContractMeta contract)  { this.contract = contract; }
 
-    /** @return the optional [serializer] section, or null if absent */
+    /**
+     * Returns the optional [serializer] section, or null if absent.
+     *
+     * @return the optional [serializer] section, or null if absent
+     */
     public SerializerMeta getSerializer()               { return serializer; }
-    /** @param serializer the optional [serializer] section */
+    /**
+     * Sets the optional [serializer] section.
+     *
+     * @param serializer the optional [serializer] section
+     */
     public void setSerializer(SerializerMeta serializer){ this.serializer = serializer; }
 
-    /** @return the optional [authentication] section, or null if absent */
+    /**
+     * Returns the optional [authentication] section, or null if absent.
+     *
+     * @return the optional [authentication] section, or null if absent
+     */
     public AuthenticationMeta getAuthentication()                  { return authentication; }
-    /** @param authentication the optional [authentication] section */
+    /**
+     * Sets the optional [authentication] section.
+     *
+     * @param authentication the optional [authentication] section
+     */
     public void setAuthentication(AuthenticationMeta authentication) { this.authentication = authentication; }
 
-    /** @return the optional [authorization] section, or null if absent */
+    /**
+     * Returns the optional [authorization] section, or null if absent.
+     *
+     * @return the optional [authorization] section, or null if absent
+     */
     public AuthorizationMeta getAuthorization()                    { return authorization; }
-    /** @param authorization the optional [authorization] section */
+    /**
+     * Sets the optional [authorization] section.
+     *
+     * @param authorization the optional [authorization] section
+     */
     public void setAuthorization(AuthorizationMeta authorization)  { this.authorization = authorization; }
 
     @Override

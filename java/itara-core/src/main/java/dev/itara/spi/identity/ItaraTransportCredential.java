@@ -28,12 +28,24 @@ public final class ItaraTransportCredential {
         this.attributes = Collections.unmodifiableMap(new HashMap<>(builder.attributes));
     }
 
-    /** @return the credential mechanism identifier, e.g. "mtls-peer-certificate"; never null */
+    /**
+     * Returns the credential mechanism identifier, e.g. "mtls-peer-certificate"; never null.
+     *
+     * @return the credential mechanism identifier, e.g. "mtls-peer-certificate"; never null
+     */
     public String getMechanism() { return mechanism; }
-    /** @return the raw material for this credential, keyed by whatever convention this mechanism uses; never null */
+    /**
+     * Returns the raw material for this credential, keyed by whatever convention this mechanism uses; never null.
+     *
+     * @return the raw material for this credential, keyed by whatever convention this mechanism uses; never null
+     */
     public Map<String, Object> getAttributes() { return attributes; }
 
-    /** @return a new builder for an {@link ItaraTransportCredential} */
+    /**
+     * Returns a new builder for an {@link ItaraTransportCredential}.
+     *
+     * @return a new builder for an {@link ItaraTransportCredential}
+     */
     public static Builder builder() { return new Builder(); }
 
     /** Builder for {@link ItaraTransportCredential}. */
@@ -41,15 +53,30 @@ public final class ItaraTransportCredential {
         private String mechanism;
         private Map<String, Object> attributes = Collections.emptyMap();
 
-        /** @param mechanism the credential mechanism identifier; required */
+        /** Constructs a new, empty builder. */
+        public Builder() {}
+
+        /**
+         * Sets the credential mechanism identifier.
+         *
+         * @param mechanism the credential mechanism identifier; required
+         * @return this builder
+         */
         public Builder mechanism(String mechanism) { this.mechanism = mechanism; return this; }
-        /** @param attributes the raw material for this credential; null is treated as empty */
+        /**
+         * Sets the raw material for this credential.
+         *
+         * @param attributes the raw material for this credential; null is treated as empty
+         * @return this builder
+         */
         public Builder attributes(Map<String, Object> attributes) {
             this.attributes = (attributes != null) ? attributes : Collections.emptyMap();
             return this;
         }
 
         /**
+         * Builds the credential.
+         *
          * @return the built {@link ItaraTransportCredential}
          * @throws IllegalStateException if mechanism is null or empty
          */

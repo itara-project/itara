@@ -19,6 +19,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AuthorizationMeta {
 
+    /** Required for deserialization. */
+    public AuthorizationMeta() {}
+
     /**
      * The authorization mechanism category, e.g. "rbac", "opa", "noop".
      * Distinct from artifact.id, which is the unique identifier of a
@@ -26,9 +29,17 @@ public class AuthorizationMeta {
      */
     private String type;
 
-    /** @return the authorization mechanism category, e.g. "rbac", "opa" */
+    /**
+     * Returns the authorization mechanism category, e.g. "rbac", "opa".
+     *
+     * @return the authorization mechanism category, e.g. "rbac", "opa"
+     */
     public String getType() { return type; }
-    /** @param type the authorization mechanism category, e.g. "rbac", "opa" */
+    /**
+     * Sets the authorization mechanism category, e.g. "rbac", "opa".
+     *
+     * @param type the authorization mechanism category, e.g. "rbac", "opa"
+     */
     public void setType(String type) { this.type = type; }
 
     @Override

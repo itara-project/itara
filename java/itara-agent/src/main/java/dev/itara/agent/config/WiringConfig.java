@@ -58,32 +58,63 @@ import java.util.Set;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WiringConfig {
 
+    /** Constructs an empty wiring config. Populated via setters by Jackson. */
+    public WiringConfig() {}
+
     private List<Node> nodes = new ArrayList<>();
     private List<ConnectionEntry> connections = new ArrayList<>();
     private List<String> localNodeIds = new ArrayList<>();
 
-    /** @return every node declared in this config; never null */
+    /**
+     * Returns every node declared in this config; never null.
+     *
+     * @return every node declared in this config; never null
+     */
     public List<Node> getNodes() { return nodes; }
-    /** @param nodes every node declared in this config; null is treated as empty */
+    /**
+     * Sets every node declared in this config; null is treated as empty.
+     *
+     * @param nodes every node declared in this config; null is treated as empty
+     */
     public void setNodes(List<Node> nodes) {
         this.nodes = nodes != null ? nodes : new ArrayList<>();
     }
 
-    /** @return every connection declared in this config; never null */
+    /**
+     * Returns every connection declared in this config; never null.
+     *
+     * @return every connection declared in this config; never null
+     */
     public List<ConnectionEntry> getConnections() { return connections; }
-    /** @param connections every connection declared in this config; null is treated as empty */
+    /**
+     * Sets every connection declared in this config; null is treated as empty.
+     *
+     * @param connections every connection declared in this config; null is treated as empty
+     */
     public void setConnections(List<ConnectionEntry> connections) {
         this.connections = connections != null ? connections : new ArrayList<>();
     }
 
-    /** @return the ids of the nodes local to this JVM slice */
+    /**
+     * Returns the ids of the nodes local to this JVM slice.
+     *
+     * @return the ids of the nodes local to this JVM slice
+     */
     public List<String> getLocalNodeIds() { return localNodeIds; }
-    /** @param localNodeIds the ids of the nodes local to this JVM slice */
+    /**
+     * Sets the ids of the nodes local to this JVM slice.
+     *
+     * @param localNodeIds the ids of the nodes local to this JVM slice
+     */
     public void setLocalNodeIds(List<String> localNodeIds) {
         this.localNodeIds = localNodeIds;
     }
 
-    /** @return every {@link ComponentNode} in {@link #getNodes()} */
+    /**
+     * Returns every {@link ComponentNode} in {@link #getNodes()}.
+     *
+     * @return every {@link ComponentNode} in {@link #getNodes()}
+     */
     public List<ComponentNode> componentNodes() {
         return nodes.stream()
                 .filter(n -> n instanceof ComponentNode)
@@ -91,7 +122,11 @@ public class WiringConfig {
                 .toList();
     }
 
-    /** @return every {@link VirtualNode} in {@link #getNodes()} */
+    /**
+     * Returns every {@link VirtualNode} in {@link #getNodes()}.
+     *
+     * @return every {@link VirtualNode} in {@link #getNodes()}
+     */
     public List<VirtualNode> virtualNodes() {
         return nodes.stream()
                 .filter(n -> n instanceof VirtualNode)
@@ -130,6 +165,8 @@ public class WiringConfig {
     }
 
     /**
+     * Resolves a component node's id to the component id it's an instance of.
+     *
      * @param nodeId a component node's id
      * @return the component id that node is an instance of
      * @throws IllegalStateException if no component node with this id exists
@@ -143,7 +180,12 @@ public class WiringConfig {
                         "[Itara] Cannot find component node for nodeId '" + nodeId + "'"));
     }
 
-    /** @return the node with this id, or empty if none exists */
+    /**
+     * Returns the node with this id, or empty if none exists.
+     *
+     * @param nodeId the node id to look up
+     * @return the node with this id, or empty if none exists
+     */
     public Optional<Node> findNode(String nodeId) {
         return nodes.stream()
                 .filter(n -> n.getId().equals(nodeId))
@@ -153,6 +195,9 @@ public class WiringConfig {
     /**
      * Returns the VirtualNodeEntry for the given node id, or empty if it is
      * a component node (or not present at all).
+     *
+     * @param nodeId the node id to look up
+     * @return the virtual node with this id, or empty if none exists
      */
     public Optional<VirtualNode> findVirtualNode(String nodeId) {
         return findNode(nodeId)
@@ -162,6 +207,9 @@ public class WiringConfig {
 
     /**
      * Returns true if the given node id refers to a virtual node.
+     *
+     * @param nodeId the node id to check
+     * @return true if the given node id refers to a virtual node
      */
     public boolean isVirtualNode(String nodeId) {
         return findNode(nodeId)
@@ -169,12 +217,21 @@ public class WiringConfig {
                 .orElse(false);
     }
 
-    /** @return true if this node's id is among {@link #getLocalNodeIds()} */
+    /**
+     * Returns true if this node's id is among {@link #getLocalNodeIds()}.
+     *
+     * @param node the node to check
+     * @return true if this node's id is among {@link #getLocalNodeIds()}
+     */
     public boolean isNodeLocal(Node node) {
         return localNodeIds.contains(node.getId());
     }
 
-    /** @return every {@link ComponentNode} local to this JVM slice */
+    /**
+     * Returns every {@link ComponentNode} local to this JVM slice.
+     *
+     * @return every {@link ComponentNode} local to this JVM slice
+     */
     public List<ComponentNode> getLocalNodes() {
         return componentNodes().stream()
                 .filter(this::isNodeLocal)

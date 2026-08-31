@@ -17,6 +17,7 @@ import java.util.Map;
  */
 public final class CallTargetPropagation {
 
+    /** Header carrying the propagated method name. */
     public static final String HEADER_TARGET_METHOD    = "x-itara-target-method";
 
     private CallTargetPropagation() {}

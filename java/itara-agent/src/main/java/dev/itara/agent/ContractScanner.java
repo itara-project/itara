@@ -27,10 +27,13 @@ import java.util.logging.Logger;
  *
  * <p>The agent uses the discovered Class objects to generate proxy types
  * for remote connections. The component id is read from the
- * @ComponentInterface annotation on each interface — it must match
+ * {@code @ComponentInterface} annotation on each interface — it must match
  * the component id used in the wiring config.
  */
 public class ContractScanner {
+
+    /** Not instantiated — all methods are static. */
+    private ContractScanner() {}
 
     private static final Logger log = Logger.getLogger(ContractScanner.class.getName());
 
@@ -39,6 +42,7 @@ public class ContractScanner {
     /**
      * Scans the classpath for META-INF/itara/contract descriptor files.
      *
+     * @param classLoader the classloader to scan for descriptor resources
      * @return Map of component-id -> contract interface class
      */
     public static Map<String, Class<?>> scan(ClassLoader classLoader) {

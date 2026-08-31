@@ -23,6 +23,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransportCapabilities {
 
+    /** Required for deserialization. */
+    public TransportCapabilities() {}
+
     /**
      * Whether this transport can enforce the per-call timeout natively —
      * i.e. abort an in-flight call when the timeout passed to send() expires.
@@ -40,19 +43,37 @@ public class TransportCapabilities {
     @JsonProperty("externally-interruptible")
     private boolean externallyInterruptible = true;
 
-    /** @return whether this transport can enforce the per-call timeout natively */
+    /**
+     * Returns whether this transport can enforce the per-call timeout natively.
+     *
+     * @return whether this transport can enforce the per-call timeout natively
+     */
     public boolean isNativeCallTimeout()       { return nativeCallTimeout; }
-    /** @param v whether this transport can enforce the per-call timeout natively */
+    /**
+     * Sets whether this transport can enforce the per-call timeout natively.
+     *
+     * @param v whether this transport can enforce the per-call timeout natively
+     */
     public void setNativeCallTimeout(boolean v){ this.nativeCallTimeout = v; }
 
-    /** @return whether this transport is safe to interrupt externally on timeout */
+    /**
+     * Returns whether this transport is safe to interrupt externally on timeout.
+     *
+     * @return whether this transport is safe to interrupt externally on timeout
+     */
     public boolean isExternallyInterruptible()       { return externallyInterruptible; }
-    /** @param v whether this transport is safe to interrupt externally on timeout */
+    /**
+     * Sets whether this transport is safe to interrupt externally on timeout.
+     *
+     * @param v whether this transport is safe to interrupt externally on timeout
+     */
     public void setExternallyInterruptible(boolean v){ this.externallyInterruptible = v; }
 
     /**
      * Returns a capabilities instance with both fields set to their defaults.
      * Used when the [transport.capabilities] section is absent from the file.
+     *
+     * @return a capabilities instance with both fields set to their defaults
      */
     public static TransportCapabilities defaults() {
         return new TransportCapabilities();

@@ -42,9 +42,14 @@ import java.util.regex.Pattern;
  */
 public class ConfigLoader {
 
+    /** Not instantiated — all methods are static. */
+    private ConfigLoader() {}
+
     private static final Logger log = Logger.getLogger(ConfigLoader.class.getName());
 
+    /** JVM system property naming the wiring config file path. */
     public static final String CONFIG_PROPERTY = "itara.config";
+    /** JVM system property naming this JVM slice's local node ids. */
     public static final String NODES_PROPERTY = "itara.nodes";
 
     /** Matches ${VAR_NAME} and ${VAR_NAME:-default} */
@@ -60,6 +65,7 @@ public class ConfigLoader {
     /**
      * Loads the wiring config from the path specified by -Ditara.config.
      *
+     * @return the loaded and validated wiring config
      * @throws IllegalStateException  if the system property is not set
      * @throws IOException            if the file cannot be read
      * @throws ConfigurationException if the YAML is malformed or required
@@ -187,7 +193,7 @@ public class ConfigLoader {
      * Substitutes ${VAR:-default} and ${VAR} patterns in the raw YAML
      * string before it is handed to the YAML parser.
      *
-     * Substitution happens on the raw string so the parser always sees
+     * <p>Substitution happens on the raw string so the parser always sees
      * clean, well-typed content. A port substituted from an env var
      * arrives as a plain integer string, which Jackson coerces to int.
      */

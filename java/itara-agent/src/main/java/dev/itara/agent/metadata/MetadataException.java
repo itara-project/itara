@@ -10,12 +10,18 @@ package dev.itara.agent.metadata;
  */
 public class MetadataException extends RuntimeException {
 
-    /** @param message description of the metadata resolution failure */
+    /**
+     * Constructs a metadata exception.
+     *
+     * @param message description of the metadata resolution failure
+     */
     public MetadataException(String message) {
         super(message);
     }
 
     /**
+     * Constructs a metadata exception with a cause.
+     *
      * @param message description of the metadata resolution failure
      * @param cause   the underlying cause
      */

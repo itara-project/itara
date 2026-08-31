@@ -19,6 +19,13 @@ package dev.itara.spi.authentication;
  */
 public interface ItaraAuthenticationGroupingKey {
 
+    /**
+     * Compares this grouping key against another.
+     *
+     * @param other the object to compare against
+     * @return true if {@code other} is a grouping key that should share
+     *         the same authentication instance as this one
+     */
     @Override
     boolean equals(Object other);
 

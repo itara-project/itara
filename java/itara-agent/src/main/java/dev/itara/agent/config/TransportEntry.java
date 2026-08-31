@@ -34,6 +34,9 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransportEntry {
 
+    /** Required for deserialization. */
+    public TransportEntry() {}
+
     /** The transport type identifier. Required. */
     private String id;
 
@@ -46,19 +49,43 @@ public class TransportEntry {
     @JsonSetter(nulls = Nulls.SKIP)
     private Map<String, String> params = Collections.emptyMap();
 
-    /** @return the transport type identifier */
+    /**
+     * Returns the transport type identifier.
+     *
+     * @return the transport type identifier
+     */
     public String getId()                  { return id; }
-    /** @param id the transport type identifier */
+    /**
+     * Sets the transport type identifier.
+     *
+     * @param id the transport type identifier
+     */
     public void setId(String id)           { this.id = id; }
 
-    /** @return whether the transport should enforce the per-attempt timeout natively */
+    /**
+     * Returns whether the transport should enforce the per-attempt timeout natively.
+     *
+     * @return whether the transport should enforce the per-attempt timeout natively
+     */
     public boolean isHandleTimeout()       { return handleTimeout; }
-    /** @param h whether the transport should enforce the per-attempt timeout natively */
+    /**
+     * Sets whether the transport should enforce the per-attempt timeout natively.
+     *
+     * @param h whether the transport should enforce the per-attempt timeout natively
+     */
     public void setHandleTimeout(boolean h){ this.handleTimeout = h; }
 
-    /** @return transport-specific parameters; never null */
+    /**
+     * Returns transport-specific parameters; never null.
+     *
+     * @return transport-specific parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
-    /** @param params transport-specific parameters; null is treated as empty */
+    /**
+     * Sets transport-specific parameters; null is treated as empty.
+     *
+     * @param params transport-specific parameters; null is treated as empty
+     */
     public void setParams(Map<String, String> params) {
         this.params = params != null ? params : Collections.emptyMap();
     }

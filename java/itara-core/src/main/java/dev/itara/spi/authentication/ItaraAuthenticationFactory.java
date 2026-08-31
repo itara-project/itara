@@ -28,6 +28,8 @@ public interface ItaraAuthenticationFactory {
     /**
      * The type identifier this factory handles. Must match the 'id'
      * field in the connection's authentication block. Case-insensitive.
+     *
+     * @return the type identifier this factory handles
      */
     String id();
 

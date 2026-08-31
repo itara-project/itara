@@ -12,12 +12,15 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  *
  * <p>Example TOML:
  * <pre>{@code
- *   [authentication]
- *   type = "mtls"
+ * [authentication]
+ * type = "mtls"
  * }</pre>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AuthenticationMeta {
+
+    /** Required for deserialization. */
+    public AuthenticationMeta() {}
 
     /**
      * The authentication mechanism category, e.g. "mtls", "jwt", "noop".
@@ -26,9 +29,17 @@ public class AuthenticationMeta {
      */
     private String type;
 
-    /** @return the authentication mechanism category, e.g. "mtls", "jwt" */
+    /**
+     * Returns the authentication mechanism category, e.g. "mtls", "jwt".
+     *
+     * @return the authentication mechanism category, e.g. "mtls", "jwt"
+     */
     public String getType() { return type; }
-    /** @param type the authentication mechanism category, e.g. "mtls", "jwt" */
+    /**
+     * Sets the authentication mechanism category, e.g. "mtls", "jwt".
+     *
+     * @param type the authentication mechanism category, e.g. "mtls", "jwt"
+     */
     public void setType(String type) { this.type = type; }
 
     @Override

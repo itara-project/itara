@@ -46,6 +46,9 @@ public interface ItaraAuthentication {
      * @param target The operation being called — e.g. for an
      *               implementation that needs to set an audience claim
      *               on an outbound token.
+     * @return header entries to merge into the outbound request; an empty
+     *         map if this implementation has nothing to add
+     * @throws Exception if producing the assertion fails
      */
     Map<String, String> produceAssertion(ItaraAuthenticationConfig config, ItaraCallTarget target) throws Exception;
 
@@ -67,6 +70,9 @@ public interface ItaraAuthentication {
      *                           surfaced (e.g. a TLS peer certificate),
      *                           or null if the transport has nothing to
      *                           surface.
+     * @return the acceptance or rejection outcome
+     * @throws Exception if verification fails unexpectedly (distinct from
+     *                   an ordinary rejection, which is not an exception)
      */
     AuthenticationOutcome authenticate(ItaraAuthenticationConfig config, Map<String, String> headers,
                                        ItaraTransportCredential transportCredential) throws Exception;

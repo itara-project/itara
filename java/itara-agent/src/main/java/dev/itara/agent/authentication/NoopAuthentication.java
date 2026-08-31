@@ -22,6 +22,9 @@ import java.util.Map;
  */
 public class NoopAuthentication implements ItaraAuthentication {
 
+    /** Constructs the no-op authentication implementation. */
+    public NoopAuthentication() {}
+
     @Override
     public Map<String, String> produceAssertion(ItaraAuthenticationConfig config, ItaraCallTarget target) {
         return Collections.emptyMap();
@@ -38,6 +41,9 @@ public class NoopAuthentication implements ItaraAuthentication {
      * shares one grouping key (and therefore one instance).
      */
     public static final class Factory implements ItaraAuthenticationFactory {
+
+        /** Constructs the factory for the no-op authentication implementation. */
+        public Factory() {}
 
         @Override
         public String id() {

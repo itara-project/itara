@@ -20,6 +20,7 @@ import java.util.Objects;
  */
 public final class DispatchKeyPropagation {
 
+    /** Header carrying the encoded dispatch key. */
     public static final String HEADER_DISPATCH_KEY = "x-itara-dispatch-key";
 
     private DispatchKeyPropagation() {

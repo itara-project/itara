@@ -7,10 +7,14 @@ package dev.itara.agent.exceptions;
  */
 public class ActivatorIdentityMismatchException extends ActivatorScanException {
 
+    /** The component id implied by the directory name. */
     private final String expectedComponentId;
+    /** The component id the activator was actually for. */
     private final String actualComponentId;
 
     /**
+     * Constructs an identity-mismatch exception.
+     *
      * @param expectedComponentId the component id implied by the directory name
      * @param actualComponentId   the component id the activator was actually for
      * @param directoryPath       the directory that was scanned
@@ -24,12 +28,20 @@ public class ActivatorIdentityMismatchException extends ActivatorScanException {
         this.actualComponentId = actualComponentId;
     }
 
-    /** @return the component id implied by the directory name */
+    /**
+     * Returns the component id implied by the directory name.
+     *
+     * @return the component id implied by the directory name
+     */
     public String getExpectedComponentId() {
         return expectedComponentId;
     }
 
-    /** @return the component id the activator was actually for */
+    /**
+     * Returns the component id the activator was actually for.
+     *
+     * @return the component id the activator was actually for
+     */
     public String getActualComponentId() {
         return actualComponentId;
     }

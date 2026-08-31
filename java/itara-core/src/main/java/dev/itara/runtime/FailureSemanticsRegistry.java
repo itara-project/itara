@@ -30,7 +30,11 @@ public class FailureSemanticsRegistry {
 
     private FailureSemanticsRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static FailureSemanticsRegistry instance() {
         return INSTANCE;
     }
@@ -38,6 +42,8 @@ public class FailureSemanticsRegistry {
     /**
      * Register a failure semantics factory.
      * Called by the agent at startup before any connections are processed.
+     *
+     * @param factory the factory to register
      */
     public void register(ItaraFailureSemanticsFactory factory) {
         factories.put(factory.type().toLowerCase(), factory);
@@ -49,6 +55,9 @@ public class FailureSemanticsRegistry {
      * Create a per-connection {@link ItaraFailureSemantics} instance for
      * the given type identifier and connection config.
      *
+     * @param type   the failure semantics type identifier
+     * @param config the connection's failure semantics config
+     * @return a new, per-connection strategy instance
      * @throws IllegalStateException if no factory is registered for the type
      * @throws Exception if the factory rejects the config as invalid
      */
@@ -65,6 +74,9 @@ public class FailureSemanticsRegistry {
 
     /**
      * Returns true if a factory is registered for the given type.
+     *
+     * @param type the failure semantics type identifier
+     * @return true if a factory is registered for the given type
      */
     public boolean has(String type) {
         return factories.containsKey(type.toLowerCase());

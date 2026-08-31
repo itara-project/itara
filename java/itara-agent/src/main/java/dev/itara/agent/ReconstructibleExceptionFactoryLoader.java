@@ -22,10 +22,9 @@ import java.util.logging.Logger;
  * Lines starting with # are comments.
  *
  * <p>Example (in calculator-api.jar):
- * <pre>{@code
  *   # Exception factory for the calculator contract
  *   com.example.calculator.CalculatorReconstructibleExceptionFactory
- * }</pre>
+ *
  * <p>Unlike failure semantics, there is no built-in default — absence of a
  * factory for a contract is valid and means reconstruction is not supported
  * for that contract. The proxy falls back to ItaraRemoteException silently.
@@ -34,6 +33,9 @@ import java.util.logging.Logger;
  * before any connections are processed.
  */
 public class ReconstructibleExceptionFactoryLoader {
+
+    /** Not instantiated — all methods are static. */
+    private ReconstructibleExceptionFactoryLoader() {}
 
     private static final Logger log = Logger.getLogger(
             ReconstructibleExceptionFactoryLoader.class.getName());

@@ -6,10 +6,14 @@ package dev.itara.agent.exceptions;
  */
 public class ComponentsDirectoryMisconfiguredException extends ActivatorScanException {
 
+    /** The environment variable that was set. */
     private final String envVarName;
+    /** The path it was set to. */
     private final String configuredPath;
 
     /**
+     * Constructs a misconfiguration exception.
+     *
      * @param envVarName     the environment variable that was set
      * @param configuredPath the path it was set to
      */
@@ -20,12 +24,20 @@ public class ComponentsDirectoryMisconfiguredException extends ActivatorScanExce
         this.configuredPath = configuredPath;
     }
 
-    /** @return the environment variable that was set */
+    /**
+     * Returns the environment variable that was set.
+     *
+     * @return the environment variable that was set
+     */
     public String getEnvVarName() {
         return envVarName;
     }
 
-    /** @return the path it was set to */
+    /**
+     * Returns the path it was set to.
+     *
+     * @return the path it was set to
+     */
     public String getConfiguredPath() {
         return configuredPath;
     }

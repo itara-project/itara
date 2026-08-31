@@ -23,10 +23,9 @@ import java.util.logging.Logger;
  * instances on demand. Lines starting with # are comments.
  *
  * <p>Example (in itara-serializer-json.jar):
- * <pre>{@code
  *   # JSON serializer for Itara
  *   dev.itara.serializer.json.JsonSerializerFactory
- * }</pre>
+ *
  * <p>The agent calls SerializerLoader.load() during premain, before any
  * connections are processed. Discovered factories are registered in
  * SerializerRegistry and are available for the rest of startup.
@@ -35,6 +34,9 @@ import java.util.logging.Logger;
  * Each jar provides its own META-INF/itara/serializer descriptor.
  */
 public class SerializerLoader {
+
+    /** Not instantiated — all methods are static. */
+    private SerializerLoader() {}
 
     private static final Logger log = Logger.getLogger(SerializerLoader.class.getName());
 
@@ -58,8 +60,8 @@ public class SerializerLoader {
 
         while (resources.hasMoreElements()) {
             URL url = resources.nextElement();
-           log.fine("[Itara] found serializer descriptor url=" + url);
-           loadFromDescriptor(url, classLoader);
+            log.fine("[Itara] found serializer descriptor url=" + url);
+            loadFromDescriptor(url, classLoader);
         }
     }
 

@@ -87,6 +87,34 @@ public class ItaraProxyHandler implements InvocationHandler {
     private final ItaraReconstructibleExceptionFactory exceptionFactory; // null if not registered
     private final ComponentScope fromScope; // the local calling node — opened before CALL_SENT, per ADR 0021
 
+    /**
+     * Constructs a proxy for a single outbound remote connection.
+     *
+     * @param dispatchKey          identifies which declared connection this
+     *                             handler serves; propagated in headers so
+     *                             the callee's dispatcher can be selected
+     * @param componentId          the target component this handler calls
+     * @param nodeId               the target node this handler calls
+     * @param serializer           the connection's own serializer instance
+     * @param serializerConfig     the connection's own parsed serializer config
+     * @param transport            the connection's own transport instance
+     * @param transportId          the transport type carrying this connection —
+     *                             used for observability
+     * @param transportConfig      the connection's own parsed transport config
+     * @param exchangePattern      the pattern this connection was wired under
+     * @param failureSemantics     the connection's own failure semantics instance
+     * @param authentication       the connection's own authentication instance
+     * @param authenticationConfig the connection's own parsed authentication config
+     * @param apiMetadata          the target API artifact's parsed `.itara`
+     *                             metadata, or null if unavailable — used to
+     *                             derive the non-idempotent method set
+     * @param exceptionFactory     the reconstructible exception factory
+     *                             registered for this contract, or null if
+     *                             none is registered
+     * @param fromScope            the local calling node's own ComponentScope —
+     *                             captured here, not read from
+     *                             ComponentScope.current() at call time
+     */
     public ItaraProxyHandler(String dispatchKey,
                              String componentId,
                              String nodeId,

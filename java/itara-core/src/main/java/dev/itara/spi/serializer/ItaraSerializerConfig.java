@@ -22,6 +22,8 @@ public interface ItaraSerializerConfig {
      *
      * <p>Two configs with equal grouping keys share one serializer instance.
      * Two configs with unequal keys each get their own instance.
+     *
+     * @return the grouping key for this configuration
      */
     ItaraSerializerGroupingKey groupingKey();
 }

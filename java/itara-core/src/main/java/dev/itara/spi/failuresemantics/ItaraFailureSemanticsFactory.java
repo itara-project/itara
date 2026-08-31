@@ -22,6 +22,8 @@ public interface ItaraFailureSemanticsFactory {
      * The type identifier this factory handles.
      * Must match the 'id' field in the connection's failureSemantics block
      * in the wiring config. Case-insensitive.
+     *
+     * @return the type identifier this factory handles
      */
     String type();
 

@@ -28,6 +28,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContractMeta {
 
+    /** Required for deserialization. */
+    public ContractMeta() {}
+
     /**
      * The declared message format, e.g. "protobuf". Empty string is
      * treated identically to the section being absent entirely — both
@@ -36,9 +39,17 @@ public class ContractMeta {
     @JsonProperty("message-format")
     private String messageFormat = "";
 
-    /** @return the declared message format, or empty string if none is declared */
+    /**
+     * Returns the declared message format, or empty string if none is declared.
+     *
+     * @return the declared message format, or empty string if none is declared
+     */
     public String getMessageFormat() { return messageFormat; }
-    /** @param messageFormat the declared message format; null is treated as empty */
+    /**
+     * Sets the declared message format; null is treated as empty.
+     *
+     * @param messageFormat the declared message format; null is treated as empty
+     */
     public void setMessageFormat(String messageFormat) {
         this.messageFormat = messageFormat != null ? messageFormat : "";
     }
@@ -51,6 +62,8 @@ public class ContractMeta {
      * empty-string declaration — callers should use this rather than
      * checking getMessageFormat() directly, so the absent/empty
      * equivalence doesn't have to be remembered at every call site.
+     *
+     * @return true if this contract declares a message format
      */
     public boolean hasMessageFormat() {
         return !messageFormat.isBlank();

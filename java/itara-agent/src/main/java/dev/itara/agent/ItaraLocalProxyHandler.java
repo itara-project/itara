@@ -67,7 +67,7 @@ import java.util.logging.Logger;
  * path uses — same SPI interfaces, same per-call config passing, same
  * ADR 0027 ordering (authenticate, then authorize, before invocation) —
  * just without a wire in between. The caller's produceAssertion() result
- * (a Map<String,String>, matching the remote path's shape) is handed
+ * (a {@code Map<String,String>}, matching the remote path's shape) is handed
  * straight to the callee's authenticate() as an in-memory reference; there
  * is no header text to encode it into or decode it back out of, since
  * nothing here ever crosses a transport.
@@ -116,6 +116,25 @@ public class ItaraLocalProxyHandler implements InvocationHandler {
     private final ItaraAuthorization authorization;
     private final ItaraAuthorizationConfig authorizationConfig;
 
+    /**
+     * Constructs a proxy for a single direct connection.
+     *
+     * @param connectionId               this direct connection's own id
+     * @param componentId                the target component this handler invokes
+     * @param registry                   the shared ItaraRegistry, for the raw
+     *                                   component instance lookup at call time
+     * @param targetScope                the target component's own ComponentScope
+     * @param fromScope                  the calling node's own ComponentScope —
+     *                                   captured here, not read from
+     *                                   ComponentScope.current() at call time
+     * @param callerAuthentication       the caller-side authentication instance
+     * @param callerAuthenticationConfig the caller-side parsed authentication config
+     * @param calleeAuthentication       the callee-side authentication instance
+     * @param calleeAuthenticationConfig the callee-side parsed authentication config
+     * @param authorization              the authorization instance — callee-only,
+     *                                   no caller-side counterpart
+     * @param authorizationConfig        the parsed authorization config
+     */
     public ItaraLocalProxyHandler(String connectionId,
                                   String componentId,
                                   ItaraRegistry registry,
@@ -198,7 +217,7 @@ public class ItaraLocalProxyHandler implements InvocationHandler {
 
                 // Produce the identity assertion under the caller's own scope,
                 // once per call — no retries exist on this path, so "once" is
-                // simply "before crossing into the target" (ADR 0024's remote
+                // simply "before crossing into the target" (ADR 0027's remote
                 // rule collapses to this in the absence of failure semantics).
                 Map<String, String> assertion;
                 try {
@@ -240,7 +259,7 @@ public class ItaraLocalProxyHandler implements InvocationHandler {
                                 authnOutcome.getRejectionReason());
                     }
 
-                    // Authorize (§16.5) — after authentication, before CALL_RECEIVED (ADR 0024)
+                    // Authorize (§16.5) — after authentication, before CALL_RECEIVED (ADR 0027)
                     AuthorizationDecision authzDecision;
                     try {
                         authzDecision = authorization.authorize(authorizationConfig, authnOutcome.getIdentity(), target, assertion);

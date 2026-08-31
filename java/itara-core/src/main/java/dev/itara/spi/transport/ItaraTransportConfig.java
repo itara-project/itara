@@ -22,6 +22,8 @@ public interface ItaraTransportConfig {
      *
      * <p>Two configs with equal grouping keys share one transport instance.
      * Two configs with unequal keys each get their own instance.
+     *
+     * @return the grouping key for this configuration
      */
     ItaraTransportGroupingKey groupingKey();
 }

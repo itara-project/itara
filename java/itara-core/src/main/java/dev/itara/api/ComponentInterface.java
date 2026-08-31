@@ -26,6 +26,8 @@ public @interface ComponentInterface {
     /**
      * This component's id. Must be unique across the topology and match
      * the component id used in the wiring config.
+     *
+     * @return this component's id
      */
     String id();
 }

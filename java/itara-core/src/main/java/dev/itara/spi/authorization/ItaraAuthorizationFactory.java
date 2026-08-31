@@ -26,6 +26,8 @@ public interface ItaraAuthorizationFactory {
     /**
      * The type identifier this factory handles. Must match the 'id'
      * field in the connection's authorization block. Case-insensitive.
+     *
+     * @return the type identifier this factory handles
      */
     String id();
 

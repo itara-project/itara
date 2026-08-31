@@ -33,6 +33,8 @@ public interface DispatchHandler {
     /**
      * The connection this handler serves. Fixed at construction — never
      * changes for the lifetime of this handler.
+     *
+     * @return the connection this handler serves
      */
     String getDispatchKey();
 

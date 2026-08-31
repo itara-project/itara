@@ -11,20 +11,31 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  *
  * <p>Example TOML:
  * <pre>{@code
- *   [failure-semantics]
+ * [failure-semantics]
  *
- *   [failure-semantics.capabilities]
- *   supports-external-timeout = true
+ * [failure-semantics.capabilities]
+ * supports-external-timeout = true
  * }</pre>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FailureSemanticsMeta {
 
+    /** Required for deserialization. */
+    public FailureSemanticsMeta() {}
+
     private FailureSemanticsCapabilities capabilities = FailureSemanticsCapabilities.defaults();
 
-    /** @return this implementation's declared capabilities */
+    /**
+     * Returns this implementation's declared capabilities.
+     *
+     * @return this implementation's declared capabilities
+     */
     public FailureSemanticsCapabilities getCapabilities() { return capabilities; }
-    /** @param c this implementation's declared capabilities; null falls back to {@link FailureSemanticsCapabilities#defaults()} */
+    /**
+     * Sets this implementation's declared capabilities; null falls back to {@link FailureSemanticsCapabilities#defaults()}.
+     *
+     * @param c this implementation's declared capabilities; null falls back to {@link FailureSemanticsCapabilities#defaults()}
+     */
     public void setCapabilities(FailureSemanticsCapabilities c) {
         this.capabilities = c != null ? c : FailureSemanticsCapabilities.defaults();
     }

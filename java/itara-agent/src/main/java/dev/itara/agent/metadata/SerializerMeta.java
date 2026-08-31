@@ -22,6 +22,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SerializerMeta {
 
+    /** Required for deserialization. */
+    public SerializerMeta() {}
+
     /**
      * The serialization category — describes what this implementation
      * serializes to/from, e.g. "json", "protobuf". Distinct from
@@ -32,14 +35,30 @@ public class SerializerMeta {
 
     private SerializerCapabilities capabilities = SerializerCapabilities.defaults();
 
-    /** @return the serialization category, e.g. "json", "protobuf" */
+    /**
+     * Returns the serialization category, e.g. "json", "protobuf".
+     *
+     * @return the serialization category, e.g. "json", "protobuf"
+     */
     public String getType()                          { return type; }
-    /** @param type the serialization category, e.g. "json", "protobuf" */
+    /**
+     * Sets the serialization category, e.g. "json", "protobuf".
+     *
+     * @param type the serialization category, e.g. "json", "protobuf"
+     */
     public void setType(String type)                 { this.type = type; }
 
-    /** @return this serializer's declared capabilities */
+    /**
+     * Returns this serializer's declared capabilities.
+     *
+     * @return this serializer's declared capabilities
+     */
     public SerializerCapabilities getCapabilities()   { return capabilities; }
-    /** @param c this serializer's declared capabilities; null falls back to {@link SerializerCapabilities#defaults()} */
+    /**
+     * Sets this serializer's declared capabilities; null falls back to {@link SerializerCapabilities#defaults()}.
+     *
+     * @param c this serializer's declared capabilities; null falls back to {@link SerializerCapabilities#defaults()}
+     */
     public void setCapabilities(SerializerCapabilities c) {
         this.capabilities = c != null ? c : SerializerCapabilities.defaults();
     }

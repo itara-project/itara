@@ -24,12 +24,21 @@ public final class AuthenticationOutcome {
         this.rejectionReason = rejectionReason;
     }
 
-    /** Accepted with no identity produced — e.g. the noop implementation (§15.1). */
+    /**
+     * Accepted with no identity produced — e.g. the noop implementation (§15.1).
+     *
+     * @return an accepted outcome carrying no identity
+     */
     public static AuthenticationOutcome accepted() {
         return new AuthenticationOutcome(true, null, null);
     }
 
-    /** Accepted, with the verified identity. */
+    /**
+     * Accepted, with the verified identity.
+     *
+     * @param identity the verified identity; must not be null
+     * @return an accepted outcome carrying the given identity
+     */
     public static AuthenticationOutcome accepted(ItaraIdentity identity) {
         if (identity == null) {
             throw new NullPointerException("[Itara] identity must not be null — use accepted() for no identity");
@@ -37,7 +46,12 @@ public final class AuthenticationOutcome {
         return new AuthenticationOutcome(true, identity, null);
     }
 
-    /** Rejected. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026). */
+    /**
+     * Rejected. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026).
+     *
+     * @param reason the rejection reason; must be a non-empty message
+     * @return a rejected outcome carrying the given reason
+     */
     public static AuthenticationOutcome rejected(String reason) {
         if (reason == null || reason.isEmpty()) {
             throw new IllegalArgumentException("[Itara] rejection reason must be a non-empty message");
@@ -45,11 +59,23 @@ public final class AuthenticationOutcome {
         return new AuthenticationOutcome(false, null, reason);
     }
 
-    /** @return whether authentication was accepted */
+    /**
+     * Returns whether authentication was accepted.
+     *
+     * @return whether authentication was accepted
+     */
     public boolean isAccepted() { return accepted; }
-    /** @return the verified identity, or empty if accepted with no identity or if rejected */
+    /**
+     * Returns the verified identity, or empty if accepted with no identity or if rejected.
+     *
+     * @return the verified identity, or empty if accepted with no identity or if rejected
+     */
     public Optional<ItaraIdentity> getIdentity() { return Optional.ofNullable(identity); }
-    /** @return the rejection reason, or null if accepted */
+    /**
+     * Returns the rejection reason, or null if accepted.
+     *
+     * @return the rejection reason, or null if accepted
+     */
     public String getRejectionReason() { return rejectionReason; }
 
     @Override

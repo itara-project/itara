@@ -7,9 +7,14 @@ package dev.itara.agent.exceptions;
  */
 public class ActivatorNotFoundException extends ActivatorScanException {
 
+    /** The component no activator was found for. */
     private final String componentId;
 
-    /** @param componentId the component no activator was found for, in shared mode */
+    /**
+     * Constructs the shared-mode variant.
+     *
+     * @param componentId the component no activator was found for, in shared mode
+     */
     public ActivatorNotFoundException(String componentId) {
         super("[Itara] No activator found for component '" + componentId + "'. "
                 + "Check META-INF/itara/activator is present on the classpath.");
@@ -17,6 +22,8 @@ public class ActivatorNotFoundException extends ActivatorScanException {
     }
 
     /**
+     * Constructs the isolated-mode variant.
+     *
      * @param componentId   the component no activator was found for, in isolated mode
      * @param directoryPath the component's own directory that was scanned
      */
@@ -26,7 +33,11 @@ public class ActivatorNotFoundException extends ActivatorScanException {
         this.componentId = componentId;
     }
 
-    /** @return the component no activator was found for */
+    /**
+     * Returns the component no activator was found for.
+     *
+     * @return the component no activator was found for
+     */
     public String getComponentId() {
         return componentId;
     }

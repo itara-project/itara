@@ -58,18 +58,42 @@ public final class FailureSemanticsConfig {
         this.params          = Collections.unmodifiableMap(builder.params);
     }
 
-    /** @return maximum number of attempts including the first, or null for the implementation's own default */
+    /**
+     * Returns maximum number of attempts including the first, or null for the implementation's own default.
+     *
+     * @return maximum number of attempts including the first, or null for the implementation's own default
+     */
     public Integer getMaxAttempts()     { return maxAttempts; }
-    /** @return the per-attempt timeout, or null if none is configured */
+    /**
+     * Returns the per-attempt timeout, or null if none is configured.
+     *
+     * @return the per-attempt timeout, or null if none is configured
+     */
     public Duration getTimeout()        { return timeout; }
-    /** @return whether this implementation should enforce the per-attempt timeout itself */
+    /**
+     * Returns whether this implementation should enforce the per-attempt timeout itself.
+     *
+     * @return whether this implementation should enforce the per-attempt timeout itself
+     */
     public boolean isHandleTimeout()    { return handleTimeout; }
-    /** @return the hard ceiling on total execution time across all attempts, or null if none is configured */
+    /**
+     * Returns the hard ceiling on total execution time across all attempts, or null if none is configured.
+     *
+     * @return the hard ceiling on total execution time across all attempts, or null if none is configured
+     */
     public Duration getAbsoluteTimeout(){ return absoluteTimeout; }
-    /** @return implementation-specific connection parameters; never null */
+    /**
+     * Returns implementation-specific connection parameters; never null.
+     *
+     * @return implementation-specific connection parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
 
-    /** @return a new builder for a {@link FailureSemanticsConfig} */
+    /**
+     * Returns a new builder for a {@link FailureSemanticsConfig}.
+     *
+     * @return a new builder for a {@link FailureSemanticsConfig}
+     */
     public static Builder builder() { return new Builder(); }
 
     /** Builder for {@link FailureSemanticsConfig}. */
@@ -80,32 +104,64 @@ public final class FailureSemanticsConfig {
         private Duration absoluteTimeout;
         private Map<String, String> params = Collections.emptyMap();
 
-        /** @param maxAttempts maximum number of attempts including the first, or null for the implementation's own default */
+        /** Constructs a new, empty builder. */
+        public Builder() {}
+
+        /**
+         * Sets the maximum number of attempts, including the first.
+         *
+         * @param maxAttempts maximum number of attempts including the first, or null for the implementation's own default
+         * @return this builder
+         */
         public Builder maxAttempts(Integer maxAttempts) {
             this.maxAttempts = maxAttempts;
             return this;
         }
-        /** @param timeout the per-attempt timeout, or null for none */
+        /**
+         * Sets the per-attempt timeout.
+         *
+         * @param timeout the per-attempt timeout, or null for none
+         * @return this builder
+         */
         public Builder timeout(Duration timeout) {
             this.timeout = timeout;
             return this;
         }
-        /** @param handleTimeout whether this implementation should enforce the per-attempt timeout itself */
+        /**
+         * Sets whether this implementation should enforce the per-attempt timeout itself.
+         *
+         * @param handleTimeout whether this implementation should enforce the per-attempt timeout itself
+         * @return this builder
+         */
         public Builder handleTimeout(boolean handleTimeout) {
             this.handleTimeout = handleTimeout;
             return this;
         }
-        /** @param absoluteTimeout the hard ceiling on total execution time, or null for none */
+        /**
+         * Sets the hard ceiling on total execution time across all attempts.
+         *
+         * @param absoluteTimeout the hard ceiling on total execution time, or null for none
+         * @return this builder
+         */
         public Builder absoluteTimeout(Duration absoluteTimeout) {
             this.absoluteTimeout = absoluteTimeout;
             return this;
         }
-        /** @param params implementation-specific connection parameters; null is treated as empty */
+        /**
+         * Sets the implementation-specific connection parameters.
+         *
+         * @param params implementation-specific connection parameters; null is treated as empty
+         * @return this builder
+         */
         public Builder params(Map<String, String> params) {
             this.params = (params != null) ? params : Collections.emptyMap();
             return this;
         }
-        /** @return the built {@link FailureSemanticsConfig} */
+        /**
+         * Returns the built {@link FailureSemanticsConfig}.
+         *
+         * @return the built {@link FailureSemanticsConfig}
+         */
         public FailureSemanticsConfig build() {
             return new FailureSemanticsConfig(this);
         }

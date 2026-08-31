@@ -70,6 +70,7 @@ import java.util.logging.Logger;
  */
 public class ActivatorScanner {
 
+    /** Set to enable isolated mode; unset means shared mode. */
     public static final String COMPONENTS_DIR_ENV_VAR = "ITARA_COMPONENTS_DIR";
     private static final String RESOURCE_PATH = "META-INF/itara/activator";
 
@@ -85,7 +86,11 @@ public class ActivatorScanner {
     private ActivatorScanner() {
     }
 
-    /** @return the singleton scanner instance */
+    /**
+     * Returns the singleton scanner instance.
+     *
+     * @return the singleton scanner instance
+     */
     public static ActivatorScanner instance() {
         return INSTANCE;
     }
@@ -101,7 +106,10 @@ public class ActivatorScanner {
      *                          parent for every per-component classloader
      *                          in isolated mode, and scanned directly in
      *                          shared mode.
+     * @param wiringConfig      the loaded wiring config, used to determine
+     *                          which component ids are local to this JVM slice
      */
+
     public void scan(ClassLoader systemClassLoader, WiringConfig wiringConfig) {
         scan(systemClassLoader, wiringConfig, System.getenv(COMPONENTS_DIR_ENV_VAR));
     }
@@ -303,6 +311,8 @@ public class ActivatorScanner {
     /**
      * Whether the most recent scan() resolved isolated mode. Meaningless
      * before scan() has been called.
+     *
+     * @return whether the most recent scan() resolved isolated mode
      */
     public boolean isIsolated() {
         return isolated;
@@ -313,6 +323,9 @@ public class ActivatorScanner {
      * scan() guarantees every local component id has an entry; calling
      * this for a component id that isn't local, or before scan() has
      * succeeded, is a programming error.
+     *
+     * @param componentId the local component id to look up
+     * @return the activated component for the given id
      */
     public ActivatedComponent getActivatedComponent(String componentId) {
         ActivatedComponent activated = activators.get(componentId);
@@ -330,6 +343,9 @@ public class ActivatorScanner {
      * under (its own isolated classloader in isolated mode, the system
      * classloader in shared mode). Same guarantees as
      * {@link #getActivatedComponent}.
+     *
+     * @param componentId the local component id to look up
+     * @return the classloader the given component was activated under
      */
     public ClassLoader getClassLoader(String componentId) {
         ClassLoader classLoader = classLoaders.get(componentId);

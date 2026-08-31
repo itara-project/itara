@@ -33,7 +33,11 @@ public class SerializerRegistry {
 
     private SerializerRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static SerializerRegistry instance() {
         return INSTANCE;
     }
@@ -42,6 +46,8 @@ public class SerializerRegistry {
      * Register a serializer factory.
      * Called by SerializerLoader during agent startup before any connections
      * are processed.
+     *
+     * @param factory the factory to register
      */
     public void registerFactory(ItaraSerializerFactory factory) {
         factories.put(factory.id().toLowerCase(), factory);

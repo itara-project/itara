@@ -12,15 +12,19 @@ import java.util.Map;
  *
  * <p>Example YAML:
  * <pre>{@code
- *   authorization:
- *     id: rbac
- *     params:
- *       policyFile: "/etc/itara/policy.yaml"
+ * authorization:
+ *   id: rbac
+ *   params:
+ *     policyFile: "/etc/itara/policy.yaml"
  * }</pre>
+ *
  * <p>Absent means the noop implementation is used (§16.1).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AuthorizationEntry {
+
+    /** Required for deserialization. */
+    public AuthorizationEntry() {}
 
     @JsonSetter(nulls = Nulls.SKIP)
     private String id = "noop";
@@ -28,10 +32,30 @@ public class AuthorizationEntry {
     @JsonSetter(nulls = Nulls.SKIP)
     private Map<String, String> params = Collections.emptyMap();
 
+    /**
+     * Returns the authorization type id.
+     *
+     * @return the authorization type id
+     */
     public String getId() { return id; }
+    /**
+     * Sets the authorization type id.
+     *
+     * @param id the authorization type id
+     */
     public void setId(String id) { this.id = id; }
 
+    /**
+     * Returns implementation-specific connection parameters; never null.
+     *
+     * @return implementation-specific connection parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
+    /**
+     * Sets the implementation-specific connection parameters.
+     *
+     * @param params implementation-specific connection parameters; null is treated as empty
+     */
     public void setParams(Map<String, String> params) {
         this.params = params != null ? params : Collections.emptyMap();
     }
@@ -41,6 +65,8 @@ public class AuthorizationEntry {
      * connection. A present block with a blank id is a configuration
      * error (§16.4) — the block should either be omitted entirely
      * (defaulting to noop) or declare a real type identifier.
+     *
+     * @param connectionTo the connection's 'to' field, for the error message
      */
     public void validate(String connectionTo) {
         if (id == null || id.isBlank()) {

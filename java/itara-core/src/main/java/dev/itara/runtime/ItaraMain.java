@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  * <pre>{@code
  * java -javaagent:itara-agent.jar \
  *      -Ditara.config=/path/to/wiring.yaml \
- *      -Ditara.nodes="node1,node2" \
+ *      -Ditara.nodes=node1,node2 \
  *      -cp itara-core.jar:... \
  *      dev.itara.runtime.ItaraMain
  * }</pre>
@@ -32,6 +32,17 @@ public class ItaraMain {
 
     private static final Logger log = Logger.getLogger(ItaraMain.class.getName());
 
+    /** Not instantiated — used only via {@link #main}. */
+    public ItaraMain() {}
+
+    /**
+     * Keeps the JVM alive to receive calls, until an external signal
+     * (SIGTERM, SIGINT) triggers the shutdown hook the agent registered.
+     * See this class's own javadoc for the full picture.
+     *
+     * @param args unused
+     * @throws InterruptedException if interrupted while waiting
+     */
     public static void main(String[] args) throws InterruptedException {
         ComponentLookup.disable();
 

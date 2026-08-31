@@ -20,6 +20,8 @@ public interface ItaraTransportFactory {
      * Must match the 'id' field in the connection's transport block
      * in the wiring config. Case-insensitive.
      * Examples: "http", "kafka"
+     *
+     * @return the transport type identifier this factory handles
      */
     String id();
 

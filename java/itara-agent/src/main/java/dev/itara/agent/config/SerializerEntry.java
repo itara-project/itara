@@ -39,19 +39,38 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SerializerEntry {
 
+    /** Required for deserialization. */
+    public SerializerEntry() {}
+
     private String id;
 
     @JsonSetter(nulls = Nulls.SKIP)
     private Map<String, String> params = Collections.emptyMap();
 
-    /** @return the serializer type identifier */
+    /**
+     * Returns the serializer type identifier.
+     *
+     * @return the serializer type identifier
+     */
     public String getId()        { return id; }
-    /** @param id the serializer type identifier */
+    /**
+     * Sets the serializer type identifier.
+     *
+     * @param id the serializer type identifier
+     */
     public void setId(String id) { this.id = id; }
 
-    /** @return serializer-specific parameters; never null */
+    /**
+     * Returns serializer-specific parameters; never null.
+     *
+     * @return serializer-specific parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
-    /** @param params serializer-specific parameters; null is treated as empty */
+    /**
+     * Sets serializer-specific parameters; null is treated as empty.
+     *
+     * @param params serializer-specific parameters; null is treated as empty
+     */
     public void setParams(Map<String, String> params) {
         this.params = params != null ? params : Collections.emptyMap();
     }

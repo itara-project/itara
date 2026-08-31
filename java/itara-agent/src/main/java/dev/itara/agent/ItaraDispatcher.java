@@ -87,6 +87,29 @@ public class ItaraDispatcher implements DispatchHandler {
     private final ExchangePattern exchangePattern;
     private final ComponentScope scope;
 
+    /**
+     * Constructs a dispatcher for a single inbound connection. All
+     * dependencies are wired in once, here, at agent startup — nothing is
+     * looked up at call time.
+     *
+     * @param dispatchKey           identifies which declared connection this
+     *                              dispatcher serves; the transport uses this
+     *                              to route inbound calls to the right handler
+     * @param componentId           the local component this dispatcher invokes
+     * @param transportId           the transport type carrying this connection,
+     *                              or "direct" — used for observability only
+     * @param serializer            the connection's own serializer instance
+     * @param serializerConfig      the connection's own parsed serializer config
+     * @param registry              the shared ItaraRegistry, for the raw
+     *                              component instance lookup at dispatch time
+     * @param exchangePattern       the pattern this connection was wired under
+     * @param authentication        the connection's own authentication instance
+     * @param authenticationConfig  the connection's own parsed authentication config
+     * @param authorization         the connection's own authorization instance
+     * @param authorizationConfig   the connection's own parsed authorization config
+     * @param scope                 this node's own ComponentScope — received,
+     *                              not built; see this class's own javadoc
+     */
     public ItaraDispatcher(String dispatchKey,
                            String componentId,
                            String transportId,
@@ -294,7 +317,7 @@ public class ItaraDispatcher implements DispatchHandler {
                             methodName);
                 }
             } // 11. Close inbound context
-        } // 12. scopeHandle.close() — TCCL and ComponentScope restored last
+        } // 12. scopeHandle.close() — previously-active ComponentScope restored last
     }
 
     /**

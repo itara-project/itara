@@ -33,12 +33,23 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SerializerCapabilities {
 
+    /** Required for deserialization. */
+    public SerializerCapabilities() {}
+
     @JsonProperty("message-formats")
     private List<String> messageFormats = Collections.emptyList();
 
-    /** @return the structural message formats this serializer handles; never null */
+    /**
+     * Returns the structural message formats this serializer handles; never null.
+     *
+     * @return the structural message formats this serializer handles; never null
+     */
     public List<String> getMessageFormats() { return messageFormats; }
-    /** @param messageFormats the structural message formats this serializer handles; null is treated as empty */
+    /**
+     * Sets the structural message formats this serializer handles; null is treated as empty.
+     *
+     * @param messageFormats the structural message formats this serializer handles; null is treated as empty
+     */
     public void setMessageFormats(List<String> messageFormats) {
         this.messageFormats = messageFormats != null ? messageFormats : Collections.emptyList();
     }
@@ -47,6 +58,8 @@ public class SerializerCapabilities {
      * Returns a capabilities instance with an empty message-formats list.
      *
      * <p>Used when the [serializer.capabilities] section is absent from the file.
+     *
+     * @return a capabilities instance with an empty message-formats list
      */
     public static SerializerCapabilities defaults() {
         return new SerializerCapabilities();

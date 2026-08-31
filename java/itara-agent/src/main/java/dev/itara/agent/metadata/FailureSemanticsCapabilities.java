@@ -17,12 +17,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *
  * <p>Example TOML:
  * <pre>{@code
- *   [failure-semantics.capabilities]
- *   supports-external-timeout = true
+ * [failure-semantics.capabilities]
+ * supports-external-timeout = true
  * }</pre>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FailureSemanticsCapabilities {
+
+    /** Required for deserialization. */
+    public FailureSemanticsCapabilities() {}
 
     /**
      * Whether this implementation can enforce the per-attempt timeout
@@ -32,12 +35,24 @@ public class FailureSemanticsCapabilities {
     @JsonProperty("supports-external-timeout")
     private boolean supportsExternalTimeout = false;
 
-    /** @return whether this implementation can enforce the per-attempt timeout externally */
+    /**
+     * Returns whether this implementation can enforce the per-attempt timeout externally.
+     *
+     * @return whether this implementation can enforce the per-attempt timeout externally
+     */
     public boolean isSupportsExternalTimeout()        { return supportsExternalTimeout; }
-    /** @param v whether this implementation can enforce the per-attempt timeout externally */
+    /**
+     * Sets whether this implementation can enforce the per-attempt timeout externally.
+     *
+     * @param v whether this implementation can enforce the per-attempt timeout externally
+     */
     public void setSupportsExternalTimeout(boolean v) { this.supportsExternalTimeout = v; }
 
-    /** @return an instance with supportsExternalTimeout set to false, for when the section is absent */
+    /**
+     * Returns an instance with supportsExternalTimeout set to false, for when the section is absent.
+     *
+     * @return an instance with supportsExternalTimeout set to false, for when the section is absent
+     */
     public static FailureSemanticsCapabilities defaults() {
         return new FailureSemanticsCapabilities();
     }

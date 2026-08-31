@@ -80,10 +80,15 @@ import java.util.Map;
 public interface ItaraObserver {
 
     /**
-     * Fired on the caller side when control passes from the application layer into
-     * the topology layer, before the call is dispatched.
+     * Fired on the caller side at the exact instant control passes from the
+     * application layer into the topology layer — immediately before the
+     * call is dispatched.
      *
+     * @param ctx             the new child context for this call
+     * @param componentId     the component being called
+     * @param methodName      the method being called
      * @param transport the actual transport used — "direct", "http", "kafka", etc.
+     * @param exchangePattern the pattern this call is being made under
      * @param timestamp nanoseconds since epoch at the moment of firing
      */
     default void onCallSent(ItaraContext ctx,
@@ -94,10 +99,16 @@ public interface ItaraObserver {
                             long timestamp) {}
 
     /**
-     * Fired on the callee side when control passes from the topology layer
-     * into the application layer, before the component implementation is invoked.
+     * Fired on the callee side at the exact instant control passes from the
+     * topology layer into the application layer — immediately before the
+     * component implementation is invoked. For direct calls, fires
+     * immediately after onCallSent.
      *
+     * @param ctx             the new child context for this call
+     * @param componentId     the component receiving the call
+     * @param methodName      the method being invoked
      * @param transport the actual transport used — "direct", "http", "kafka", etc.
+     * @param exchangePattern the pattern this call is being received under
      * @param timestamp nanoseconds since epoch at the moment of firing
      */
     default void onCallReceived(ItaraContext ctx,
@@ -108,10 +119,13 @@ public interface ItaraObserver {
                                 long timestamp) {}
 
     /**
-     * Fired on the callee side when control passes from the application layer
-     * back into the topology layer, after the component implementation returns
-     * or throws.
+     * Fired on the callee side at the exact instant control passes from the
+     * application layer back into the topology layer — immediately after
+     * the component implementation returns or throws.
      *
+     * @param ctx       the context that was active for this call
+     * @param componentId the component that received the call
+     * @param methodName  the method that was invoked
      * @param timestamp nanoseconds since epoch at the moment of firing
      * @param error     true if the invocation resulted in an exception
      */
@@ -122,9 +136,13 @@ public interface ItaraObserver {
                               boolean error) {}
 
     /**
-     * Fired on the caller side when control passes from the topology layer
-     * back into the application layer upon receiving the response.
+     * Fired on the caller side at the exact instant control passes from the
+     * topology layer back into the application layer — immediately upon
+     * receiving the response.
      *
+     * @param ctx       the context that was active for this call
+     * @param componentId the component that was called
+     * @param methodName  the method that was invoked
      * @param timestamp nanoseconds since epoch at the moment of firing
      * @param error     true if the invocation resulted in an exception
      */

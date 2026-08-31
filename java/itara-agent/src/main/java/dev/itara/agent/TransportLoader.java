@@ -23,10 +23,9 @@ import java.util.logging.Logger;
  * instances on demand. Lines starting with # are comments.
  *
  * <p>Example (in itara-transport-http.jar):
- * <pre>{@code
  *   # Itara HTTP transport implementation
  *   dev.itara.transport.http.HttpTransportFactory
- * }</pre>
+ *
  * <p>The agent calls TransportLoader.load() during premain, before any
  * connections are processed. Discovered factories are registered in
  * TransportRegistry and are available for the rest of startup.
@@ -35,6 +34,9 @@ import java.util.logging.Logger;
  * Each jar provides its own META-INF/itara/transport descriptor.
  */
 public class TransportLoader {
+
+    /** Not instantiated — all methods are static. */
+    private TransportLoader() {}
 
     private static final Logger log = Logger.getLogger(TransportLoader.class.getName());
 

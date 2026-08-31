@@ -33,11 +33,17 @@ public final class ContextPropagation {
 
     private static final Logger log = Logger.getLogger(ContextPropagation.class.getName());
 
+    /** Header carrying the itaraTraceId. */
     public static final String HEADER_TRACE_ID     = "x-itara-trace-id";
+    /** Header carrying the itaraSpanId. */
     public static final String HEADER_SPAN_ID      = "x-itara-span-id";
+    /** Header carrying the requestId. */
     public static final String HEADER_REQUEST_ID   = "x-itara-request-id";
+    /** Header carrying the correlationId, when set. */
     public static final String HEADER_CORRELATION  = "x-itara-correlation";
+    /** Header carrying the sourceNode, when set. */
     public static final String HEADER_SOURCE_NODE  = "x-itara-source-node";
+    /** Header carrying the comma-separated edge path, when non-empty. */
     public static final String HEADER_EDGE_PATH    = "x-itara-edge-path";
 
     private static final String EDGE_SEP = ",";

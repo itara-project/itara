@@ -49,7 +49,7 @@ import java.util.logging.Logger;
  * <ol>
  * <li>Load wiring config</li>
  * <li>Build metadata index from .itara files (itara.metadata.dir)</li>
- * <li>Scan classpath for @ComponentInterface and @EventContractInterface contracts</li>
+ * <li>Scan classpath for {@code @ComponentInterface} and {@code @EventContractInterface} contracts</li>
  * <li>Scan META-INF/itara/activator for local activator classes,
  * resolving component identity (id, version, api-version) via the
  * metadata index built in step 2</li>
@@ -90,6 +90,9 @@ import java.util.logging.Logger;
  * }</pre>
  */
 public class ItaraAgent {
+
+    /** Not instantiated — this is a static agent entry point. */
+    private ItaraAgent() {}
 
     private static final Logger log = Logger.getLogger(ItaraAgent.class.getName());
 

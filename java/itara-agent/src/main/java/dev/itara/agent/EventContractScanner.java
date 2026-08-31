@@ -32,17 +32,21 @@ import java.util.logging.Logger;
  * }</pre>
  *
  * <p>The full contract reference is constructed as:
- *   <collection-id>/<contract-id>
+ * {@code <collection-id>/<contract-id>}
  * where collection-id is the artifact id from the jar's .itara metadata
  * file (kind = "events") and contract-id is the id from the
- * @EventContractInterface annotation on the interface.
+ * {@code @EventContractInterface} annotation on the interface.
  *
  * <p>This full reference must match the 'contract' field on the virtual
  * node in the wiring config.
  *
+ *
  * <p>See spec §13.2.2.
  */
 public class EventContractScanner {
+
+    /** Not instantiated — all methods are static. */
+    private EventContractScanner() {}
 
     private static final Logger log =
             Logger.getLogger(EventContractScanner.class.getName());
@@ -52,6 +56,7 @@ public class EventContractScanner {
     /**
      * Scans the classpath for META-INF/itara/event-contract descriptor files.
      *
+     * @param classLoader the classloader to scan for descriptor resources
      * @return Map of full contract reference -> event contract interface class
      *         e.g. "order-events/order-placed" -> OrderPlacedContract.class
      */

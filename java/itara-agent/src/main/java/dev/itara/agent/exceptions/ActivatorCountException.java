@@ -7,10 +7,14 @@ package dev.itara.agent.exceptions;
  */
 public class ActivatorCountException extends ActivatorScanException {
 
+    /** The component whose directory was scanned. */
     private final String componentId;
+    /** The number of activators actually found. */
     private final int foundCount;
 
     /**
+     * Constructs a count-mismatch exception.
+     *
      * @param componentId   the component whose directory was scanned
      * @param directoryPath the directory that was scanned
      * @param foundCount    the number of activators actually found
@@ -25,12 +29,20 @@ public class ActivatorCountException extends ActivatorScanException {
         this.foundCount = foundCount;
     }
 
-    /** @return the component whose directory was scanned */
+    /**
+     * Returns the component whose directory was scanned.
+     *
+     * @return the component whose directory was scanned
+     */
     public String getComponentId() {
         return componentId;
     }
 
-    /** @return the number of activators actually found */
+    /**
+     * Returns the number of activators actually found.
+     *
+     * @return the number of activators actually found
+     */
     public int getFoundCount() {
         return foundCount;
     }

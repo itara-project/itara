@@ -19,20 +19,39 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ItaraSpecMeta {
 
+    /** Required for deserialization. */
+    public ItaraSpecMeta() {}
+
     @JsonProperty("spec-version")
     private String specVersion = "";
 
     @JsonProperty("core-version")
     private String coreVersion = "";
 
-    /** @return the Itara spec version this artifact was built against */
+    /**
+     * Returns the Itara spec version this artifact was built against.
+     *
+     * @return the Itara spec version this artifact was built against
+     */
     public String getSpecVersion() { return specVersion; }
-    /** @param specVersion the Itara spec version this artifact was built against */
+    /**
+     * Sets the Itara spec version this artifact was built against.
+     *
+     * @param specVersion the Itara spec version this artifact was built against
+     */
     public void setSpecVersion(String specVersion) { this.specVersion = specVersion; }
 
-    /** @return the Itara core version this artifact was built against */
+    /**
+     * Returns the Itara core version this artifact was built against.
+     *
+     * @return the Itara core version this artifact was built against
+     */
     public String getCoreVersion() { return coreVersion; }
-    /** @param coreVersion the Itara core version this artifact was built against */
+    /**
+     * Sets the Itara core version this artifact was built against.
+     *
+     * @param coreVersion the Itara core version this artifact was built against
+     */
     public void setCoreVersion(String coreVersion) { this.coreVersion = coreVersion; }
 
     @Override

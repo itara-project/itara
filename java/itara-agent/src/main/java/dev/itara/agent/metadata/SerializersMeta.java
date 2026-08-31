@@ -26,12 +26,23 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SerializersMeta {
 
+    /** Required for deserialization. */
+    public SerializersMeta() {}
+
     private List<SupportedSerializer> supported = new ArrayList<>();
 
-    /** @return the serializers this artifact was compiled with support for; never null */
+    /**
+     * Returns the serializers this artifact was compiled with support for; never null.
+     *
+     * @return the serializers this artifact was compiled with support for; never null
+     */
     public List<SupportedSerializer> getSupported() { return supported; }
 
-    /** @param supported the serializers this artifact was compiled with support for; null is treated as empty */
+    /**
+     * Sets the serializers this artifact was compiled with support for; null is treated as empty.
+     *
+     * @param supported the serializers this artifact was compiled with support for; null is treated as empty
+     */
     public void setSupported(List<SupportedSerializer> supported) {
         this.supported = supported != null ? supported : new ArrayList<>();
     }

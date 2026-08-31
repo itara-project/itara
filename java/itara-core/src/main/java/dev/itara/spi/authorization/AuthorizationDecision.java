@@ -15,12 +15,19 @@ public final class AuthorizationDecision {
         this.denialReason = denialReason;
     }
 
-    /** The call is permitted. */
+    /** The call is permitted.
+     *
+     * @return An object expressing permission
+     */
     public static AuthorizationDecision permit() {
         return new AuthorizationDecision(true, null);
     }
 
-    /** Denied. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026). */
+    /** Denied. Becomes the message of the PERMISSION error surfaced to the caller (ADR 0026).
+     *
+     * @param reason the reason for the rejection
+     * @return An object expressing denial of permission
+     */
     public static AuthorizationDecision deny(String reason) {
         if (reason == null || reason.isEmpty()) {
             throw new IllegalArgumentException("[Itara] denial reason must be a non-empty message");
@@ -28,9 +35,17 @@ public final class AuthorizationDecision {
         return new AuthorizationDecision(false, reason);
     }
 
-    /** @return whether the call is permitted */
+    /**
+     * Returns whether the call is permitted.
+     *
+     * @return whether the call is permitted
+     */
     public boolean isPermitted() { return permitted; }
-    /** @return the denial reason, or null if permitted */
+    /**
+     * Returns the denial reason, or null if permitted.
+     *
+     * @return the denial reason, or null if permitted
+     */
     public String getDenialReason() { return denialReason; }
 
     @Override

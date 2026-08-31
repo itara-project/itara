@@ -32,6 +32,9 @@ import java.util.logging.Logger;
  */
 public class AuthenticationLoader {
 
+    /** Not instantiated — all methods are static. */
+    private AuthenticationLoader() {}
+
     private static final Logger log = Logger.getLogger(AuthenticationLoader.class.getName());
 
     private static final String RESOURCE_PATH = "META-INF/itara/authentication";

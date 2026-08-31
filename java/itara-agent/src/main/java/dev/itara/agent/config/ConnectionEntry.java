@@ -38,6 +38,9 @@ import java.util.regex.Pattern;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ConnectionEntry {
 
+    /** Required for deserialization. */
+    public ConnectionEntry() {}
+
     private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]+");
 
     /**
@@ -90,51 +93,117 @@ public class ConnectionEntry {
     private AuthenticationEntry authentication;
     private AuthorizationEntry authorization;
 
-    /** @return this connection's own identifier */
+    /**
+     * Returns this connection's own identifier.
+     *
+     * @return this connection's own identifier
+     */
     public String getId() { return id; }
-    /** @param id this connection's own identifier */
+    /**
+     * Sets this connection's own identifier.
+     *
+     * @param id this connection's own identifier
+     */
     public void setId(String id) { this.id = id; }
 
-    /** @return the calling node id, or null/blank if the caller is external */
+    /**
+     * Returns the calling node id, or null/blank if the caller is external.
+     *
+     * @return the calling node id, or null/blank if the caller is external
+     */
     public String getFrom() { return from; }
-    /** @param from the calling node id, or null/blank if the caller is external */
+    /**
+     * Sets the calling node id, or null/blank if the caller is external.
+     *
+     * @param from the calling node id, or null/blank if the caller is external
+     */
     public void setFrom(String from) { this.from = from; }
 
-    /** @return the called node id */
+    /**
+     * Returns the called node id.
+     *
+     * @return the called node id
+     */
     public String getTo() { return to; }
-    /** @param to the called node id */
+    /**
+     * Sets the called node id.
+     *
+     * @param to the called node id
+     */
     public void setTo(String to) { this.to = to; }
 
-    /** @return this connection's transport configuration */
+    /**
+     * Returns this connection's transport configuration.
+     *
+     * @return this connection's transport configuration
+     */
     public TransportEntry getTransport()             { return transport; }
-    /** @param transport this connection's transport configuration */
+    /**
+     * Sets this connection's transport configuration.
+     *
+     * @param transport this connection's transport configuration
+     */
     public void setTransport(TransportEntry transport){ this.transport = transport; }
 
-    /** @return this connection's serializer configuration, or null if not declared */
+    /**
+     * Returns this connection's serializer configuration, or null if not declared.
+     *
+     * @return this connection's serializer configuration, or null if not declared
+     */
     public SerializerEntry getSerializer()              { return serializer; }
-    /** @param serializer this connection's serializer configuration */
+    /**
+     * Sets this connection's serializer configuration.
+     *
+     * @param serializer this connection's serializer configuration
+     */
     public void setSerializer(SerializerEntry serializer){ this.serializer = serializer; }
 
-    /** @return this connection's failure semantics configuration, or null if not declared */
+    /**
+     * Returns this connection's failure semantics configuration, or null if not declared.
+     *
+     * @return this connection's failure semantics configuration, or null if not declared
+     */
     public FailureSemanticsEntry getFailureSemantics() { return failureSemantics; }
-    /** @param failureSemantics this connection's failure semantics configuration */
+    /**
+     * Sets this connection's failure semantics configuration.
+     *
+     * @param failureSemantics this connection's failure semantics configuration
+     */
     public void setFailureSemantics(FailureSemanticsEntry failureSemantics) {
         this.failureSemantics = failureSemantics;
     }
 
-    /** @return this connection's authentication configuration, or null if not declared */
+    /**
+     * Returns this connection's authentication configuration, or null if not declared.
+     *
+     * @return this connection's authentication configuration, or null if not declared
+     */
     public AuthenticationEntry getAuthentication() { return authentication; }
-    /** @param authentication this connection's authentication configuration */
+    /**
+     * Sets this connection's authentication configuration.
+     *
+     * @param authentication this connection's authentication configuration
+     */
     public void setAuthentication(AuthenticationEntry authentication) { this.authentication = authentication; }
 
-    /** @return this connection's authorization configuration, or null if not declared */
+    /**
+     * Returns this connection's authorization configuration, or null if not declared.
+     *
+     * @return this connection's authorization configuration, or null if not declared
+     */
     public AuthorizationEntry getAuthorization() { return authorization; }
-    /** @param authorization this connection's authorization configuration */
+    /**
+     * Sets this connection's authorization configuration.
+     *
+     * @param authorization this connection's authorization configuration
+     */
     public void setAuthorization(AuthorizationEntry authorization) { this.authorization = authorization; }
 
     /**
      * Returns the failure semantics type id for this connection.
      * Defaults to "noop" if no failureSemantics block is declared.
+     *
+     * @return the failure semantics type id for this connection
      */
     public String getFailureSemanticsId() {
         return failureSemantics != null ? failureSemantics.getId() : "noop";
@@ -143,6 +212,8 @@ public class ConnectionEntry {
     /**
      * Translates the failureSemantics block into the SPI config.
      * Returns an empty config if no block is declared.
+     *
+     * @return the SPI-facing failure semantics config
      */
     public FailureSemanticsConfig getFailureSemanticsConfig() {
         return failureSemantics != null
@@ -153,6 +224,8 @@ public class ConnectionEntry {
     /**
      * Returns the authentication type id for this connection.
      * Defaults to "noop" if no authentication block is declared.
+     *
+     * @return the authentication type id for this connection
      */
     public String getAuthenticationId() {
         return authentication != null ? authentication.getId() : "noop";
@@ -161,6 +234,8 @@ public class ConnectionEntry {
     /**
      * Returns the authorization type id for this connection.
      * Defaults to "noop" if no authorization block is declared.
+     *
+     * @return the authorization type id for this connection
      */
     public String getAuthorizationId() {
         return authorization != null ? authorization.getId() : "noop";
@@ -168,6 +243,8 @@ public class ConnectionEntry {
 
     /**
      * Returns true if the caller is external to the Itara topology.
+     *
+     * @return true if the caller is external to the Itara topology
      */
     public boolean isExternal() {
         return from == null || from.isBlank();
@@ -175,6 +252,8 @@ public class ConnectionEntry {
 
     /**
      * Returns true if this is a direct (colocated, in-process) connection.
+     *
+     * @return true if this is a direct (colocated, in-process) connection
      */
     public boolean isDirect() {
         return "direct".equalsIgnoreCase(transport.getId());
@@ -228,6 +307,8 @@ public class ConnectionEntry {
     }
 
     /**
+     * Checks whether this connection touches any of the given node ids.
+     *
      * @param nodeIds the node ids to check against
      * @return true if this connection's 'from' or 'to' is among nodeIds
      */

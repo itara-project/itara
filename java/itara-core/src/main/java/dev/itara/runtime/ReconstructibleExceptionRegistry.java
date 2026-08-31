@@ -31,7 +31,11 @@ public class ReconstructibleExceptionRegistry {
 
     private ReconstructibleExceptionRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static ReconstructibleExceptionRegistry instance() {
         return INSTANCE;
     }
@@ -42,6 +46,8 @@ public class ReconstructibleExceptionRegistry {
      * A second registration for the same contract ID replaces the first
      * and logs a warning — duplicate factories in a deployment are
      * likely a configuration mistake.
+     *
+     * @param factory the factory to register
      */
     public void register(ItaraReconstructibleExceptionFactory factory) {
         String contractId = factory.contractId();
@@ -58,6 +64,9 @@ public class ReconstructibleExceptionRegistry {
     /**
      * Returns the factory registered for the given contract ID, or empty
      * if no factory has been registered for that contract.
+     *
+     * @param contractId the contract ID to look up
+     * @return the registered factory, or empty if none is registered
      */
     public Optional<ItaraReconstructibleExceptionFactory> get(String contractId) {
         return Optional.ofNullable(factories.get(contractId));

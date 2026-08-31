@@ -28,21 +28,42 @@ public final class SerializerConfig {
         this.params = Collections.unmodifiableMap(builder.params);
     }
 
-    /** @return serializer-specific connection parameters; never null */
+    /**
+     * Returns serializer-specific connection parameters; never null.
+     *
+     * @return serializer-specific connection parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
 
-    /** @return a new builder for a {@link SerializerConfig} */
+    /**
+     * Returns a new builder for a {@link SerializerConfig}.
+     *
+     * @return a new builder for a {@link SerializerConfig}
+     */
     public static Builder builder() { return new Builder(); }
 
+    /** Builder for {@link SerializerConfig}. */
     public static final class Builder {
         private Map<String, String> params = Collections.emptyMap();
 
-        /** @param params serializer-specific connection parameters; null is treated as empty */
+        /** Constructs a new, empty builder. */
+        public Builder() {}
+
+        /**
+         * Sets the serializer-specific connection parameters.
+         *
+         * @param params serializer-specific connection parameters; null is treated as empty
+         * @return this builder
+         */
         public Builder params(Map<String, String> params) {
             this.params = (params != null) ? params : Collections.emptyMap();
             return this;
         }
-        /** @return the built {@link SerializerConfig} */
+        /**
+         * Returns the built {@link SerializerConfig}.
+         *
+         * @return the built {@link SerializerConfig}
+         */
         public SerializerConfig build() {
             return new SerializerConfig(this);
         }

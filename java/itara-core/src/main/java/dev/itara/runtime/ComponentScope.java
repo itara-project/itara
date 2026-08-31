@@ -57,11 +57,23 @@ public final class ComponentScope {
 
     // ── Accessors ──────────────────────────────────────────────────────────
 
-    /** @return the topology node currently in control on this thread */
+    /**
+     * Returns the topology node currently in control on this thread.
+     *
+     * @return the topology node currently in control on this thread
+     */
     public String getNodeId()          { return nodeId; }
-    /** @return the component the node is an instance of */
+    /**
+     * Returns the component the node is an instance of.
+     *
+     * @return the component the node is an instance of
+     */
     public String getComponentId()     { return componentId; }
-    /** @return the thread context classloader this node's code should run under */
+    /**
+     * Returns the thread context classloader this node's code should run under.
+     *
+     * @return the thread context classloader this node's code should run under
+     */
     public ClassLoader getClassLoader() { return classLoader; }
 
     // ── Active-scope access ───────────────────────────────────────────────
@@ -71,6 +83,8 @@ public final class ComponentScope {
      * — either because no crossing has happened yet on this thread, or
      * because this thread inherited nothing (was not created by
      * component-owned code under an active scope).
+     *
+     * @return the scope currently active on this thread, or null if none is
      */
     public static ComponentScope current() {
         return CURRENT.get();
@@ -115,25 +129,45 @@ public final class ComponentScope {
         private String componentId;
         private ClassLoader classLoader;
 
-        /** @param nodeId the topology node currently in control */
+        /** Constructs a new, empty factory. */
+        public Factory() {}
+
+        /**
+         * Sets the topology node currently in control.
+         *
+         * @param nodeId the topology node currently in control
+         * @return this factory
+         */
         public Factory nodeId(String nodeId) {
             this.nodeId = nodeId;
             return this;
         }
 
-        /** @param componentId the component the node is an instance of */
+        /**
+         * Sets the component the node is an instance of.
+         *
+         * @param componentId the component the node is an instance of
+         * @return this factory
+         */
         public Factory componentId(String componentId) {
             this.componentId = componentId;
             return this;
         }
 
-        /** @param classLoader the thread context classloader this node's code should run under */
+        /**
+         * Sets the thread context classloader this node's code should run under.
+         *
+         * @param classLoader the thread context classloader this node's code should run under
+         * @return this factory
+         */
         public Factory classLoader(ClassLoader classLoader) {
             this.classLoader = classLoader;
             return this;
         }
 
         /**
+         * Builds the scope.
+         *
          * @return the built {@link ComponentScope}
          * @throws NullPointerException if any of nodeId, componentId, or
          *         classLoader was not set

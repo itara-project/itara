@@ -32,6 +32,9 @@ import java.util.logging.Logger;
  */
 public class AuthorizationLoader {
 
+    /** Not instantiated — all methods are static. */
+    private AuthorizationLoader() {}
+
     private static final Logger log = Logger.getLogger(AuthorizationLoader.class.getName());
 
     private static final String RESOURCE_PATH = "META-INF/itara/authorization";

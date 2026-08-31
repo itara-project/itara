@@ -86,6 +86,9 @@ public final class ItaraContext {
      * Creates a new root context for a request entering the system with no
      * incoming context. Generates a fresh itaraTraceId, itaraSpanId, and
      * requestId.
+     *
+     * @param sourceNode the id of the component where this request originated
+     * @return a new root context
      */
     public static ItaraContext newRoot(String sourceNode) {
         return new ItaraContext(
@@ -102,6 +105,10 @@ public final class ItaraContext {
     /**
      * Creates a new root context with an explicit correlationId set by the
      * entry point caller for business-level correlation.
+     *
+     * @param sourceNode    the id of the component where this request originated
+     * @param correlationId the business-level correlation id
+     * @return a new root context
      */
     public static ItaraContext newRoot(String sourceNode, String correlationId) {
         return new ItaraContext(
@@ -119,6 +126,9 @@ public final class ItaraContext {
      * Creates a child context for a call crossing a component boundary.
      * Inherits itaraTraceId and requestId from the parent. Generates a new
      * itaraSpanId. Records the parent's itaraSpanId for trace reconstruction.
+     *
+     * @param nextComponentId the component this call is crossing into
+     * @return a new child context, one hop deeper than this one
      */
     public ItaraContext newChildSpan(String nextComponentId) {
         List<String> newPath = new ArrayList<>(edgePath);
@@ -139,6 +149,8 @@ public final class ItaraContext {
      * unchanged — the path only grows when a call arrives at a node, not
      * when it departs. Only newChildSpan (used by fireCallReceived) extends
      * the path.
+     *
+     * @return a new caller-side child context
      */
     public ItaraContext newCallerSpan() {
         return new ItaraContext(
@@ -160,6 +172,8 @@ public final class ItaraContext {
      * edgePath is not extended, sourceNode is not changed.
      *
      * <p>Used by ObservabilityFacade.openCustomSpan().
+     *
+     * @return a new child context for the custom span
      */
     public ItaraContext newCustomSpan() {
         return new ItaraContext(
@@ -177,6 +191,15 @@ public final class ItaraContext {
      * Restores a context received from a remote caller.
      * Used by ContextPropagation when an incoming request carries Itara
      * propagation headers.
+     *
+     * @param itaraTraceId      the 32 hex char id shared across the entire distributed trace
+     * @param itaraSpanId       the caller's own 16 hex char span id, or null (see ContextPropagation's FIRE_AND_FORGET handling)
+     * @param itaraParentSpanId the caller's parent span id, or null for a root span
+     * @param requestId         the id unique to the originating request
+     * @param correlationId     the business-level correlation id, or null if none was set
+     * @param sourceNode        the id of the component where this request originated
+     * @param edgePath          the ordered list of component ids traversed by this request so far
+     * @return the restored context
      */
     public static ItaraContext restore(String itaraTraceId,
                                        String itaraSpanId,
@@ -201,6 +224,8 @@ public final class ItaraContext {
     /**
      * Returns the innermost active context for this thread, or null if no
      * call is in progress. This is the only method component code should call.
+     *
+     * @return the innermost active context for this thread, or null if none
      */
     public static ItaraContext current() {
         return STACK.get().peek();
@@ -213,11 +238,12 @@ public final class ItaraContext {
      * scope — onCallSent, onCallReceived, onCustomSpan — and before restoring
      * an inbound context. Must always be paired with a pop() in a finally
      * block (ObservabilityFacade does this via ItaraScope.close()).
+     *
+     * @param ctx the context to push
      */
     public static void push(ItaraContext ctx) {
         STACK.get().push(ctx);
     }
-
 
     /**
      * Pops the innermost context from this thread's stack and returns it.
@@ -226,6 +252,8 @@ public final class ItaraContext {
      * scope — onReturnReceived, onReturnSent, onCustomSpanClosed, or
      * onInboundContextReleased. Always in a finally block — must never be
      * skipped.
+     *
+     * @return the popped context
      */
     public static ItaraContext pop() {
         return STACK.get().pop();
@@ -242,36 +270,76 @@ public final class ItaraContext {
 
     // ── Accessors ──────────────────────────────────────────────────────────
 
-    /** @return the 32 hex char id shared across the entire distributed trace */
+    /**
+     * Returns the 32 hex char id shared across the entire distributed trace.
+     *
+     * @return the 32 hex char id shared across the entire distributed trace
+     */
     public String getItaraTraceId()      { return itaraTraceId; }
-    /** @return the 16 hex char id identifying this specific span */
+    /**
+     * Returns the 16 hex char id identifying this specific span.
+     *
+     * @return the 16 hex char id identifying this specific span
+     */
     public String getItaraSpanId()       { return itaraSpanId; }
-    /** @return the caller's 16 hex char span id, or null for a root span */
+    /**
+     * Returns the caller's 16 hex char span id, or null for a root span.
+     *
+     * @return the caller's 16 hex char span id, or null for a root span
+     */
     public String getItaraParentSpanId() { return itaraParentSpanId; }
-    /** @return the id unique to the originating request */
+    /**
+     * Returns the id unique to the originating request.
+     *
+     * @return the id unique to the originating request
+     */
     public String getRequestId()         { return requestId; }
-    /** @return the business-level correlation id set by the entry point caller, or null if none was set */
+    /**
+     * Returns the business-level correlation id set by the entry point caller, or null if none was set.
+     *
+     * @return the business-level correlation id set by the entry point caller, or null if none was set
+     */
     public String getCorrelationId()     { return correlationId; }
-    /** @return the id of the component where this request originated */
+    /**
+     * Returns the id of the component where this request originated.
+     *
+     * @return the id of the component where this request originated
+     */
     public String getSourceNode()        { return sourceNode; }
-    /** @return the ordered list of component ids traversed by this request so far; never null, may be empty */
+    /**
+     * Returns the ordered list of component ids traversed by this request so far; never null, may be empty.
+     *
+     * @return the ordered list of component ids traversed by this request so far; never null, may be empty
+     */
     public List<String> getEdgePath()    { return edgePath; }
 
     // ── ID generation ──────────────────────────────────────────────────────
 
-    /** Generates a 32 hex char itaraTraceId (128 bits) */
+    /**
+     * Generates a 32 hex char itaraTraceId (128 bits).
+     *
+     * @return a fresh, random itaraTraceId
+     */
     public static String generateItaraTraceId() {
         UUID uuid = UUID.randomUUID();
         return String.format("%016x%016x",
                 uuid.getMostSignificantBits(), uuid.getLeastSignificantBits());
     }
 
-    /** Generates a 16 hex char itaraSpanId (64 bits) */
+    /**
+     * Generates a 16 hex char itaraSpanId (64 bits).
+     *
+     * @return a fresh, random itaraSpanId
+     */
     public static String generateItaraSpanId() {
         return String.format("%016x", UUID.randomUUID().getMostSignificantBits());
     }
 
-    /** Generates a unique request ID */
+    /**
+     * Generates a unique request ID.
+     *
+     * @return a fresh, random request id
+     */
     public static String generateRequestId() {
         return UUID.randomUUID().toString();
     }

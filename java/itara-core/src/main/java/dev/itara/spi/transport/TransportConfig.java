@@ -48,14 +48,30 @@ public final class TransportConfig {
         this.virtualNodeAddress = builder.virtualNodeAddress;
     }
 
-    /** @return whether this connection's transport should enforce the per-attempt timeout natively */
+    /**
+     * Returns whether this connection's transport should enforce the per-attempt timeout natively.
+     *
+     * @return whether this connection's transport should enforce the per-attempt timeout natively
+     */
     public boolean isHandleTimeout()       { return handleTimeout; }
-    /** @return transport-specific connection parameters; never null */
+    /**
+     * Returns transport-specific connection parameters; never null.
+     *
+     * @return transport-specific connection parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
-    /** @return the virtual node address for this connection, or null if none */
+    /**
+     * Returns the virtual node address for this connection, or null if none.
+     *
+     * @return the virtual node address for this connection, or null if none
+     */
     public String getVirtualNodeAddress()  { return virtualNodeAddress; }
 
-    /** @return a new builder for a {@link TransportConfig} */
+    /**
+     * Returns a new builder for a {@link TransportConfig}.
+     *
+     * @return a new builder for a {@link TransportConfig}
+     */
     public static Builder builder() { return new Builder(); }
 
     /** Builder for {@link TransportConfig}. */
@@ -64,22 +80,44 @@ public final class TransportConfig {
         private Map<String, String> params = Collections.emptyMap();
         private String virtualNodeAddress = null;
 
-        /** @param handleTimeout whether the transport should enforce the per-attempt timeout natively */
+        /** Constructs a new, empty builder. */
+        public Builder() {}
+
+        /**
+         * Sets whether the transport should enforce the per-attempt timeout natively.
+         *
+         * @param handleTimeout whether the transport should enforce the per-attempt timeout natively
+         * @return this builder
+         */
         public Builder handleTimeout(boolean handleTimeout) {
             this.handleTimeout = handleTimeout;
             return this;
         }
-        /** @param params transport-specific connection parameters; null is treated as empty */
+        /**
+         * Sets the transport-specific connection parameters.
+         *
+         * @param params transport-specific connection parameters; null is treated as empty
+         * @return this builder
+         */
         public Builder params(Map<String, String> params) {
             this.params = (params != null) ? params : Collections.emptyMap();
             return this;
         }
-        /** @param virtualNodeAddress the virtual node address for this connection, or null if none */
+        /**
+         * Sets the virtual node address for this connection.
+         *
+         * @param virtualNodeAddress the virtual node address for this connection, or null if none
+         * @return this builder
+         */
         public Builder virtualNodeAddress(String virtualNodeAddress) {
             this.virtualNodeAddress = virtualNodeAddress;
             return this;
         }
-        /** @return the built {@link TransportConfig} */
+        /**
+         * Returns the built {@link TransportConfig}.
+         *
+         * @return the built {@link TransportConfig}
+         */
         public TransportConfig build() {
             return new TransportConfig(this);
         }

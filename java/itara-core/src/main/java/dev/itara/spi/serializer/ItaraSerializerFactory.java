@@ -20,6 +20,8 @@ public interface ItaraSerializerFactory {
      * Must match the 'id' field in the connection's serializer block
      * in the wiring config. Case-insensitive.
      * Examples: "json", "protobuf"
+     *
+     * @return the serializer type identifier this factory handles
      */
     String id();
 

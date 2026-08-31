@@ -29,6 +29,8 @@ public final class ItaraCallTarget {
     }
 
     /**
+     * Constructs a call target.
+     *
      * @param node      the topology node being called, or null if not applicable
      * @param component the component being called, or null if not applicable
      * @param method    the method being called, or null if not applicable
@@ -38,11 +40,23 @@ public final class ItaraCallTarget {
         return new ItaraCallTarget(node, component, method);
     }
 
-    /** @return the topology node being called, or null if not applicable */
+    /**
+     * Returns the topology node being called, or null if not applicable.
+     *
+     * @return the topology node being called, or null if not applicable
+     */
     public String getNode()      { return node; }
-    /** @return the component being called, or null if not applicable */
+    /**
+     * Returns the component being called, or null if not applicable.
+     *
+     * @return the component being called, or null if not applicable
+     */
     public String getComponent() { return component; }
-    /** @return the method being called, or null if not applicable */
+    /**
+     * Returns the method being called, or null if not applicable.
+     *
+     * @return the method being called, or null if not applicable
+     */
     public String getMethod()    { return method; }
 
     @Override

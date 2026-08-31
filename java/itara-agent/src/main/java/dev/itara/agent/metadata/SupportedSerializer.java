@@ -29,20 +29,39 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SupportedSerializer {
 
+    /** Required for deserialization. */
+    public SupportedSerializer() {}
+
     /** Matches the artifact.id of a serializer implementation. */
     private String id;
 
     /** Version range this artifact was compiled/verified against. */
     private String version;
 
-    /** @return the serializer artifact id this dependency targets */
+    /**
+     * Returns the serializer artifact id this dependency targets.
+     *
+     * @return the serializer artifact id this dependency targets
+     */
     public String getId()            { return id; }
-    /** @param id the serializer artifact id this dependency targets */
+    /**
+     * Sets the serializer artifact id this dependency targets.
+     *
+     * @param id the serializer artifact id this dependency targets
+     */
     public void setId(String id)     { this.id = id; }
 
-    /** @return the semver range this artifact was compiled/verified against */
+    /**
+     * Returns the semver range this artifact was compiled/verified against.
+     *
+     * @return the semver range this artifact was compiled/verified against
+     */
     public String getVersion()       { return version; }
-    /** @param v the semver range this artifact was compiled/verified against */
+    /**
+     * Sets the semver range this artifact was compiled/verified against.
+     *
+     * @param v the semver range this artifact was compiled/verified against
+     */
     public void setVersion(String v) { this.version = v; }
 
     @Override

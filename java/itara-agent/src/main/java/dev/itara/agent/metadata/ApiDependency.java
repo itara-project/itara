@@ -24,20 +24,39 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiDependency {
 
+    /** Required for deserialization. */
+    public ApiDependency() {}
+
     /** Matches artifact.id of the callee's kind = "api" artifact. */
     private String id;
 
     /** Exact version this component was compiled against. */
     private String version;
 
-    /** @return the callee api artifact's id this dependency targets */
+    /**
+     * Returns the callee api artifact's id this dependency targets.
+     *
+     * @return the callee api artifact's id this dependency targets
+     */
     public String getId()              { return id; }
-    /** @param id the callee api artifact's id this dependency targets */
+    /**
+     * Sets the callee api artifact's id this dependency targets.
+     *
+     * @param id the callee api artifact's id this dependency targets
+     */
     public void setId(String id)       { this.id = id; }
 
-    /** @return the exact version this component was compiled against */
+    /**
+     * Returns the exact version this component was compiled against.
+     *
+     * @return the exact version this component was compiled against
+     */
     public String getVersion()         { return version; }
-    /** @param v the exact version this component was compiled against */
+    /**
+     * Sets the exact version this component was compiled against.
+     *
+     * @param v the exact version this component was compiled against
+     */
     public void setVersion(String v)   { this.version = v; }
 
     @Override

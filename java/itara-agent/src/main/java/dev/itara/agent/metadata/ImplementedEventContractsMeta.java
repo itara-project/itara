@@ -24,11 +24,22 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ImplementedEventContractsMeta {
 
+    /** Required for deserialization. */
+    public ImplementedEventContractsMeta() {}
+
     private List<ImplementedEventContract> contracts = new ArrayList<>();
 
-    /** @return the event contracts this component implements; never null */
+    /**
+     * Returns the event contracts this component implements; never null.
+     *
+     * @return the event contracts this component implements; never null
+     */
     public List<ImplementedEventContract> getContracts() { return contracts; }
-    /** @param contracts the event contracts this component implements; null is treated as empty */
+    /**
+     * Sets the event contracts this component implements; null is treated as empty.
+     *
+     * @param contracts the event contracts this component implements; null is treated as empty
+     */
     public void setContracts(List<ImplementedEventContract> contracts) {
         this.contracts = contracts != null ? contracts : new ArrayList<>();
     }
@@ -38,7 +49,11 @@ public class ImplementedEventContractsMeta {
         return "ImplementedEventContractsMeta{contracts=" + contracts + "}";
     }
 
-    /** @return an instance with no declared event contracts, for when the section is absent */
+    /**
+     * Returns an instance with no declared event contracts, for when the section is absent.
+     *
+     * @return an instance with no declared event contracts, for when the section is absent
+     */
     public static ImplementedEventContractsMeta ofEmpty() {
         return new ImplementedEventContractsMeta();
     }

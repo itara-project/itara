@@ -23,6 +23,8 @@ public interface ItaraAuthenticationConfig {
      *
      * <p>Two configs with equal grouping keys share one authentication
      * instance. Two configs with unequal keys each get their own instance.
+     *
+     * @return the grouping key for this configuration
      */
     ItaraAuthenticationGroupingKey groupingKey();
 }

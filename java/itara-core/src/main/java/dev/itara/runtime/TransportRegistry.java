@@ -34,7 +34,11 @@ public class TransportRegistry {
 
     private TransportRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static TransportRegistry instance() {
         return INSTANCE;
     }
@@ -43,6 +47,8 @@ public class TransportRegistry {
      * Register a transport factory.
      * Called by TransportLoader during agent startup before any connections
      * are processed.
+     *
+     * @param factory the factory to register
      */
     public void registerFactory(ItaraTransportFactory factory) {
         factories.put(factory.id().toLowerCase(), factory);
@@ -117,6 +123,8 @@ public class TransportRegistry {
     /**
      * Start all created transport instances.
      * Called by the agent once after all connections are processed.
+     *
+     * @throws Exception if any transport instance fails to start
      */
     public void startAll() throws Exception {
         for (Map.Entry<String, Map<ItaraTransportGroupingKey, ItaraTransport>> byId

@@ -25,27 +25,41 @@ public final class AuthenticationConfig {
     }
 
     /**
-     * Returns parameters.
+     * Returns implementation-specific connection parameters; never null.
      *
-     * @return implementation-specific connection parameters; never null */
+     * @return implementation-specific connection parameters; never null
+     */
     public Map<String, String> getParams() { return params; }
 
     /**
-     * Returns a new builder.
+     * Returns a new builder for an {@link AuthenticationConfig}.
      *
-     * @return a new builder for an {@link AuthenticationConfig} */
+     * @return a new builder for an {@link AuthenticationConfig}
+     */
     public static Builder builder() { return new Builder(); }
 
     /** Builder for {@link AuthenticationConfig}. */
     public static final class Builder {
         private Map<String, String> params = Collections.emptyMap();
 
-        /** @param params implementation-specific connection parameters; null is treated as empty */
+        /** Constructs a new, empty builder. */
+        public Builder() {}
+
+        /**
+         * Sets the implementation-specific connection parameters.
+         *
+         * @param params implementation-specific connection parameters; null is treated as empty
+         * @return this builder
+         */
         public Builder params(Map<String, String> params) {
             this.params = (params != null) ? params : Collections.emptyMap();
             return this;
         }
-        /** @return the built {@link AuthenticationConfig} */
+        /**
+         * Returns the built {@link AuthenticationConfig}.
+         *
+         * @return the built {@link AuthenticationConfig}
+         */
         public AuthenticationConfig build() {
             return new AuthenticationConfig(this);
         }

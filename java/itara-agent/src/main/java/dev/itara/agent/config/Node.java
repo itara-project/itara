@@ -34,19 +34,38 @@ import java.util.regex.Pattern;
 })
 public abstract class Node {
 
+    /** Constructed only by subclasses. */
+    protected Node() {}
+
     private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]+");
 
     private String id;
     private NodeKind kind;
 
-    /** @return this node's own identifier */
+    /**
+     * Returns this node's own identifier.
+     *
+     * @return this node's own identifier
+     */
     public String getId()          { return id; }
-    /** @param id this node's own identifier */
+    /**
+     * Sets this node's own identifier.
+     *
+     * @param id this node's own identifier
+     */
     public void setId(String id)   { this.id = id; }
 
-    /** @return the discriminator for this node's type */
+    /**
+     * Returns the discriminator for this node's type.
+     *
+     * @return the discriminator for this node's type
+     */
     public NodeKind getKind()            { return kind; }
-    /** @param kind the discriminator for this node's type */
+    /**
+     * Sets the discriminator for this node's type.
+     *
+     * @param kind the discriminator for this node's type
+     */
     public void setKind(NodeKind kind)   { this.kind = kind; }
 
     /**
@@ -58,6 +77,7 @@ public abstract class Node {
      *
      * <p>Used by the agent to look up the contract class, register
      * proxies, and create dispatchers — without branching on node type.
+     * @return this node's contract identifier
      */
     public abstract String contractIdentifier();
 
@@ -69,6 +89,10 @@ public abstract class Node {
      */
     public abstract void validate();
 
+    /**
+     * Validates that {@code id} is present and matches the allowed
+     * character set. Subclasses call this from their own {@link #validate}.
+     */
     protected void validateId() {
         if (id == null || id.isBlank()) {
             throw new ConfigurationException(

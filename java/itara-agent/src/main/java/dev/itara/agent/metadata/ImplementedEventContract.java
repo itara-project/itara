@@ -17,20 +17,39 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ImplementedEventContract {
 
+    /** Required for deserialization. */
+    public ImplementedEventContract() {}
+
     /** Full contract reference: "<collection-id>/<contract-id>" */
     private String id;
 
     /** Version of the events artifact this implementation was written against. */
     private String version;
 
-    /** @return the full contract reference this component implements */
+    /**
+     * Returns the full contract reference this component implements.
+     *
+     * @return the full contract reference this component implements
+     */
     public String getId()      { return id; }
-    /** @param id the full contract reference this component implements */
+    /**
+     * Sets the full contract reference this component implements.
+     *
+     * @param id the full contract reference this component implements
+     */
     public void setId(String id) { this.id = id; }
 
-    /** @return the version of the events artifact this was written against */
+    /**
+     * Returns the version of the events artifact this was written against.
+     *
+     * @return the version of the events artifact this was written against
+     */
     public String getVersion()           { return version; }
-    /** @param version the version of the events artifact this was written against */
+    /**
+     * Sets the version of the events artifact this was written against.
+     *
+     * @param version the version of the events artifact this was written against
+     */
     public void setVersion(String version) { this.version = version; }
 
     @Override

@@ -34,7 +34,11 @@ public class AuthenticationRegistry {
 
     private AuthenticationRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static AuthenticationRegistry instance() {
         return INSTANCE;
     }
@@ -43,6 +47,8 @@ public class AuthenticationRegistry {
      * Register an authentication factory.
      * Called by AuthenticationLoader during agent startup before any
      * connections are processed.
+     *
+     * @param factory the factory to register
      */
     public void registerFactory(ItaraAuthenticationFactory factory) {
         factories.put(factory.id().toLowerCase(), factory);

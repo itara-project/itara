@@ -26,6 +26,8 @@ public interface ItaraScope extends AutoCloseable {
     /**
      * Marks this scope as having ended with an error.
      * Must be called before close() if the invocation threw.
+     *
+     * @param error true if this scope ended with an error
      */
     void setError(boolean error);
 

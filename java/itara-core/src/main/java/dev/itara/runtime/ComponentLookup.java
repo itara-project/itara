@@ -46,6 +46,7 @@ public final class ComponentLookup {
      * @param targetIdentifier the component id, or event-contract id, to
      *                         resolve a connection to
      * @param type             the interface type to return the proxy as
+     * @param <T>              the interface type to return the proxy as
      * @return a proxy for the resolved connection
      */
     public static <T> T get(String targetIdentifier, Class<T> type) {
@@ -66,6 +67,7 @@ public final class ComponentLookup {
      * @param componentId the identity to claim — must be a local
      *                    component's id, per this JVM slice's wiring
      * @param type        the interface type to return the proxy as
+     * @param <T>         the interface type to return the proxy as
      * @param observeIncomingCalls whether CALL_RECEIVED/RETURN_SENT fire for
      *        each call made into the returned proxy
      * @return a proxy to this component's own activated instance

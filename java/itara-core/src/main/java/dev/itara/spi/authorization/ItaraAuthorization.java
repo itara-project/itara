@@ -44,6 +44,10 @@ public interface ItaraAuthorization {
      *                 (§16.5).
      * @param headers  The raw inbound headers, for an implementation
      *                 that wants a signal beyond identity and target.
+     * @return the permit or deny decision
+     * @throws Exception if evaluating the decision fails unexpectedly
+     *                   (distinct from an ordinary denial, which is not
+     *                   an exception)
      */
     AuthorizationDecision authorize(ItaraAuthorizationConfig config,
                                     Optional<ItaraIdentity> identity,

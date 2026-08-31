@@ -29,12 +29,23 @@ import java.util.Set;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class MethodsMeta {
 
+    /** Required for deserialization. */
+    public MethodsMeta() {}
+
     @JsonProperty("non-idempotent")
     private List<String> nonIdempotentMethods = new ArrayList<>();
 
-    /** @return the declared non-idempotent method names; never null */
+    /**
+     * Returns the declared non-idempotent method names; never null.
+     *
+     * @return the declared non-idempotent method names; never null
+     */
     public List<String> getNonIdempotentMethods() { return nonIdempotentMethods; }
-    /** @param nonIdempotentMethods the declared non-idempotent method names; null is treated as empty */
+    /**
+     * Sets the declared non-idempotent method names; null is treated as empty.
+     *
+     * @param nonIdempotentMethods the declared non-idempotent method names; null is treated as empty
+     */
     public void setNonIdempotentMethods(List<String> nonIdempotentMethods) {
         this.nonIdempotentMethods = nonIdempotentMethods != null ? nonIdempotentMethods : new ArrayList<>();
     }
@@ -42,12 +53,18 @@ public class MethodsMeta {
     /**
      * Returns the non-idempotent method names as an immutable set
      * for O(1) lookup in the proxy handler at call time.
+     *
+     * @return the non-idempotent method names as an immutable set
      */
     public Set<String> nonIdempotentSet() {
         return Collections.unmodifiableSet(new HashSet<>(nonIdempotentMethods));
     }
 
-    /** @return an instance with no declared non-idempotent methods, for when the section is absent */
+    /**
+     * Returns an instance with no declared non-idempotent methods, for when the section is absent.
+     *
+     * @return an instance with no declared non-idempotent methods, for when the section is absent
+     */
     public static MethodsMeta ofEmpty() {
         return new MethodsMeta();
     }

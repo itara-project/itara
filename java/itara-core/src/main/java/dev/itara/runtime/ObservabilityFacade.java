@@ -88,6 +88,7 @@ public final class ObservabilityFacade {
     /**
      * Returns the singleton instance.
      *
+     * @return the singleton instance
      * @throws IllegalStateException if initialize() has not been called
      */
     public static ObservabilityFacade instance() {

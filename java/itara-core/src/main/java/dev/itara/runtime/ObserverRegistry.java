@@ -30,12 +30,20 @@ public final class ObserverRegistry {
 
     private ObserverRegistry() {}
 
-    /** @return the singleton registry instance */
+    /**
+     * Returns the singleton registry instance.
+     *
+     * @return the singleton registry instance
+     */
     public static ObserverRegistry instance() {
         return INSTANCE;
     }
 
-    /** @return the live list of registered observers, in registration order */
+    /**
+     * Returns the live list of registered observers, in registration order.
+     *
+     * @return the live list of registered observers, in registration order
+     */
     public List<ItaraObserver> getObservers() {
         return observers;
     }
@@ -43,13 +51,19 @@ public final class ObserverRegistry {
     /**
      * Register an observer. Called during agent startup, or by component
      * code that wants to observe events directly.
+     *
+     * @param observer the observer to register
      */
     public void register(ItaraObserver observer) {
         observers.add(observer);
         log.fine("[Itara] registered observer class=" + observer.getClass().getName());
     }
 
-    /** @return the number of currently registered observers */
+    /**
+     * Returns the number of currently registered observers.
+     *
+     * @return the number of currently registered observers
+     */
     public int size() {
         return observers.size();
     }

@@ -20,6 +20,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ArtifactMeta {
 
+    /** Required for deserialization. */
+    public ArtifactMeta() {}
+
     /** kind = "component" | "api" | "transport" | "serializer" | "observer" | "failure-semantics" |
      * "context-handler" | "authentication" | "authorization" */
     private String kind;
@@ -35,24 +38,56 @@ public class ArtifactMeta {
     @JsonProperty("api-version")
     private String apiVersion = "";
 
-    /** @return the artifact kind, e.g. "component", "api", "transport" */
+    /**
+     * Returns the artifact kind, e.g. "component", "api", "transport".
+     *
+     * @return the artifact kind, e.g. "component", "api", "transport"
+     */
     public String getKind() { return kind; }
-    /** @param kind the artifact kind, e.g. "component", "api", "transport" */
+    /**
+     * Sets the artifact kind, e.g. "component", "api", "transport".
+     *
+     * @param kind the artifact kind, e.g. "component", "api", "transport"
+     */
     public void setKind(String kind) { this.kind = kind; }
 
-    /** @return the component id or SPI implementation name this artifact declares */
+    /**
+     * Returns the component id or SPI implementation name this artifact declares.
+     *
+     * @return the component id or SPI implementation name this artifact declares
+     */
     public String getId() { return id; }
-    /** @param id the component id or SPI implementation name this artifact declares */
+    /**
+     * Sets the component id or SPI implementation name this artifact declares.
+     *
+     * @param id the component id or SPI implementation name this artifact declares
+     */
     public void setId(String id) { this.id = id; }
 
-    /** @return this artifact's own version */
+    /**
+     * Returns this artifact's own version.
+     *
+     * @return this artifact's own version
+     */
     public String getVersion() { return version; }
-    /** @param version this artifact's own version */
+    /**
+     * Sets this artifact's own version.
+     *
+     * @param version this artifact's own version
+     */
     public void setVersion(String version) { this.version = version; }
 
-    /** @return the API version this artifact exposes or was compiled against */
+    /**
+     * Returns the API version this artifact exposes or was compiled against.
+     *
+     * @return the API version this artifact exposes or was compiled against
+     */
     public String getApiVersion() { return apiVersion; }
-    /** @param apiVersion the API version this artifact exposes or was compiled against */
+    /**
+     * Sets the API version this artifact exposes or was compiled against.
+     *
+     * @param apiVersion the API version this artifact exposes or was compiled against
+     */
     public void setApiVersion(String apiVersion) { this.apiVersion = apiVersion; }
 
     @Override

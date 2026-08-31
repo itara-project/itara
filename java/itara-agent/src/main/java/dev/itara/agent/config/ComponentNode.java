@@ -24,7 +24,7 @@ public class ComponentNode extends Node {
 
     /**
      * The component id. Must match the id declared in the
-     * @ComponentInterface annotation on the contract interface.
+     * {@code @ComponentInterface} annotation on the contract interface.
      */
     private String component;
 
@@ -33,9 +33,17 @@ public class ComponentNode extends Node {
         setKind(NodeKind.COMPONENT);
     }
 
-    /** @return the component id this node is an instance of */
+    /**
+     * Returns the component id this node is an instance of.
+     *
+     * @return the component id this node is an instance of
+     */
     public String getComponent()               { return component; }
-    /** @param component the component id this node is an instance of */
+    /**
+     * Sets the component id this node is an instance of.
+     *
+     * @param component the component id this node is an instance of
+     */
     public void setComponent(String component) { this.component = component; }
 
     /**
