@@ -1,4 +1,7 @@
 # Itara
+
+[![Maven Central - itara-core](https://img.shields.io/maven-central/v/dev.itara/itara-core.svg?label=itara-core)](https://central.sonatype.com/artifact/dev.itara/itara-core)
+[![Maven Central - itara-agent](https://img.shields.io/maven-central/v/dev.itara/itara-agent.svg?label=itara-agent)](https://central.sonatype.com/artifact/dev.itara/itara-agent)
  
 Itara makes distributed system topology explicit, declared, verifiable, and executable. Topology — which components exist, how they connect, what transport they use, how failures are handled — lives in a single wiring config, not scattered across codebases as a consequence of implementation decisions made years apart.
 
@@ -110,7 +113,7 @@ A component needs three things to participate:
 - An **activator** — a single factory method that takes no arguments and returns the implementation
 - A **wiring config entry** — declaring the node and its connections 
 
-The only Itara dependency a component ever introduces is the core library — `itara-common` in Java, `itara-core` in Rust. The business logic implementation itself requires no Itara imports at all. Only the activator, the single composition root of a component, touches the registry. Spring Boot works alongside Itara without any adapter — they operate at different layers and do not interfere with each other.
+The only Itara dependency a component ever introduces is the core library — `itara-core` in Java and Rust. The business logic implementation itself requires no Itara imports at all. Only the activator, the single composition root of a component, touches the registry. Spring Boot works alongside Itara without any adapter — they operate at different layers and do not interfere with each other.
  
 **With partial adoption**, even a single service boundary under Itara gives you structural observability on that connection, explicit topology declaration for those components, and the ability to switch transport without code changes.
  
