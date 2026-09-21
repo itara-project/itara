@@ -247,11 +247,15 @@ The agent uses the node identifier to filter which parts of the wiring configura
 A connection declaration MUST include:
 
 - A unique identifier for the connection (`id`)
-- The identifier of the calling node (`from`)
-- The identifier of the called node (`to`)
-- A `transport` block identifying the transport and its parameters
+- A `callee` block, including the identifier of the called node
+  (`callee.nodeId`)
+- A transport configuration, resolvable for the connection either from the connection-level `transport` block or from per-side `transport` blocks covering both the caller and the callee
+
+A connection declaration MAY include a `caller` block. Its absence indicates that the caller is external to this topology — the connection defines an inbound entry point for the `callee` node. Where present, a `caller` block MUST include the identifier of the calling node (`caller.nodeId`).
 
 The `id` MUST be unique across the entire wiring configuration — no two connections, anywhere in the topology, may share one. This is what lets the correct connection-specific configuration — transport, serializer, failure semantics, or anything else declared per connection — be applied to every call on that connection.
+
+A connection declaration MAY additionally include caller-side and callee-side configuration for any plugin block, independent of the shared connection-level configuration for that block. Where present, the side-specific declaration for a given plugin kind takes precedence over the connection-level one for that side. A conforming implementation MUST support this independent of which specific plugin kinds a given connection actually uses it for.
 
 The `from` field MAY be absent or empty, indicating that the caller is external to this topology — the connection defines an inbound entry point for the `to` node.
 
@@ -260,26 +264,38 @@ A connection declaration MAY include Serializer selection for remote connections
 ```yaml
 connections:
   - id: "gateway-to-calculator"
-    from: "gatewayNode"
-    to: "calculatorNode"
-    transport:
-      id: http
-      handleTimeout: true
-      params:
-        host: "${CALC_HOST:-localhost}"
-        port: "8081"
     serializer:
       id: json
+    callee:
+      nodeId: "calculatorNode"
+      transport:
+        id: hardened-http
+        params:
+          host: "${CALC_HOST:-localhost}"
+          port: "8081"
+      authorization:
+        id: rule-table
+    caller:
+      nodeId: "gatewayNode"
+      transport:
+        id: http
+        params:
+          host: "${CALC_HOST:-localhost}"
+          port: "8081"
+      failureSemantics:
+        id: built-in
+        maxRetry: 3
 
   - id: "external-to-gateway"
-    from:                     # absent = external caller
-    to: "gatewayNode"
-    transport:
-      id: http
-      params:
-        port: "8082"
-    serializer:
-      id: json
+    callee:
+      nodeId: "gatewayNode"
+      transport:
+        id: http
+        params:
+          port: "8082"
+      serializer:
+        id: json
+    # no caller block — external caller
 ```
 
 ### 4.5 Master Configuration and Agent Slicing
@@ -309,7 +325,7 @@ For a transport connection, the agent MUST:
 
 #### 4.6.3 Inbound External Connections
 
-When a connection has no `from` node, the agent MUST start a listener that accepts calls from external callers not managed by this agent instance. The listener is otherwise identical to a transport connection callee listener.
+When a connection has no `caller` block, the agent MUST start a listener that accepts calls from external callers not managed by this agent instance. The listener is otherwise identical to a transport connection callee listener.
 
 ### 4.7 Multiple Connections to a Single Node
 
@@ -1205,7 +1221,7 @@ The verify command MUST check for and report the following conditions:
 | Check | Severity | Condition |
 |-------|----------|-----------|
 | Duplicate node identifiers | ERROR | Two or more nodes declare the same `id` |
-| Self-connections | ERROR | A connection declares the same node as both `from` and `to` |
+| Self-connections | ERROR | A connection declares the same node as both `caller.nodeId` and `callee.nodeId` |
 | Orphaned nodes | ERROR | A node is declared but not referenced in any connection |
 | Orphaned connections | ERROR | A connection references a node identifier not declared in the nodes list |
 | Unknown transport type | ERROR | A connection declares a transport type not known to this tooling installation |
@@ -1226,6 +1242,7 @@ MUST additionally perform the following checks:
 | API version incompatibility | ERROR | A caller component was compiled against a version of a callee's API that does not satisfy the callee's declared `api-version` range |
 | Timeout capability mismatch | ERROR | A connection configures timeout enforcement in a way that conflicts with the capabilities declared in the transport or failure semantics metadata — see §14.10 for the full list of conditions |
 | Transport interrupt safety | ERROR | A connection configures external timeout enforcement but the transport declares `externally-interruptible = false` |
+| Caller/callee plugin incompatibility | ERROR | A plugin kind is declared independently on both the caller side and the callee side of a connection, and the two declarations are not compatible |
 
 Version compatibility MUST be evaluated using standard semver semantics. The
 callee declares a semver range in `api-version`; the caller declares the exact
