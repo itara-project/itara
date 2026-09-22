@@ -28,14 +28,16 @@ import java.util.Set;
  *
  * connections:
  *   - id:   "order-to-pricing"
- *     from: "order-service-node"
- *     to:   "pricing-service-node"
+ *     caller:
+ *       nodeId: "order-service-node"
+ *     callee:
+ *       nodeId: "pricing-service-node"
  *     transport:
  *       id: direct
  *
  *   - id:   "gateway-to-order"
- *     from: ""
- *     to:   "order-service-node"
+ *     callee:
+ *       nodeId: "order-service-node"
  *     transport:
  *       id: http
  *       params:
@@ -44,6 +46,12 @@ import java.util.Set;
  *     serializer:
  *       id: json
  * }</pre>
+ *
+ * <p>Each connection names its {@code callee} (mandatory) and, unless the
+ * caller is external, its {@code caller}. Plugin blocks such as transport
+ * and serializer may be declared on the connection itself or inside either
+ * side; see {@link ConnectionEntry} for where each kind is allowed and how
+ * each side resolves its own.
  *
  * <p>Environment variable substitution is supported in all string values
  * using the syntax ${VAR_NAME:-default_value}. If the variable is not

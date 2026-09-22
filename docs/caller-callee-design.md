@@ -12,21 +12,38 @@ sense for it.
 ```yaml
 connections:
   - id: "gateway-to-calculator"
+    serializer:
+      id: json
     callee:
       nodeId: "calculatorNode"
       transport:
-        id: http
-        params: { host: "${CALC_HOST:-localhost}", port: "8081" }
+        id: hardened-http
+        params:
+          host: "${CALC_HOST:-localhost}"
+          port: "8081"
+      authorization:
+        id: rule-table
     caller:
       nodeId: "gatewayNode"
+      transport:
+        id: http
+        params:
+          host: "${CALC_HOST:-localhost}"
+          port: "8081"
+      failureSemantics:
+        id: built-in
+        maxRetry: 3
 
   - id: "external-to-gateway"
     callee:
       nodeId: "gatewayNode"
       transport:
         id: http
-        params: { port: "8082" }
-    # no caller block — external connection
+        params:
+          port: "8082"
+      serializer:
+        id: json
+    # no caller block — external caller
 ```
 
 `callee` is mandatory. Every connection has a target; `callee.nodeId` is

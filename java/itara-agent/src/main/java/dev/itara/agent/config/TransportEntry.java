@@ -9,7 +9,9 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * The transport block of a connection entry in the wiring config.
+ * The transport block of a connection entry in the wiring config: declared
+ * either on the connection itself, shared by both sides, or inside its
+ * caller or callee block.
  *
  * <p>Example YAML:
  *

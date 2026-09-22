@@ -5,6 +5,10 @@ import dev.itara.agent.config.ConfigLoader;
 import dev.itara.agent.config.ConnectionEntry;
 import dev.itara.agent.config.Node;
 import dev.itara.agent.config.NodeKind;
+import dev.itara.agent.config.ResolvedCallee;
+import dev.itara.agent.config.ResolvedCaller;
+import dev.itara.agent.config.SerializerEntry;
+import dev.itara.agent.config.TransportEntry;
 import dev.itara.agent.config.VirtualNode;
 import dev.itara.agent.config.WiringConfig;
 import dev.itara.agent.metadata.ItaraMetadataIndex;
@@ -241,22 +245,12 @@ public class ItaraAgent {
         // ── Step 10: Process connections ────────────────────────────────────
         if (config.getConnections() != null) {
             for (ConnectionEntry conn : config.getConnections()) {
+                final ResolvedCaller caller = conn.getCaller() != null ? conn.resolveCaller() : null;
+                final ResolvedCallee callee = conn.resolveCallee();
 
-                AuthenticationConfig rawAuthenticationConfig = buildAuthenticationConfig(conn);
-                ItaraAuthenticationConfig authenticationConfig =
-                        authenticationRegistry.parseConfig(conn.getAuthenticationId(), rawAuthenticationConfig);
-                ItaraAuthentication authentication =
-                        authenticationRegistry.getOrCreate(conn.getAuthenticationId(), authenticationConfig);
-
-                AuthorizationConfig rawAuthorizationConfig = buildAuthorizationConfig(conn);
-                ItaraAuthorizationConfig authorizationConfig =
-                        authorizationRegistry.parseConfig(conn.getAuthorizationId(), rawAuthorizationConfig);
-                ItaraAuthorization authorization =
-                        authorizationRegistry.getOrCreate(conn.getAuthorizationId(), authorizationConfig);
-
-                if (conn.isDirect()) {
-                    Node toNode   = config.findNode(conn.getTo()).orElseThrow();
-                    Node fromNode = config.findNode(conn.getFrom()).orElseThrow(); // external check is done during config validation
+                if (callee.isDirect()) {
+                    Node toNode   = config.findNode(callee.getNodeId()).orElseThrow();
+                    Node fromNode = config.findNode(caller.getNodeId()).orElseThrow(); // external check is done during config validation
 
                     String componentId = switch (toNode.getKind()) {
                         case COMPONENT -> ((ComponentNode) toNode).getComponent();
@@ -269,7 +263,7 @@ public class ItaraAgent {
                     Class<?> contractClass = contracts.get(componentId);
                     if (contractClass == null) {
                         throw new IllegalStateException(
-                                "[Itara] Cannot create local proxy for '" + conn.getTo()
+                                "[Itara] Cannot create local proxy for '" + callee.getNodeId()
                                         + "': no contract class found for '" + componentId + "'. "
                                         + "Is the API jar on the classpath?");
                     }
@@ -277,11 +271,31 @@ public class ItaraAgent {
                     ComponentScope scope     = localNodeScopes.get(toNode.getId());
                     ComponentScope fromScope = localNodeScopes.get(fromNode.getId());
 
+                    // A direct connection is both ends at once, so it needs the
+                    // caller's authentication (produces the assertion), the
+                    // callee's authentication (verifies it) and the callee's
+                    // authorization.
+                    ItaraAuthenticationConfig callerAuthenticationConfig = authenticationRegistry.parseConfig(
+                            caller.getAuthenticationId(), caller.getAuthenticationConfig());
+                    ItaraAuthentication callerAuthentication = authenticationRegistry.getOrCreate(
+                            caller.getAuthenticationId(), callerAuthenticationConfig);
+
+                    ItaraAuthenticationConfig calleeAuthenticationConfig = authenticationRegistry.parseConfig(
+                            callee.getAuthenticationId(), callee.getAuthenticationConfig());
+                    ItaraAuthentication calleeAuthentication = authenticationRegistry.getOrCreate(
+                            callee.getAuthenticationId(), calleeAuthenticationConfig);
+
+                    ItaraAuthorizationConfig authorizationConfig = authorizationRegistry.parseConfig(
+                            callee.getAuthorizationId(), callee.getAuthorizationConfig());
+                    ItaraAuthorization authorization = authorizationRegistry.getOrCreate(
+                            callee.getAuthorizationId(), authorizationConfig);
+
                     Object proxy = Proxy.newProxyInstance(
                             systemClassLoader,
                             new Class<?>[]{ contractClass },
                             new ItaraLocalProxyHandler(conn.getId(), componentId, registry, scope, fromScope,
-                                    authentication, authenticationConfig, authentication, authenticationConfig,
+                                    callerAuthentication, callerAuthenticationConfig,
+                                    calleeAuthentication, calleeAuthenticationConfig,
                                     authorization, authorizationConfig)
                     );
                     registry.registerConnectionProxy(conn.getId(), proxy);
@@ -289,25 +303,14 @@ public class ItaraAgent {
 
                     log.info("[Itara] connection established id=" + conn.getId()
                             + " direction=local"
-                            + " from=" + conn.getFrom()
-                            + " to=" + conn.getTo());
+                            + " from=" + caller.getNodeId()
+                            + " to=" + callee.getNodeId());
                     continue;
                 }
 
-                // All non-direct connections go through the transport registry
-                TransportConfig rawConfig = buildTransportConfig(conn, config);
-                String transportId = conn.getTransport().getId();
-                ItaraTransportConfig transportConfig = transportRegistry.parseConfig(transportId, rawConfig);
-                ItaraTransport transport = transportRegistry.getOrCreate(transportId, transportConfig);
-
-                SerializerConfig rawSerializerConfig = buildSerializerConfig(conn);
-                String serializerId = conn.getSerializer().getId();
-                ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
-                ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
-
-                Node toNode   = config.findNode(conn.getTo()).orElseThrow();
-                Node fromNode = conn.getFrom() != null
-                        ? config.findNode(conn.getFrom()).orElse(null)
+                Node toNode   = config.findNode(callee.getNodeId()).orElseThrow();
+                Node fromNode = caller != null
+                        ? config.findNode(caller.getNodeId()).orElse(null)
                         : null;
 
                 ExchangePattern pattern = (toNode.getKind() == NodeKind.VIRTUAL
@@ -315,13 +318,33 @@ public class ItaraAgent {
                         ? ExchangePattern.FIRE_AND_FORGET
                         : ExchangePattern.REQUEST_REPLY;
 
-                boolean toIsLocal = config.getLocalNodeIds().contains(conn.getTo());
-                boolean fromIsLocal = conn.getFrom() != null
-                        && config.getLocalNodeIds().contains(conn.getFrom());
+                boolean toIsLocal = config.getLocalNodeIds().contains(callee.getNodeId());
+                boolean fromIsLocal = caller != null
+                        && config.getLocalNodeIds().contains(caller.getNodeId());
 
                 if (toIsLocal) {
                     // Inbound — wire a dispatcher regardless of node type
                     // ExchangePattern handles the virtual/component distinction
+                    String transportId = callee.getTransport().getId();
+                    TransportConfig rawConfig = buildTransportConfig(conn, callee.getTransport(), config);
+                    ItaraTransportConfig transportConfig = transportRegistry.parseConfig(transportId, rawConfig);
+                    ItaraTransport transport = transportRegistry.getOrCreate(transportId, transportConfig);
+
+                    String serializerId = callee.getSerializer().getId();
+                    SerializerConfig rawSerializerConfig = buildSerializerConfig(callee.getSerializer());
+                    ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
+                    ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
+
+                    ItaraAuthenticationConfig authenticationConfig = authenticationRegistry.parseConfig(
+                            callee.getAuthenticationId(), callee.getAuthenticationConfig());
+                    ItaraAuthentication authentication = authenticationRegistry.getOrCreate(
+                            callee.getAuthenticationId(), authenticationConfig);
+
+                    ItaraAuthorizationConfig authorizationConfig = authorizationRegistry.parseConfig(
+                            callee.getAuthorizationId(), callee.getAuthorizationConfig());
+                    ItaraAuthorization authorization = authorizationRegistry.getOrCreate(
+                            callee.getAuthorizationId(), authorizationConfig);
+
                     String componentId = switch (toNode.getKind()) {
                         case COMPONENT -> ((ComponentNode) toNode).getComponent();
                         case VIRTUAL   -> throw new IllegalStateException(
@@ -349,27 +372,42 @@ public class ItaraAgent {
                             authorizationConfig, scope);
                     transport.registerListener(transportConfig, dispatcher);
 
-                    log.info("[Itara] connection established id=" + transportId
+                    log.info("[Itara] connection established id=" + conn.getId()
                             + " direction=inbound"
-                            + " from=" + (conn.isExternal() ? "external" : conn.getFrom())
-                            + " to=" + conn.getTo()
+                            + " from=" + (conn.isExternal() ? "external" : caller.getNodeId())
+                            + " to=" + callee.getNodeId()
                             + " pattern=" + pattern);
 
                 } else if (fromIsLocal) {
                     // Outbound — wire a proxy regardless of node type
+                    String transportId = caller.getTransport().getId();
+                    TransportConfig rawConfig = buildTransportConfig(conn, caller.getTransport(), config);
+                    ItaraTransportConfig transportConfig = transportRegistry.parseConfig(transportId, rawConfig);
+                    ItaraTransport transport = transportRegistry.getOrCreate(transportId, transportConfig);
+
+                    String serializerId = caller.getSerializer().getId();
+                    SerializerConfig rawSerializerConfig = buildSerializerConfig(caller.getSerializer());
+                    ItaraSerializerConfig serializerConfig = serializerRegistry.parseConfig(serializerId, rawSerializerConfig);
+                    ItaraSerializer serializer = serializerRegistry.getOrCreate(serializerId, serializerConfig);
+
+                    ItaraAuthenticationConfig authenticationConfig = authenticationRegistry.parseConfig(
+                            caller.getAuthenticationId(), caller.getAuthenticationConfig());
+                    ItaraAuthentication authentication = authenticationRegistry.getOrCreate(
+                            caller.getAuthenticationId(), authenticationConfig);
+
                     String contractId = toNode.contractIdentifier();
                     Class<?> contractClass = contracts.get(contractId);
                     if (contractClass == null) {
                         throw new IllegalStateException(
-                                "[Itara] Cannot create proxy for '" + conn.getTo()
+                                "[Itara] Cannot create proxy for '" + callee.getNodeId()
                                         + "': no contract class found for '" + contractId + "'. "
                                         + "Is the API or events jar on the classpath?");
                     }
 
                     ItaraFailureSemantics failureSemantics =
                             FailureSemanticsRegistry.instance().create(
-                                    conn.getFailureSemanticsId(),
-                                    conn.getFailureSemanticsConfig());
+                                    caller.getFailureSemanticsId(),
+                                    caller.getFailureSemanticsConfig());
 
                     MetadataFile apiMetadata = ItaraMetadataIndex.instance()
                             .lookupByContractId(contractId)
@@ -405,10 +443,10 @@ public class ItaraAgent {
                     registry.registerConnectionProxy(conn.getId(), proxy);
                     registry.registerOutboundConnection(fromNode.getId(), contractId, conn.getId());
 
-                    log.info("[Itara] connection established id=" + conn.getTransport().getId()
+                    log.info("[Itara] connection established id=" + conn.getId()
                             + " direction=outbound"
-                            + " from=" + conn.getFrom()
-                            + " to=" + conn.getTo()
+                            + " from=" + caller.getNodeId()
+                            + " to=" + callee.getNodeId()
                             + " pattern=" + pattern);
                 }
             }
@@ -426,21 +464,29 @@ public class ItaraAgent {
     }
 
     /**
-     * Builds a TransportConfig for a connection.
+     * Builds a TransportConfig for one side of a connection.
      *
-     * <p>The params map comes from the transport block in the wiring config.
-     * The agent injects the virtual node topic address on top — this is
-     * the one topology fact the transport cannot know from params alone.
+     * <p>The params map comes from the given transport block — the one the
+     * side resolved, which is either its own or the connection-level one
+     * (see ConnectionEntry). The agent injects the virtual node topic
+     * address on top — this is the one topology fact the transport cannot
+     * know from params alone. The address is looked up from either end of
+     * the connection, since the virtual node may be on either.
+     *
+     * @param conn      the connection, for its caller and callee node ids
+     * @param transport the transport block resolved for the side being wired
+     * @param config    the wiring config the virtual node is looked up in
      */
-    private static TransportConfig buildTransportConfig(ConnectionEntry conn, WiringConfig config) {
-        String virtualNodeAddress = config.findVirtualNode(conn.getFrom())
-                .or(() -> config.findVirtualNode(conn.getTo()))
+    private static TransportConfig buildTransportConfig(ConnectionEntry conn, TransportEntry transport,
+                                                        WiringConfig config) {
+        String virtualNodeAddress = config.findVirtualNode(conn.getCallerNodeId())
+                .or(() -> config.findVirtualNode(conn.getCalleeNodeId()))
                 .map(VirtualNode::getAddress)
                 .orElse(null);
 
         return TransportConfig.builder()
-                .handleTimeout(conn.getTransport().isHandleTimeout())
-                .params(conn.getTransport().getParams())
+                .handleTimeout(transport.isHandleTimeout())
+                .params(transport.getParams())
                 .virtualNodeAddress(virtualNodeAddress)
                 .build();
     }
@@ -450,37 +496,9 @@ public class ItaraAgent {
      *
      * <p>Params come straight from the serializer block in the wiring config.
      */
-    private static SerializerConfig buildSerializerConfig(ConnectionEntry conn) {
+    private static SerializerConfig buildSerializerConfig(SerializerEntry serializer) {
         return SerializerConfig.builder()
-                .params(conn.getSerializer().getParams())
+                .params(serializer.getParams())
                 .build();
-    }
-
-    /**
-     * Builds an AuthenticationConfig for a connection.
-     *
-     * <p>Absent authentication block → empty params, same shape as
-     * buildSerializerConfig. ConnectionEntry.getAuthenticationId() already
-     * defaults to "noop" regardless of whether the block is present.
-     */
-    private static AuthenticationConfig buildAuthenticationConfig(ConnectionEntry conn) {
-        Map<String, String> params = conn.getAuthentication() != null
-                ? conn.getAuthentication().getParams()
-                : Collections.emptyMap();
-        return AuthenticationConfig.builder().params(params).build();
-    }
-
-    /**
-     * Builds an AuthorizationConfig for a connection.
-     *
-     * <p>Absent authorization block → empty params, same shape as
-     * buildSerializerConfig. ConnectionEntry.getAuthorizationId() already
-     * defaults to "noop" regardless of whether the block is present.
-     */
-    private static AuthorizationConfig buildAuthorizationConfig(ConnectionEntry conn) {
-        Map<String, String> params = conn.getAuthorization() != null
-                ? conn.getAuthorization().getParams()
-                : Collections.emptyMap();
-        return AuthorizationConfig.builder().params(params).build();
     }
 }
