@@ -98,15 +98,15 @@ public class ItaraDispatcher implements DispatchHandler {
      * @param componentId           the local component this dispatcher invokes
      * @param transportId           the transport type carrying this connection,
      *                              or "direct" — used for observability only
-     * @param serializer            the connection's own serializer instance
-     * @param serializerConfig      the connection's own parsed serializer config
+     * @param serializer            the callee side's serializer instance
+     * @param serializerConfig      the callee side's parsed serializer config
      * @param registry              the shared ItaraRegistry, for the raw
      *                              component instance lookup at dispatch time
      * @param exchangePattern       the pattern this connection was wired under
-     * @param authentication        the connection's own authentication instance
-     * @param authenticationConfig  the connection's own parsed authentication config
-     * @param authorization         the connection's own authorization instance
-     * @param authorizationConfig   the connection's own parsed authorization config
+     * @param authentication        the callee side's authentication instance
+     * @param authenticationConfig  the callee side's parsed authentication config
+     * @param authorization         the callee side's authorization instance
+     * @param authorizationConfig   the callee side's parsed authorization config
      * @param scope                 this node's own ComponentScope — received,
      *                              not built; see this class's own javadoc
      */

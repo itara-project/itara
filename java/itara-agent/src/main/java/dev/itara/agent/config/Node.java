@@ -37,7 +37,13 @@ public abstract class Node {
     /** Constructed only by subclasses. */
     protected Node() {}
 
-    private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]+");
+    /**
+     * The character set a node id is validated against. Package-private
+     * because ConnectionEntry holds the caller/callee nodeIds it declares
+     * to this same rule — they reference nodes, so they must agree with
+     * this pattern rather than carry a copy of it.
+     */
+    static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]+");
 
     private String id;
     private NodeKind kind;

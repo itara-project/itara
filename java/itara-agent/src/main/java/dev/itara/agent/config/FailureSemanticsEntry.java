@@ -10,7 +10,9 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * The failureSemantics block of a connection entry in the wiring config.
+ * The failureSemantics block of a connection's caller block in the wiring
+ * config. Failure semantics are caller-side only, retry and timeout are
+ * exclusively the caller's concern.
  *
  * <p>Example YAML:
  * <pre>{@code

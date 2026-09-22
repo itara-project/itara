@@ -8,7 +8,9 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * The authorization block of a connection entry in the wiring config.
+ * The authorization block of a connection's callee block in the wiring
+ * config. Authorization is callee-side only — it is purely the callee's own
+ * access-control decision.
  *
  * <p>Example YAML:
  * <pre>{@code
@@ -66,13 +68,14 @@ public class AuthorizationEntry {
      * error (§16.4) — the block should either be omitted entirely
      * (defaulting to noop) or declare a real type identifier.
      *
-     * @param connectionTo the connection's 'to' field, for the error message
+     * @param owner where this block was declared, for the error message —
+     *              e.g. "Connection id='x' (callee)"
      */
-    public void validate(String connectionTo) {
+    public void validate(String owner) {
         if (id == null || id.isBlank()) {
             throw new ConfigurationException(
-                    "[Itara] Connection to='" + connectionTo
-                            + "' declares an authorization block with a blank 'id'. "
+                    "[Itara] " + owner
+                            + " declares an authorization block with a blank 'id'. "
                             + "Omit the block entirely to use the noop default, or supply a valid type identifier.");
         }
     }

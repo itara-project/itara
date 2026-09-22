@@ -8,7 +8,9 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * The authentication block of a connection entry in the wiring config.
+ * The authentication block of a connection entry in the wiring config:
+ * declared either on the connection itself, shared by both sides, or inside
+ * its caller or callee block.
  *
  * <p>Example YAML:
  * <pre>{@code
@@ -66,13 +68,14 @@ public class AuthenticationEntry {
      * error (§15.4) — the block should either be omitted entirely
      * (defaulting to noop) or declare a real type identifier.
      *
-     * @param connectionTo the connection's 'to' field, for the error message
+     * @param owner where this block was declared, for the error message —
+     *              e.g. "Connection id='x' (callee)"
      */
-    public void validate(String connectionTo) {
+    public void validate(String owner) {
         if (id == null || id.isBlank()) {
             throw new ConfigurationException(
-                    "[Itara] Connection to='" + connectionTo
-                            + "' declares an authentication block with a blank 'id'. "
+                    "[Itara] " + owner
+                            + " declares an authentication block with a blank 'id'. "
                             + "Omit the block entirely to use the noop default, or supply a valid type identifier.");
         }
     }

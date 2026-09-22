@@ -18,8 +18,8 @@ nodes:
 
 connections:
   - id: "order-producer-001"
-    from:
-    to: "orderProducerNode"
+    callee:
+      nodeId: "orderProducerNode"
     transport:
       id: http
       params:
@@ -28,8 +28,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-producer-002"
-    from: "orderProducerNode"
-    to: "orderPlacedChannel"
+    caller:
+      nodeId: "orderProducerNode"
+    callee:
+      nodeId: "orderPlacedChannel"
     transport:
       id: kafka
       params:
@@ -37,8 +39,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-producer-003"
-    from: "orderProducerNode"
-    to: "orderCancelledChannel"
+    caller:
+      nodeId: "orderProducerNode"
+    callee:
+      nodeId: "orderCancelledChannel"
     transport:
       id: kafka
       params:
@@ -46,8 +50,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-producer-004"
-    from: "orderProducerNode"
-    to: "paymentMadeChannel"
+    caller:
+      nodeId: "orderProducerNode"
+    callee:
+      nodeId: "paymentMadeChannel"
     transport:
       id: kafka
       params:
@@ -55,8 +61,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-consumer-001"
-    from: "orderPlacedChannel"
-    to: "orderConsumerNode"
+    caller:
+      nodeId: "orderPlacedChannel"
+    callee:
+      nodeId: "orderConsumerNode"
     transport:
       id: kafka
       params:
@@ -65,8 +73,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-consumer-002"
-    from: "orderCancelledChannel"
-    to: "orderConsumerNode"
+    caller:
+      nodeId: "orderCancelledChannel"
+    callee:
+      nodeId: "orderConsumerNode"
     transport:
       id: kafka
       params:
@@ -75,8 +85,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-consumer-003"
-    from: "paymentMadeChannel"
-    to: "orderConsumerNode"
+    caller:
+      nodeId: "paymentMadeChannel"
+    callee:
+      nodeId: "orderConsumerNode"
     transport:
       id: kafka
       params:

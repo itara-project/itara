@@ -7,8 +7,10 @@ nodes:
 
 connections:
   - id: "conn-001"
-    from: "gatewayNode"
-    to: "calculatorNode"
+    caller:
+      nodeId: "gatewayNode"
+    callee:
+      nodeId: "calculatorNode"
     transport:
       id: http
       params:
@@ -18,8 +20,8 @@ connections:
       id: "json"
 
   - id: "conn-002"
-    from:
-    to: "gatewayNode"
+    callee:
+      nodeId: "gatewayNode"
     transport:
       id: http
       params:

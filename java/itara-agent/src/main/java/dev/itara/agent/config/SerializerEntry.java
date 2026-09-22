@@ -8,7 +8,9 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * The serializer block of a connection entry in the wiring config.
+ * The serializer block of a connection entry in the wiring config: declared
+ * either on the connection itself, shared by both sides, or inside its
+ * caller or callee block.
  *
  * <p>Example YAML:
  *
@@ -27,14 +29,14 @@ import java.util.Map;
  * <p>The id must match the type() identifier of an ItaraSerializer
  * implementation present in itara.lib.dir.
  *
- * <p>This block, and its id in particular, is required on every connection
- * declaration except direct (colocated) connections — a direct connection
- * never crosses a process boundary, so nothing on it is ever serialized,
- * and no serializer choice would mean anything. For every other
- * connection there is no serializer that is safe to assume silently, so
- * ConnectionEntry.validate() rejects a missing block or a missing id
- * within it as a configuration error rather than falling back to a
- * default.
+ * <p>Every side of a connection needs a serializer, and its id in
+ * particular, except on direct (colocated) connections — a direct
+ * connection never crosses a process boundary, so nothing on it is ever
+ * serialized, and no serializer choice would mean anything. For every
+ * other connection there is no serializer that is safe to assume silently,
+ * so ConnectionEntry.validate() rejects a side that resolves no serializer,
+ * or one whose block has no id, as a configuration error rather than
+ * falling back to a default.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SerializerEntry {
