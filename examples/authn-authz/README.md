@@ -27,24 +27,12 @@ the spec requires (§15, §16).
   consulted — regardless of which method was requested, since the
   caller's identity was never established in the first place.
 
-The point this example exists to make: running `gateway-a`'s connection
-to `backend` as `direct` instead of `http` produces identical
-authorization behavior. Colocation is a placement decision, not a trust
-boundary (ADR 0025) — nothing about being in the same process exempts a
-connection from the same checks a connection between two separate
-processes gets.
-
-**A known, deliberate gap in the colocated case, for now:** the colocated
-deployment only demonstrates authorization, not authentication
-rejection, and only involves `gateway-a` (`gateway-b`'s scenario isn't
-reproduced there). A `direct` connection's authentication is currently
-resolved once and shared between its caller and callee sides, so a
-shared-secret mismatch can't yet be demonstrated on this path the way it
-can across a real process boundary. This is tracked, not an oversight —
-planned alongside splitting a connection's wiring config into separate
-caller-side and callee-side halves generally (transport, serializer,
-and authentication alike). This example will be extended to cover it
-once that lands.
+The point this example exists to make: running `gateway-a`'s and 
+`gateway-b`'s connections to `backend` as `direct` instead of `http`
+produces identical authentication and authorization behavior.
+Colocation is a placement decision, not a trust boundary (ADR 0025)
+— nothing about being in the same process exempts a connection from
+the same checks a connection between two separate processes gets.
 
 ## The two plugins
 
@@ -238,7 +226,7 @@ still can, via `remoteExceptionClass`.
 
 ```bash
 ITARA_COMPONENTS_DIR=deployment/components java \
-  -Ditara.nodes="gateway-aNode,backendNode" \
+  -Ditara.nodes="gateway-aNode,gateway-bNode,backendNode" \
   -Ditara.config="deployment/wiring-colocated.yaml" \
   -Ditara.metadata.dir="deployment/metafiles" \
   -Ditara.lib.dir="deployment/itara-libs" \
@@ -248,11 +236,12 @@ ITARA_COMPONENTS_DIR=deployment/components java \
 ```
 On PowerShell: `$env:ITARA_COMPONENTS_DIR="deployment/components"; java ...`.
 
-One process, both nodes, isolated classloader mode — `gateway-a` and
-`backend` each get their own classloader, the same guarantee the
-distributed deployment gets from being two separate OS processes.
+One process, three nodes, isolated classloader mode — `gateway-a`,
+`gateway-b` and `backend` each get their own classloader, the same
+guarantee the distributed deployment gets from being two separate
+OS processes.
 
-Same two calls, same connection id, same rules — just one process
+Same three calls, same connection ids, same rules — just one process
 instead of three, and no separate `backend` process to start first:
 
 ```bash
@@ -275,8 +264,18 @@ curl -X POST http://localhost:8080/itara/gateway-a/whisper \
 {"errorKind":"PERMISSION","remoteExceptionClass":"AuthorizationDenied","message":"method 'whisper' is on this connection's deny list"}
 ```
 
-Identical results to `gateway-a`'s own calls in the distributed
-deployment — same allow, same deny, same error shape — despite
-`gateway-a-to-backend` now being an in-process call with no wire at all.
-Placement changed how the call gets from `gateway-a` to `backend`, and
-changed nothing about whether it's permitted.
+```bash
+curl -X POST http://localhost:8090/itara/gateway-b/shout \
+     -H "x-itara-dispatch-key: external-to-gateway-b" \
+     -H "x-itara-target-method: shout" \
+     -d '["somethiNG"]'
+```
+```json
+{"errorKind":"PERMISSION","remoteExceptionClass":"AuthenticationRejected","message":"shared secret did not match this connection's configured secret"}
+```
+
+Identical results to `gateway-a`'s and `gateway-b`'s own calls in the
+distributed deployment — same allow, same deny, same error shape — despite
+`gateway-a-to-backend` and `gateway-b-to-backend` now being in-process
+calls with no wire at all. Placement changed how the call gets from
+the gateways to `backend`, and changed nothing about whether it's permitted.
