@@ -119,8 +119,10 @@ The one connection between components in this example, in `wiring.yaml`:
 ```yaml
 connections:
   - id: "gateway-to-calculator"
-    from: "gatewayNode"
-    to: "calculatorNode"
+    caller:
+      nodeId: "gatewayNode"
+    callee:
+      nodeId: "calculatorNode"
     transport:
       id: "http"
       params:
