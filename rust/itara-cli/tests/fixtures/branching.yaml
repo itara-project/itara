@@ -8,7 +8,8 @@ nodes:
 
 connections:
   - id: "external-to-gateway"
-    to: gatewayNode
+    callee:
+      nodeId: gatewayNode
     transport:
       id: http
       params:
@@ -16,8 +17,10 @@ connections:
     serializer:
       id: json
   - id: "gateway-to-serviceA"
-    from: gatewayNode
-    to: serviceANode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: serviceANode
     transport:
       id: http
       params:
@@ -25,8 +28,10 @@ connections:
     serializer:
       id: json
   - id: "gateway-to-serviceB"
-    from: gatewayNode
-    to: serviceBNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: serviceBNode
     transport:
       id: http
       params:

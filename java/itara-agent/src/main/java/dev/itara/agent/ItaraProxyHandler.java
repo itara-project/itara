@@ -95,16 +95,16 @@ public class ItaraProxyHandler implements InvocationHandler {
      *                             the callee's dispatcher can be selected
      * @param componentId          the target component this handler calls
      * @param nodeId               the target node this handler calls
-     * @param serializer           the connection's own serializer instance
-     * @param serializerConfig     the connection's own parsed serializer config
-     * @param transport            the connection's own transport instance
+     * @param serializer           the caller side's serializer instance
+     * @param serializerConfig     the caller side's parsed serializer config
+     * @param transport            the caller side's transport instance
      * @param transportId          the transport type carrying this connection —
      *                             used for observability
      * @param transportConfig      the connection's own parsed transport config
      * @param exchangePattern      the pattern this connection was wired under
-     * @param failureSemantics     the connection's own failure semantics instance
-     * @param authentication       the connection's own authentication instance
-     * @param authenticationConfig the connection's own parsed authentication config
+     * @param failureSemantics     the caller side's failure semantics instance
+     * @param authentication       the caller side's authentication instance
+     * @param authenticationConfig the caller side's parsed authentication config
      * @param apiMetadata          the target API artifact's parsed `.itara`
      *                             metadata, or null if unavailable — used to
      *                             derive the non-idempotent method set

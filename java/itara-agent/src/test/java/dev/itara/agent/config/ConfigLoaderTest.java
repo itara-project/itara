@@ -337,15 +337,17 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: direct
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml)
                     .getConnections().get(0);
-            assertEquals("gateway",    conn.getFrom());
-            assertEquals("calculator", conn.getTo());
+            assertEquals("gateway",    conn.getCallerNodeId());
+            assertEquals("calculator", conn.getCalleeNodeId());
             assertEquals("direct",     conn.getTransport().getId());
             assertTrue(conn.isDirect());
         }
@@ -356,8 +358,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: http
                           params:
@@ -367,8 +371,8 @@ class ConfigLoaderTest {
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            assertEquals("gateway",    conn.getFrom());
-            assertEquals("calculator", conn.getTo());
+            assertEquals("gateway",    conn.getCallerNodeId());
+            assertEquals("calculator", conn.getCalleeNodeId());
             assertEquals("http",       conn.getTransport().getId());
             assertEquals("localhost",  conn.getTransport().getParams().get("host"));
             assertEquals("8081",       conn.getTransport().getParams().get("port"));
@@ -381,8 +385,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: direct
                     """;
@@ -395,8 +401,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: direct
                         unknownFutureField: somevalue
@@ -417,8 +425,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                         serializer:
@@ -434,8 +444,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -455,8 +467,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                         serializer:
@@ -473,8 +487,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                         serializer:
@@ -490,8 +506,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           handleTimeout: true
@@ -511,8 +529,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                     """;
             assertThrows(ConfigurationException.class,
                     () -> ConfigLoader.parseString(yaml));
@@ -524,8 +544,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           handleTimeout: true
                         serializer:
@@ -541,8 +563,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           unknownFutureField: somevalue
@@ -558,8 +582,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -578,8 +604,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: direct
                     """;
@@ -594,8 +622,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           handleTimeout: true
@@ -625,12 +655,13 @@ class ConfigLoaderTest {
     class Validation {
 
         @Test
-        @DisplayName("throws when 'to' is missing")
+        @DisplayName("throws when 'callee' is missing")
         void throwsWhenToMissing() {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
+                        caller:
+                          nodeId: "gateway"
                         transport:
                           id: direct
                     """;
@@ -644,8 +675,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                     """;
             assertThrows(ConfigurationException.class,
                     () -> ConfigLoader.parseString(yaml));
@@ -664,8 +697,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: http
                           params:
@@ -684,8 +719,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: "gateway"
-                        to:   "calculator"
+                        caller:
+                          nodeId: "gateway"
+                        callee:
+                          nodeId: "calculator"
                         transport:
                           id: http
                           params:
@@ -754,8 +791,10 @@ class ConfigLoaderTest {
                         component: "calculator"
                     connections:
                       - id: "conn21"
-                        from: "gatewayNode"
-                        to:   "calculatorNode"
+                        caller:
+                          nodeId: "gatewayNode"
+                        callee:
+                          nodeId: "calculatorNode"
                         transport:
                           id: direct
                     """;
@@ -777,8 +816,10 @@ class ConfigLoaderTest {
                 component: "notifier"
             connections:
               - id: "conn21"
-                from: "gatewayNode"
-                to: "calculatorNode"
+                caller:
+                  nodeId: "gatewayNode"
+                callee:
+                  nodeId: "calculatorNode"
                 transport:
                   id: http
                   params:
@@ -787,8 +828,10 @@ class ConfigLoaderTest {
                 serializer:
                   id: json
               - id: "conn22"
-                from: "gatewayNode"
-                to: "notifierNode"
+                caller:
+                  nodeId: "gatewayNode"
+                callee:
+                  nodeId: "notifierNode"
                 transport:
                   id: http
                   params:
@@ -797,8 +840,8 @@ class ConfigLoaderTest {
                 serializer:
                   id: json
               - id: "conn23"
-                from:
-                to: "gatewayNode"
+                callee:
+                  nodeId: "gatewayNode"
                 transport:
                   id: http
                   params:
@@ -823,7 +866,7 @@ class ConfigLoaderTest {
             assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("calculatorNode")));
             assertTrue(result.getNodes().stream().anyMatch(n -> n.getId().equals("gatewayNode")));
             assertEquals(1, result.getConnections().size());
-            assertEquals("calculatorNode", result.getConnections().get(0).getTo());
+            assertEquals("calculatorNode", result.getConnections().get(0).getCalleeNodeId());
             // only calculatorNode is local
             assertEquals(List.of("calculatorNode"), result.getLocalNodeIds());
         }
@@ -851,7 +894,7 @@ class ConfigLoaderTest {
         }
 
         @Test
-        @DisplayName("external inbound included — null-from connection to local node is included")
+        @DisplayName("external inbound included — caller-less connection to local node is included")
         void externalInboundIncludedForLocalNode() {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
@@ -862,7 +905,7 @@ class ConfigLoaderTest {
         }
 
         @Test
-        @DisplayName("external inbound excluded — null-from connection to other node is not included")
+        @DisplayName("external inbound excluded — caller-less connection to other node is not included")
         void externalInboundExcludedForOtherNode() {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("calculatorNode"));
@@ -881,32 +924,32 @@ class ConfigLoaderTest {
             // notifierNode only has an inbound from gatewayNode
             // the gateway→calculator connection should NOT appear
             assertTrue(result.getConnections().stream()
-                    .noneMatch(c -> "calculatorNode".equals(c.getTo())
-                            && "gatewayNode".equals(c.getFrom())),
+                    .noneMatch(c -> "calculatorNode".equals(c.getCalleeNodeId())
+                            && "gatewayNode".equals(c.getCallerNodeId())),
                     "gateway→calculator connection should not appear for notifierNode");
         }
 
         @Test
-        @DisplayName("outbound connection included when only 'from' node is local")
+        @DisplayName("outbound connection included when only caller node is local")
         void outboundConnectionIncludedWhenOnlyFromIsLocal() {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("gatewayNode"));
 
             assertTrue(result.getConnections().stream()
-                    .anyMatch(c -> "gatewayNode".equals(c.getFrom())
-                            && "calculatorNode".equals(c.getTo())),
+                    .anyMatch(c -> "gatewayNode".equals(c.getCallerNodeId())
+                            && "calculatorNode".equals(c.getCalleeNodeId())),
                     "Outbound connection from gatewayNode should be included");
         }
 
         @Test
-        @DisplayName("inbound connection included when only 'to' node is local")
+        @DisplayName("inbound connection included when only callee node is local")
         void inboundConnectionIncludedWhenOnlyToIsLocal() {
             WiringConfig full = ConfigLoader.parseString(FULL_CONFIG);
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("calculatorNode"));
 
             assertTrue(result.getConnections().stream()
-                    .anyMatch(c -> "gatewayNode".equals(c.getFrom())
-                            && "calculatorNode".equals(c.getTo())),
+                    .anyMatch(c -> "gatewayNode".equals(c.getCallerNodeId())
+                            && "calculatorNode".equals(c.getCalleeNodeId())),
                     "Inbound connection to calculatorNode should be included");
         }
 
@@ -1001,15 +1044,19 @@ class ConfigLoaderTest {
             address: "org.orders.created"
         connections:
           - id: "conn21"
-            from: "orderServiceNode"
-            to: "orderCreatedChannel"
+            caller:
+              nodeId: "orderServiceNode"
+            callee:
+              nodeId: "orderCreatedChannel"
             transport:
               id: kafka
             serializer:
               id: json
           - id: "conn22"
-            from: "orderCreatedChannel"
-            to: "inventoryServiceNode"
+            caller:
+              nodeId: "orderCreatedChannel"
+            callee:
+              nodeId: "inventoryServiceNode"
             transport:
               id: kafka
               params:
@@ -1017,8 +1064,10 @@ class ConfigLoaderTest {
             serializer:
               id: json
           - id: "conn23"
-            from: "orderCreatedChannel"
-            to: "notificationServiceNode"
+            caller:
+              nodeId: "orderCreatedChannel"
+            callee:
+              nodeId: "notificationServiceNode"
             transport:
               id: kafka
               params:
@@ -1040,7 +1089,7 @@ class ConfigLoaderTest {
             assertEquals(1, result.virtualNodes().size());
             assertEquals("orderCreatedChannel", result.virtualNodes().get(0).getId());
             assertEquals(1, result.getConnections().size());
-            assertEquals("orderCreatedChannel", result.getConnections().get(0).getTo());
+            assertEquals("orderCreatedChannel", result.getConnections().get(0).getCalleeNodeId());
         }
 
         @Test
@@ -1052,7 +1101,7 @@ class ConfigLoaderTest {
             assertEquals(1, result.virtualNodes().size());
             assertEquals("orderCreatedChannel", result.virtualNodes().get(0).getId());
             assertEquals(1, result.getConnections().size());
-            assertEquals("inventoryServiceNode", result.getConnections().get(0).getTo());
+            assertEquals("inventoryServiceNode", result.getConnections().get(0).getCalleeNodeId());
         }
 
         @Test
@@ -1062,9 +1111,9 @@ class ConfigLoaderTest {
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("orderServiceNode"));
 
             assertTrue(result.getConnections().stream()
-                    .noneMatch(c -> "inventoryServiceNode".equals(c.getTo())));
+                    .noneMatch(c -> "inventoryServiceNode".equals(c.getCalleeNodeId())));
             assertTrue(result.getConnections().stream()
-                    .noneMatch(c -> "notificationServiceNode".equals(c.getTo())));
+                    .noneMatch(c -> "notificationServiceNode".equals(c.getCalleeNodeId())));
         }
 
         @Test
@@ -1074,7 +1123,7 @@ class ConfigLoaderTest {
             WiringConfig result = ConfigLoader.relevantPartOf(full, List.of("inventoryServiceNode"));
 
             assertTrue(result.getConnections().stream()
-                    .noneMatch(c -> "notificationServiceNode".equals(c.getTo())));
+                    .noneMatch(c -> "notificationServiceNode".equals(c.getCalleeNodeId())));
         }
 
         @Test
@@ -1102,8 +1151,10 @@ class ConfigLoaderTest {
                     address: "org.orders.created"
                 connections:
                   - id: "conn21"
-                    from: "gatewayNode"
-                    to: "orderServiceNode"
+                    caller:
+                      nodeId: "gatewayNode"
+                    callee:
+                      nodeId: "orderServiceNode"
                     transport:
                       id: http
                       params:
@@ -1112,8 +1163,10 @@ class ConfigLoaderTest {
                     serializer:
                       id: json
                   - id: "conn22"
-                    from: "orderServiceNode"
-                    to: "orderCreatedChannel"
+                    caller:
+                      nodeId: "orderServiceNode"
+                    callee:
+                      nodeId: "orderCreatedChannel"
                     transport:
                       id: kafka
                     serializer:
@@ -1132,8 +1185,10 @@ class ConfigLoaderTest {
             String yaml = """
                 connections:
                   - id: "conn21"
-                    from: "orderServiceNode"
-                    to: "orderCreatedChannel"
+                    caller:
+                      nodeId: "orderServiceNode"
+                    callee:
+                      nodeId: "orderCreatedChannel"
                     transport:
                       id: kafka
                     serializer:
@@ -1148,8 +1203,10 @@ class ConfigLoaderTest {
             String yaml = """
                 connections:
                   - id: "conn21"
-                    from: "orderCreatedChannel"
-                    to: "inventoryServiceNode"
+                    caller:
+                      nodeId: "orderCreatedChannel"
+                    callee:
+                      nodeId: "inventoryServiceNode"
                     transport:
                       id: kafka
                       params:
@@ -1262,8 +1319,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1274,7 +1333,7 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("noop", conn.getFailureSemanticsId());
+            assertEquals("noop", conn.resolveCaller().getFailureSemanticsId());
         }
 
         @Test
@@ -1283,21 +1342,23 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("built-in", conn.getFailureSemanticsId());
+            assertEquals("built-in", conn.resolveCaller().getFailureSemanticsId());
         }
 
         @Test
@@ -1306,22 +1367,24 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            maxRetry: 3
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          maxRetry: 3
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+            assertEquals(4, conn.resolveCaller().getFailureSemanticsConfig().getMaxAttempts());
         }
 
         @Test
@@ -1330,23 +1393,25 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            timeout: 2s
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          timeout: 2s
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
             assertEquals(java.time.Duration.ofSeconds(2),
-                    conn.getFailureSemanticsConfig().getTimeout());
+                    conn.resolveCaller().getFailureSemanticsConfig().getTimeout());
         }
 
         @Test
@@ -1355,23 +1420,25 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            absoluteTimeout: 10s
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          absoluteTimeout: 10s
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
             assertEquals(java.time.Duration.ofSeconds(10),
-                    conn.getFailureSemanticsConfig().getAbsoluteTimeout());
+                    conn.resolveCaller().getFailureSemanticsConfig().getAbsoluteTimeout());
         }
 
         @Test
@@ -1380,22 +1447,24 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            handleTimeout: true
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          handleTimeout: true
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertTrue(conn.getFailureSemanticsConfig().isHandleTimeout());
+            assertTrue(conn.resolveCaller().getFailureSemanticsConfig().isHandleTimeout());
         }
 
         @Test
@@ -1404,23 +1473,25 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            params:
+                              waitDuration: 500ms
+                              retryNonIdempotent: "true"
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          params:
-                            waitDuration: 500ms
-                            retryNonIdempotent: "true"
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            var params = conn.getFailureSemanticsConfig().getParams();
+            var params = conn.resolveCaller().getFailureSemanticsConfig().getParams();
 
             assertEquals("500ms", params.get("waitDuration"));
             assertEquals("true",  params.get("retryNonIdempotent"));
@@ -1432,21 +1503,23 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertTrue(conn.getFailureSemanticsConfig().getParams().isEmpty());
+            assertTrue(conn.resolveCaller().getFailureSemanticsConfig().getParams().isEmpty());
         }
 
         @Test
@@ -1455,21 +1528,23 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertNull(conn.getFailureSemanticsConfig().getMaxAttempts());
+            assertNull(conn.resolveCaller().getFailureSemanticsConfig().getMaxAttempts());
         }
 
         @Test
@@ -1478,29 +1553,31 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            maxRetry: 3
+                            timeout: 2s
+                            handleTimeout: true
+                            absoluteTimeout: 10s
+                            params:
+                              waitDuration: 500ms
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          maxRetry: 3
-                          timeout: 2s
-                          handleTimeout: true
-                          absoluteTimeout: 10s
-                          params:
-                            waitDuration: 500ms
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            var config = conn.getFailureSemanticsConfig();
+            var config = conn.resolveCaller().getFailureSemanticsConfig();
 
             assertAll(
-                    () -> assertEquals("built-in", conn.getFailureSemanticsId()),
+                    () -> assertEquals("built-in", conn.resolveCaller().getFailureSemanticsId()),
                     () -> assertEquals(4, config.getMaxAttempts()),
                     () -> assertEquals(java.time.Duration.ofSeconds(2), config.getTimeout()),
                     () -> assertTrue(config.isHandleTimeout()),
@@ -1515,16 +1592,18 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                          failureSemantics:
+                            id: built-in
+                            unknownFutureField: somevalue
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        failureSemantics:
-                          id: built-in
-                          unknownFutureField: somevalue
                         serializer:
                           id: json
                     """;
@@ -1542,8 +1621,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1554,7 +1635,8 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("noop", conn.getAuthenticationId());
+            assertEquals("noop", conn.resolveCaller().getAuthenticationId());
+            assertEquals("noop", conn.resolveCallee().getAuthenticationId());
         }
 
         @Test
@@ -1563,8 +1645,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1577,7 +1661,8 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("mtls", conn.getAuthenticationId());
+            assertEquals("mtls", conn.resolveCaller().getAuthenticationId());
+            assertEquals("mtls", conn.resolveCallee().getAuthenticationId());
         }
 
         @Test
@@ -1586,8 +1671,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1612,8 +1699,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1635,8 +1724,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1657,8 +1748,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1679,8 +1772,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: direct
                         authentication:
@@ -1688,7 +1783,8 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("mtls", conn.getAuthenticationId());
+            assertEquals("mtls", conn.resolveCaller().getAuthenticationId());
+            assertEquals("mtls", conn.resolveCallee().getAuthenticationId());
         }
     }
 
@@ -1702,8 +1798,10 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
                         transport:
                           id: http
                           params:
@@ -1714,7 +1812,7 @@ class ConfigLoaderTest {
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("noop", conn.getAuthorizationId());
+            assertEquals("noop", conn.resolveCallee().getAuthorizationId());
         }
 
         @Test
@@ -1723,21 +1821,23 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: rbac
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        authorization:
-                          id: rbac
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("rbac", conn.getAuthorizationId());
+            assertEquals("rbac", conn.resolveCallee().getAuthorizationId());
         }
 
         @Test
@@ -1746,22 +1846,24 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: rbac
+                            params:
+                              policyFile: /etc/itara/policy.yaml
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        authorization:
-                          id: rbac
-                          params:
-                            policyFile: /etc/itara/policy.yaml
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            var params = conn.getAuthorization().getParams();
+            var params = conn.resolveCallee().getAuthorization().getParams();
 
             assertEquals("/etc/itara/policy.yaml", params.get("policyFile"));
         }
@@ -1772,21 +1874,23 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: rbac
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        authorization:
-                          id: rbac
                         serializer:
                           id: json
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertTrue(conn.getAuthorization().getParams().isEmpty());
+            assertTrue(conn.resolveCallee().getAuthorization().getParams().isEmpty());
         }
 
         @Test
@@ -1795,16 +1899,18 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: rbac
+                            unknownFutureField: somevalue
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        authorization:
-                          id: rbac
-                          unknownFutureField: somevalue
                         serializer:
                           id: json
                     """;
@@ -1817,15 +1923,17 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: ""
                         transport:
                           id: http
                           params:
                             host: localhost
                             port: "8081"
-                        authorization:
-                          id: ""
                         serializer:
                           id: json
                     """;
@@ -1839,16 +1947,18 @@ class ConfigLoaderTest {
             String yaml = """
                     connections:
                       - id: "conn21"
-                        from: gateway
-                        to: calculator
+                        caller:
+                          nodeId: gateway
+                        callee:
+                          nodeId: calculator
+                          authorization:
+                            id: rbac
                         transport:
                           id: direct
-                        authorization:
-                          id: rbac
                     """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
 
-            assertEquals("rbac", conn.getAuthorizationId());
+            assertEquals("rbac", conn.resolveCallee().getAuthorizationId());
         }
     }
 
@@ -1866,8 +1976,10 @@ class ConfigLoaderTest {
                   host: &calcHost "localhost"
                 connections:
                   - id: "conn21"
-                    from: gateway
-                    to:   calculator
+                    caller:
+                      nodeId: gateway
+                    callee:
+                      nodeId: calculator
                     transport:
                       id: http
                       params:
@@ -1887,8 +1999,10 @@ class ConfigLoaderTest {
                 connections:
                   - &baseConn
                     id: base-conn
-                    from: gateway
-                    to:   calculator
+                    caller:
+                      nodeId: gateway
+                    callee:
+                      nodeId: calculator
                     transport:
                       id: http
                       params:
@@ -1901,8 +2015,8 @@ class ConfigLoaderTest {
                 """;
             List<ConnectionEntry> conns = ConfigLoader.parseString(yaml).getConnections();
             assertEquals(2, conns.size());
-            assertEquals("gateway",    conns.get(1).getFrom());
-            assertEquals("calculator", conns.get(1).getTo());
+            assertEquals("gateway",    conns.get(1).getCallerNodeId());
+            assertEquals("calculator", conns.get(1).getCalleeNodeId());
             assertEquals("localhost",  conns.get(1).getTransport().getParams().get("host"));
             assertEquals("8081",       conns.get(1).getTransport().getParams().get("port"));
         }
@@ -1918,23 +2032,25 @@ class ConfigLoaderTest {
                     timeout: 2s
                 connections:
                   - id: "conn21"
-                    from: gateway
-                    to:   calculator
+                    caller:
+                      nodeId: gateway
+                      failureSemantics:
+                        <<: *defaultFs
+                    callee:
+                      nodeId: calculator
                     transport:
                       id: http
                       params:
                         host: localHost
                         port: 8081
-                    failureSemantics:
-                      <<: *defaultFs
                     serializer:
                       id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
-            assertEquals("built-in", conn.getFailureSemanticsId());
-            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+            assertEquals("built-in", conn.resolveCaller().getFailureSemanticsId());
+            assertEquals(4, conn.resolveCaller().getFailureSemanticsConfig().getMaxAttempts());
             assertEquals(java.time.Duration.ofSeconds(2),
-                    conn.getFailureSemanticsConfig().getTimeout());
+                    conn.resolveCaller().getFailureSemanticsConfig().getTimeout());
         }
 
         @Test
@@ -1948,24 +2064,26 @@ class ConfigLoaderTest {
                     timeout: 2s
                 connections:
                   - id: "conn21"
-                    from: gateway
-                    to:   calculator
+                    caller:
+                      nodeId: gateway
+                      failureSemantics:
+                        <<: *defaultFs
+                        timeout: 5s
+                    callee:
+                      nodeId: calculator
                     transport:
                       id: http
                       params:
                         host: localHost
                         port: 8081
-                    failureSemantics:
-                      <<: *defaultFs
-                      timeout: 5s
                     serializer:
                       id: json
                 """;
             ConnectionEntry conn = ConfigLoader.parseString(yaml).getConnections().get(0);
             assertEquals(java.time.Duration.ofSeconds(5),
-                    conn.getFailureSemanticsConfig().getTimeout());
+                    conn.resolveCaller().getFailureSemanticsConfig().getTimeout());
             // maxRetry still inherited from the anchor
-            assertEquals(4, conn.getFailureSemanticsConfig().getMaxAttempts());
+            assertEquals(4, conn.resolveCaller().getFailureSemanticsConfig().getMaxAttempts());
         }
 
         @Test
@@ -1981,8 +2099,10 @@ class ConfigLoaderTest {
                     port: "8082"
                 connections:
                   - id: "conn21"
-                    from: gateway
-                    to:   calculator
+                    caller:
+                      nodeId: gateway
+                    callee:
+                      nodeId: calculator
                     transport:
                       id: http
                       params:
@@ -1990,8 +2110,10 @@ class ConfigLoaderTest {
                     serializer:
                       id: json
                   - id: "conn22"
-                    from: gateway
-                    to:   notifier
+                    caller:
+                      nodeId: gateway
+                    callee:
+                      nodeId: notifier
                     transport:
                       id: http
                       params:

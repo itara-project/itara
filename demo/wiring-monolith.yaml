@@ -24,8 +24,8 @@ nodes:
 
 connections:
   - id: "external-to-order"
-    from:
-    to: "orderNode"
+    callee:
+      nodeId: "orderNode"
     transport:
       id: http
       params:
@@ -34,8 +34,8 @@ connections:
     serializer:
       id: "json"
   - id: "external-to-inventory"
-    from:
-    to: "inventoryNode"
+    callee:
+      nodeId: "inventoryNode"
     transport:
       id: http
       params:
@@ -44,18 +44,31 @@ connections:
     serializer:
       id: "json"
   - id: "order-to-inventory"
-    from: "orderNode"
-    to: "inventoryNode"
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: "inventoryNode"
     transport:
       id: direct
   - id: "order-to-fulfilment"
-    from: "orderNode"
-    to: "fulfilmentNode"
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: "fulfilmentNode"
     transport:
       id: direct
   - id: "order-to-payment"
-    from: "orderNode"
-    to: "paymentNode"
+    caller:
+      nodeId: "orderNode"
+      failureSemantics:
+        id: built-in
+        maxRetry: 3
+        timeout: 5s
+        params:
+          waitDuration: 500ms
+          retryRuntime: "true"
+    callee:
+      nodeId: "paymentNode"
     transport:
       id: http
       handleTimeout: true
@@ -64,16 +77,11 @@ connections:
         port: 8083
     serializer:
       id: "json"
-    failureSemantics:
-      id: built-in
-      maxRetry: 3
-      timeout: 5s
-      params:
-        waitDuration: 500ms
-        retryRuntime: "true"
   - id: "order-to-orderReserved"
-    from: "orderNode"
-    to: orderReservedChannel
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: orderReservedChannel
     transport:
       id: kafka
       params:
@@ -81,8 +89,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-to-orderFulfilled"
-    from: "orderNode"
-    to: orderFulfilledChannel
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: orderFulfilledChannel
     transport:
       id: kafka
       params:
@@ -90,8 +100,10 @@ connections:
     serializer:
       id: "json"
   - id: "order-to-orderCancelled"
-    from: "orderNode"
-    to: orderCancelledChannel
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: orderCancelledChannel
     transport:
       id: kafka
       params:
@@ -99,8 +111,10 @@ connections:
     serializer:
       id: "json"
   - id: "orderReserved-to-notification"
-    from: "orderReservedChannel"
-    to: "notificationNode"
+    caller:
+      nodeId: "orderReservedChannel"
+    callee:
+      nodeId: "notificationNode"
     transport:
       id: kafka
       params:
@@ -109,8 +123,10 @@ connections:
     serializer:
       id: "json"
   - id: "orderFulfilled-to-notification"
-    from: "orderFulfilledChannel"
-    to: "notificationNode"
+    caller:
+      nodeId: "orderFulfilledChannel"
+    callee:
+      nodeId: "notificationNode"
     transport:
       id: kafka
       params:
@@ -119,8 +135,10 @@ connections:
     serializer:
       id: "json"
   - id: "orderCancelled-to-notification"
-    from: "orderCancelledChannel"
-    to: "notificationNode"
+    caller:
+      nodeId: "orderCancelledChannel"
+    callee:
+      nodeId: "notificationNode"
     transport:
       id: kafka
       params:

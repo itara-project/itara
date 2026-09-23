@@ -104,11 +104,11 @@ public class ConfigLoader {
                 .toList();
         Set<String> relevantNodeIds = new HashSet<>();
         connections.forEach(connectionEntry -> {
-            if (connectionEntry.getFrom() != null
-                    && !connectionEntry.getFrom().isBlank()) {
-                relevantNodeIds.add(connectionEntry.getFrom());
+            // An external connection has no caller node to keep.
+            if (!connectionEntry.isExternal()) {
+                relevantNodeIds.add(connectionEntry.getCallerNodeId());
             }
-            relevantNodeIds.add(connectionEntry.getTo());
+            relevantNodeIds.add(connectionEntry.getCalleeNodeId());
         });
         relevantConfig.setConnections(connections);
         relevantConfig.setNodes(fullConfig.getNodes().stream()

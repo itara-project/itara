@@ -173,8 +173,10 @@ nodes:
 
 connections:
   - id: "order-to-inventory"
-    from: "orderNode"
-    to: "inventoryNode"
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: "inventoryNode"
     transport:
       id: "direct"
 ```

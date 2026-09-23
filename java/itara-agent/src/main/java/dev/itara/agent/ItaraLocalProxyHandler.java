@@ -73,12 +73,10 @@ import java.util.logging.Logger;
  * nothing here ever crosses a transport.
  * Authentication is deliberately two separate slots — callerAuthentication
  * (produceAssertion, caller side) and calleeAuthentication (authenticate,
- * callee side) — even though the agent currently resolves and passes the
- * same instance/config for both. A direct connection's wiring config today
- * has only one authentication block to resolve from; once caller-side and
- * callee-side configuration split in the wiring config (planned), only the
- * agent's construction code needs to change to pass genuinely different
- * instances — this class already has the right shape for that. Authorization
+ * callee side). The agent resolves each from its own side of the connection
+ * (see ConnectionEntry): with a single connection-level authentication
+ * block both slots are built from that same block, and when the caller and
+ * callee sides declare their own, each slot gets its own. Authorization
  * stays a single slot: it is callee-only, with no caller-side concept to
  * split in the first place.
  *

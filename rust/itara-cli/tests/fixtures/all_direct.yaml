@@ -8,7 +8,8 @@ nodes:
 
 connections:
   - id: "external-to-nodeA"
-    to: nodeA
+    callee:
+      nodeId: nodeA
     transport:
       id: http
       params:
@@ -16,12 +17,16 @@ connections:
     serializer:
       id: json
   - id: "nodeA-to-nodeB"
-    from: nodeA
-    to: nodeB
+    caller:
+      nodeId: nodeA
+    callee:
+      nodeId: nodeB
     transport:
       id: direct
   - id: "nodeB-to-nodeC"
-    from: nodeB
-    to: nodeC
+    caller:
+      nodeId: nodeB
+    callee:
+      nodeId: nodeC
     transport:
       id: direct
