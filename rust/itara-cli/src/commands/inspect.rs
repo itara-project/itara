@@ -108,10 +108,13 @@ fn print_connections(config: &WiringConfig) {
         println!("  (none)");
     }
     for conn in &internal {
-        let from = conn.from.as_deref().unwrap_or("?");
+        let from = conn.caller_node_id().unwrap_or("?");
+        let transport_id = &conn.resolve_callee()
+            .expect("validated config always resolves a callee transport")
+            .transport.id;
         kv(
             &format!("{}:", conn.id),
-            &format!("{} → {} [{}]", from, conn.to, conn.transport.id),
+            &format!("{} → {} [{}]", from, conn.callee_node_id(), transport_id),
             id_width + 1, // +1 for ":"
         );
     }
@@ -138,58 +141,62 @@ fn print_deployment_groups(config: &WiringConfig, no_events: bool) {
 
             // Inbound cross-group connections (non-direct) to this node.
             let inbound: Vec<&ConnectionEntry> = config.connections.iter()
-                .filter(|c| c.to == *node_id && !c.is_direct()
+                .filter(|c| c.callee_node_id() == node_id.as_str() && !c.is_direct()
                         && !config.is_virtual_node(
-                            c.from.as_deref().unwrap_or("")))
+                            c.caller_node_id().unwrap_or("")))
                 .collect();
 
             for conn in &inbound {
+                let callee = conn.resolve_callee()
+                    .expect("validated config always resolves a callee transport");
                 if conn.is_external() {
-                    println!("      Receives: external {} on {}", conn.transport.id, port_str(&conn.transport));
+                    println!("      Receives: external {} on {}", callee.transport.id, port_str(callee.transport));
                 } else {
-                    let from = conn.from.as_deref().unwrap_or("?");
-                    let port = conn.transport.params.get("port")
+                    let from = conn.caller_node_id().unwrap_or("?");
+                    let port = callee.transport.params.get("port")
                         .map(|p| format!(" on :{}", p))
                         .unwrap_or_default();
-                    println!("      Receives: {} via {}{}", from, conn.transport.id, port);
+                    println!("      Receives: {} via {}{}", from, callee.transport.id, port);
                 }
             }
 
             // Outbound cross-group connections (non-direct) from this node.
             let outbound: Vec<&ConnectionEntry> = config.connections.iter()
-                .filter(|c| c.from.as_deref() == Some(node_id.as_str())
-                        && !config.is_virtual_node(&c.to))
+                .filter(|c| c.caller_node_id() == Some(node_id.as_str())
+                        && !config.is_virtual_node(c.callee_node_id()))
                 .collect();
 
             for conn in &outbound {
-                println!("      Calls:    {} via {}", conn.to, conn.transport.id);
+                let caller = conn.resolve_caller()
+                    .expect("validated config always resolves a caller transport for a non-external connection");
+                println!("      Calls:    {} via {}", conn.callee_node_id(), caller.transport.id);
             }
 
             if !no_events {
                 // Emits — outbound connections from this node to a virtual node.
                 let emits: Vec<&ConnectionEntry> = config.connections.iter()
-                    .filter(|c| c.from.as_deref() == Some(node_id.as_str())
-                            && config.is_virtual_node(&c.to))
+                    .filter(|c| c.caller_node_id() == Some(node_id.as_str())
+                            && config.is_virtual_node(c.callee_node_id()))
                     .collect();
 
                 for conn in &emits {
-                    let contract = config.find_node(&conn.to)
+                    let contract = config.find_node(conn.callee_node_id())
                         .and_then(|n| n.as_virtual())
                         .map(|v| v.contract.as_str())
                         .unwrap_or("?");
-                    println!("      Emits:       {} ({})", conn.to, contract);
+                    println!("      Emits:       {} ({})", conn.callee_node_id(), contract);
                 }
 
                 // Listens to — inbound connections from a virtual node to this node.
                 let listens: Vec<&ConnectionEntry> = config.connections.iter()
-                    .filter(|c| c.to == *node_id
-                            && c.from.as_deref()
+                    .filter(|c| c.callee_node_id() == node_id.as_str()
+                            && c.caller_node_id()
                                 .map(|f| config.is_virtual_node(f))
                                 .unwrap_or(false))
                     .collect();
 
                 for conn in &listens {
-                    let from = conn.from.as_deref().unwrap_or("?");
+                    let from = conn.caller_node_id().unwrap_or("?");
                     let contract = config.find_node(from)
                         .and_then(|n| n.as_virtual())
                         .map(|v| v.contract.as_str())
@@ -217,11 +224,9 @@ fn derive_deployment_groups(config: &WiringConfig) -> Vec<Vec<String>> {
     // Direct is always in-process so directionality doesn't matter for grouping.
     let mut direct_neighbours: HashMap<&str, Vec<&str>> = HashMap::new();
     for conn in config.connections.iter().filter(|c| c.is_direct()) {
-        if let Some(from) = conn.from.as_deref() {
-            if !from.trim().is_empty() {
-                direct_neighbours.entry(from).or_default().push(conn.to.as_str());
-                direct_neighbours.entry(conn.to.as_str()).or_default().push(from);
-            }
+        if let Some(from) = conn.caller_node_id() {
+            direct_neighbours.entry(from).or_default().push(conn.callee_node_id());
+            direct_neighbours.entry(conn.callee_node_id()).or_default().push(from);
         }
     }
 
@@ -286,7 +291,7 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
     // Map from node-id to outbound connections for quick lookup.
     let mut outbound: HashMap<&str, Vec<&ConnectionEntry>> = HashMap::new();
     for conn in &config.connections {
-        if let Some(from) = conn.from.as_deref() {
+        if let Some(from) = conn.caller_node_id() {
             if !from.trim().is_empty() {
                 outbound.entry(from).or_default().push(conn);
             }
@@ -297,7 +302,7 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
     // more than one inbound edge are merge points and break simple chains.
     let mut inbound_count: HashMap<&str, usize> = HashMap::new();
     for conn in &config.connections {
-        *inbound_count.entry(conn.to.as_str()).or_default() += 1;
+        *inbound_count.entry(conn.callee_node_id()).or_default() += 1;
     }
 
     let is_branch_point = |id: &str| outbound.get(id).map(|v| v.len() > 1).unwrap_or(false);
@@ -311,11 +316,11 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
         let mut parts: Vec<String> = vec![
             "[external]".to_string(),
             arrow_label(root_conn),
-            format!("[{}]", root_conn.to),
+            format!("[{}]", root_conn.callee_node_id()),
         ];
         rendered.insert(root_conn as *const _);
 
-        let mut cursor = root_conn.to.as_str();
+        let mut cursor = root_conn.callee_node_id();
 
         loop {
             if is_branch_point(cursor) || is_merge_point(cursor) {
@@ -328,9 +333,9 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
                         break;
                     }
                     parts.push(arrow_label(next));
-                    parts.push(format!("[{}]", next.to));
+                    parts.push(format!("[{}]", next.callee_node_id()));
                     rendered.insert(*next as *const _);
-                    cursor = next.to.as_str();
+                    cursor = next.callee_node_id();
                 }
             }
         }
@@ -343,12 +348,12 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
     // chain can't represent unambiguously, so include the connection id.
     for conn in config.connections.iter().filter(|c| !c.is_external()) {
         if !rendered.contains(&(conn as *const _)) {
-            let from = conn.from.as_deref().unwrap_or("?");
+            let from = conn.caller_node_id().unwrap_or("?");
             lines.push(format!(
                 "[{}] {} [{}]  (id: {})",
                 from,
                 arrow_label(conn),
-                conn.to,
+                conn.callee_node_id(),
                 conn.id,
             ));
         }
@@ -358,10 +363,12 @@ fn build_chains(config: &WiringConfig) -> Vec<String> {
 }
 
 fn arrow_label(conn: &ConnectionEntry) -> String {
-    let port = conn.transport.params.get("port")
+    let callee = conn.resolve_callee()
+        .expect("validated config always resolves a callee transport");
+    let port = callee.transport.params.get("port")
         .map(|p| format!(":{}", p))
         .unwrap_or_default();
-    format!("--{}{}-->", conn.transport.id, port)
+    format!("--{}{}-->", callee.transport.id, port)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -371,7 +378,7 @@ fn arrow_label(conn: &ConnectionEntry) -> String {
 /// so we check for existence rather than returning a single description.
 fn has_external_inbound(config: &WiringConfig, node_id: &str) -> bool {
     config.connections.iter()
-        .any(|c| c.is_external() && c.to == node_id)
+        .any(|c| c.is_external() && c.callee_node_id() == node_id)
 }
 
 fn port_str(transport: &itara_config::TransportEntry) -> String {
@@ -396,7 +403,7 @@ fn group_label(i: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itara_config::{ConnectionEntry, Node, ComponentNode, VirtualNode, WiringConfig};
+    use itara_config::{ConnectionEntry, ConnectionSide, Node, ComponentNode, VirtualNode, WiringConfig};
  
     // ── Test helpers ──────────────────────────────────────────────────────────
  
@@ -431,12 +438,10 @@ mod tests {
         format!("test-conn-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 
-    fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: from.map(Into::into),
-            to: to.into(),
-            transport: transport_entry("http", Some(port)),
+    fn side(node_id: &str) -> ConnectionSide {
+        ConnectionSide {
+            node_id: node_id.into(),
+            transport: None,
             serializer: None,
             failure_semantics: None,
             authentication: None,
@@ -444,17 +449,26 @@ mod tests {
         }
     }
 
+    fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            from.map(side),
+            Some(transport_entry("http", Some(port))),
+            None,
+            None,
+        )
+    }
+
     fn direct(from: &str, to: &str) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: Some(from.into()),
-            to: to.into(),
-            transport: transport_entry("direct", None),
-            serializer: None,
-            failure_semantics: None,
-            authentication: None,
-            authorization: None,
-        }
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            Some(side(from)),
+            Some(transport_entry("direct", None)),
+            None,
+            None,
+        )
     }
 
     /// Overrides the id on an already-built connection.

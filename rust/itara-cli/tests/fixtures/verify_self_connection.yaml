@@ -4,7 +4,8 @@ nodes:
 
 connections:
   - id: "external-to-nodeA"
-    to: nodeA
+    callee:
+      nodeId: nodeA
     transport:
       id: http
       params:
@@ -12,8 +13,10 @@ connections:
     serializer:
       id: json
   - id: "nodeA-self"
-    from: nodeA
-    to: nodeA
+    caller:
+      nodeId: nodeA
+    callee:
+      nodeId: nodeA
     transport:
       id: http
       params:

@@ -1,7 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use itara_config::{load, ConnectionEntry, WiringConfig};
+use itara_config::{load, ConnectionEntry, ResolvedCaller, ResolvedCallee, WiringConfig};
 use itara_core::{
     DispatcherFactoryFn, DirectProxyFactoryFn, ItaraRegistry, ItaraTransport, ItaraObserver,
     ObservabilityFacade, ItaraContextHandler, WrappingData,
@@ -151,8 +151,8 @@ fn wire(
         if conn.is_external() {
             wire_inbound(config, index, conn, registry, plain_transports, deferred, &mut transport_handled);
         } else {
-            let from = conn.from.as_deref().unwrap();
-            let to   = &conn.to;
+            let from = conn.caller_node_id().unwrap();
+            let to   = conn.callee_node_id();
 
             if config.is_node_local(from) && !config.is_node_local(to) {
                 wire_outbound(config, index, conn, facade_ptr, handler_ptr, registry);
@@ -247,25 +247,33 @@ fn wire_inbound(
     deferred: &mut Vec<(String, DispatcherFactoryFn, CString, Box<dyn ItaraTransport>)>,
     transport_handled: &mut std::collections::HashSet<String>,
 ) {
-    let port: u16 = conn.transport.params.get("port")
+    // wire_inbound is only ever called for non-direct connections (see wire()) —
+    // validate() guarantees a non-direct connection's callee side resolves a
+    // transport, and a serializer with a non-empty id, so the two .expect()s
+    // below are safe.
+    let callee: ResolvedCallee = conn.resolve_callee()
+        .expect("[Itara] connection missing a resolvable transport for its callee side — \
+                 should have been caught by WiringConfig::validate()");
+
+    let port: u16 = callee.transport.params.get("port")
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
-    let component_id = config.component_of_node(&conn.to)
-        .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
+    let component_id = config.component_of_node(callee.node_id)
+        .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", callee.node_id));
 
     // wire_inbound is only ever called for non-direct connections (see wire()) —
     // validate() guarantees a non-direct connection has a serializer block with
     // a non-empty id, so this is safe.
-    let serializer_id = conn.serializer.as_ref()
+    let serializer_id = callee.serializer
         .map(|s| s.id.as_str())
         .expect("[Itara] non-direct connection missing serializer — \
                  should have been caught by WiringConfig::validate()");
 
-    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", conn.transport.id, port, component_id, serializer_id);
+    println!("[Itara] Inbound {} on port {} for '{}' with serializer '{}'", callee.transport.id, port, component_id, serializer_id);
 
     validate_serializer(index, component_id, serializer_id);
 
-    let transport = load_transport_for(index, &conn.transport.id, "", port);
+    let transport = load_transport_for(index, &callee.transport.id, "", port);
 
     // Look up the API cdylib for the component.
     match index.api_lib(component_id) {
@@ -311,23 +319,33 @@ fn wire_outbound(
     handler_ptr: *const dyn ItaraContextHandler,
     registry:    &mut ItaraRegistry,
 ) {
-    let component_id = config.component_of_node(&conn.to)
-        .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.to));
-    let host     = conn.transport.params.get("host").map(|s| s.as_str()).unwrap_or("localhost");
-    let port: u16 = conn.transport.params.get("port")
+    // component_id names who is being called (the callee's component) —
+    // that doesn't change with resolution. What does is which transport and
+    // serializer are used to dial out: this JVM is the caller here, so it's
+    // the caller side's resolved plugins, not a shared connection-level one.
+    let component_id = config.component_of_node(conn.callee_node_id())
+        .unwrap_or_else(|| panic!("[Itara] No component found for node '{}'", conn.callee_node_id()));
+
+    // wire_outbound is only ever called for non-direct connections (see wire()) —
+    // validate() guarantees a non-direct connection's caller side resolves a
+    // transport, and a serializer with a non-empty id, so the two .expect()s
+    // below are safe.
+    let caller: ResolvedCaller = conn.resolve_caller()
+        .expect("[Itara] connection missing a resolvable transport for its caller side — \
+                 should have been caught by WiringConfig::validate()");
+
+    let host     = caller.transport.params.get("host").map(|s| s.as_str()).unwrap_or("localhost");
+    let port: u16 = caller.transport.params.get("port")
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
     let base_url = format!("http://{}:{}", host, port);
 
-    // wire_outbound is only ever called for non-direct connections (see wire()) —
-    // validate() guarantees a non-direct connection has a serializer block with
-    // a non-empty id, so this is safe.
-    let serializer_id = conn.serializer.as_ref()
+    let serializer_id = caller.serializer
         .map(|s| s.id.as_str())
-        .expect("[Itara] non-direct connection missing serializer — \
+        .expect("[Itara] non-direct connection missing serializer on the caller side — \
                  should have been caught by WiringConfig::validate()");
 
-    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", conn.transport.id, component_id, base_url, serializer_id);
+    println!("[Itara] Outbound {} -> '{}' at {} with serializer '{}'", caller.transport.id, component_id, base_url, serializer_id);
 
     validate_serializer(index, component_id, serializer_id);
 
@@ -345,7 +363,7 @@ fn wire_outbound(
             "[Itara] Cannot load API cdylib for '{}': {}", component_id, e
         ));
 
-    let transport = load_transport_for(index, &conn.transport.id, &base_url, 0);
+    let transport = load_transport_for(index, &caller.transport.id, &base_url, 0);
 
     // The serializer id is passed to the proxy factory as a null-terminated C string.
     // The proxy copies it into a Rust String internally, so the CString only needs

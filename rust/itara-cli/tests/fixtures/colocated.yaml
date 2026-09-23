@@ -8,7 +8,8 @@ nodes:
 
 connections:
   - id: "external-to-gateway"
-    to: gatewayNode
+    callee:
+      nodeId: gatewayNode
     transport:
       id: http
       params:
@@ -16,13 +17,17 @@ connections:
     serializer:
       id: json
   - id: "gateway-to-calculator"
-    from: gatewayNode
-    to: calculatorNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: calculatorNode
     transport:
       id: direct
   - id: "gateway-to-notifier"
-    from: gatewayNode
-    to: notifierNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: notifierNode
     transport:
       id: http
       params:

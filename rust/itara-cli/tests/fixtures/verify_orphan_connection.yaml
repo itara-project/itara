@@ -4,7 +4,8 @@ nodes:
 
 connections:
   - id: "external-to-gateway"
-    to: gatewayNode
+    callee:
+      nodeId: gatewayNode
     transport:
       id: http
       params:
@@ -12,8 +13,10 @@ connections:
     serializer:
       id: json
   - id: "gateway-to-undeclared"
-    from: gatewayNode
-    to: undeclaredNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: undeclaredNode
     transport:
       id: http
       params:
