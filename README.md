@@ -95,8 +95,10 @@ nodes:
 
 connections:
   - id: "gateway-to-calculator"
-    from: gatewayNode
-    to:   calculatorNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: calculatorNode
     transport:
       id: direct      # or: http, kafka — code does not change
 ```
@@ -224,17 +226,19 @@ logic is unaware of it.
 ```yaml
 connections:
   - id: "order-to-notification"
-    from: orderNode
-    to: notificationNode
+    caller:
+      nodeId: orderNode
+      failureSemantics:
+        id: built-in
+        timeout: 5000
+        maxRetry: 3
+    callee:
+      nodeId: notificationNode
     transport:
       type: http
       params:
         host: notification
         port: "8080"
-    failureSemantics:
-      id: built-in
-      timeout: 5000
-      maxRetry: 3
 ```
  
 Idempotency is declared in the API artifact's `.itara` metadata file. The proxy
