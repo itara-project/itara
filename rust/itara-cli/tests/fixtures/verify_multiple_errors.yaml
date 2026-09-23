@@ -8,7 +8,8 @@ nodes:
 
 connections:
   - id: "external-to-nodeA"
-    to: nodeA
+    callee:
+      nodeId: nodeA
     transport:
       id: http
       params:
@@ -16,8 +17,10 @@ connections:
     serializer:
       id: json
   - id: "nodeA-to-nodeB"
-    from: nodeA
-    to: nodeB
+    caller:
+      nodeId: nodeA
+    callee:
+      nodeId: nodeB
     transport:
       id: http
       params:
@@ -25,8 +28,10 @@ connections:
     serializer:
       id: json
   - id: "nodeA-to-undeclared"
-    from: nodeA
-    to: undeclaredNode
+    caller:
+      nodeId: nodeA
+    callee:
+      nodeId: undeclaredNode
     transport:
       id: http
       params:
@@ -34,8 +39,10 @@ connections:
     serializer:
       id: json
   - id: "nodeB-self"
-    from: nodeB
-    to: nodeB
+    caller:
+      nodeId: nodeB
+    callee:
+      nodeId: nodeB
     transport:
       id: http
       params:

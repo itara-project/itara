@@ -6,7 +6,8 @@ nodes:
 
 connections:
   - id: "external-to-gateway"
-    to: gatewayNode
+    callee:
+      nodeId: gatewayNode
     transport:
       id: http
       params:
@@ -14,8 +15,10 @@ connections:
     serializer:
       id: json
   - id: "gateway-to-worker"
-    from: gatewayNode
-    to: workerNode
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: workerNode
     transport:
       id: http
       params:

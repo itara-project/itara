@@ -6,7 +6,8 @@ nodes:
 
 connections:
   - id: "external-to-api-8080"
-    to: apiNode
+    callee:
+      nodeId: apiNode
     transport:
       id: http
       params:
@@ -14,7 +15,8 @@ connections:
     serializer:
       id: json
   - id: "external-to-api-9090"
-    to: apiNode
+    callee:
+      nodeId: apiNode
     transport:
       id: http
       params:
@@ -22,8 +24,10 @@ connections:
     serializer:
       id: json
   - id: "api-to-worker"
-    from: apiNode
-    to: workerNode
+    caller:
+      nodeId: apiNode
+    callee:
+      nodeId: workerNode
     transport:
       id: http
       params:

@@ -4,6 +4,7 @@ nodes:
 
 connections:
   - id: "bad-direct-external"
-    to: nodeA
+    callee:
+      nodeId: nodeA
     transport:
       id: direct

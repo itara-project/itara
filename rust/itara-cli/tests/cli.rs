@@ -428,7 +428,7 @@ mod verify {
         itara().args(["verify", &fixture("verify_direct_external_conflict.yaml")])
             .assert().failure()
             .stdout(predicate::str::contains("direct"))
-            .stdout(predicate::str::contains("no 'from'"));
+            .stdout(predicate::str::contains("no 'caller'"));
     }
 
     #[test]

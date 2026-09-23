@@ -1,5 +1,6 @@
-use clap;
-use itara_config::{parse_file, WiringConfig, ConnectionEntry};
+use clap;use itara_config::{
+        WiringConfig, ConnectionEntry, parse_file, ResolvedCallee
+    };
 use itara_libdir::MetadataIndex;
 use std::collections::{HashMap, HashSet};
 
@@ -23,6 +24,7 @@ const VALID_CHECKS: &[&str] = &[
     "timeout-capability",
     "transport-interrupt-safety",
     "serializer-compatibility",
+    "caller-callee-plugin-incompatibility",
 ];
 
 enum CheckFilter {
@@ -60,7 +62,7 @@ pub struct Args {
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
-    ///               serializer-compatibility
+    ///               serializer-compatibility, caller-callee-plugin-incompatibility
     #[arg(long, value_name = "check", conflicts_with = "only")]
     pub skip: Vec<String>,
     /// Run only the specified check. Can be repeated. Mutually exclusive with --skip.
@@ -72,7 +74,7 @@ pub struct Args {
     ///               virtual-no-consumers, virtual-transport-mismatch,
     ///               api-version-compatibility,
     ///               timeout-capability, transport-interrupt-safety,
-    ///               serializer-compatibility
+    ///               serializer-compatibility, caller-callee-plugin-incompatibility
     #[arg(long, value_name = "check", conflicts_with = "skip")]
     pub only: Vec<String>,
 }
@@ -189,6 +191,7 @@ fn collect_issues(config: &WiringConfig, filter: &CheckFilter, meta: Option<&Met
         if filter.should_run("timeout-capability")         { check_timeout_capability(config, meta, &mut issues); }
         if filter.should_run("transport-interrupt-safety") { check_transport_interrupt_safety(config, meta, &mut issues); }
         if filter.should_run("serializer-compatibility")   { check_serializer_compatibility(config, meta, &mut issues); }
+        if filter.should_run("caller-callee-plugin-incompatibility") { check_caller_callee_plugin_incompatibility(config, meta, &mut issues); }
     }
 
     issues
@@ -235,11 +238,11 @@ fn check_connection_id_uniqueness(config: &WiringConfig, issues: &mut Vec<Issue>
  
 fn check_self_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        if let Some(from) = conn.from.as_deref() {
-            if !from.trim().is_empty() && from == conn.to {
+        if let Some(from) = conn.caller_node_id() {
+            if !from.trim().is_empty() && from == conn.callee_node_id() {
                 issues.push(Issue::error(format!(
                     "connection from '{}' to '{}' is a self-connection",
-                    from, conn.to
+                    from, conn.callee_node_id()
                 )));
             }
         }
@@ -253,7 +256,7 @@ fn check_direct_external_conflict(config: &WiringConfig, issues: &mut Vec<Issue>
                 "connection '{}' to '{}' declares transport 'direct' but has no 'from' \
                  — a direct connection requires an in-process caller, which contradicts \
                  being external",
-                conn.id, conn.to
+                conn.id, conn.callee_node_id()
             )));
         }
     }
@@ -262,8 +265,8 @@ fn check_direct_external_conflict(config: &WiringConfig, issues: &mut Vec<Issue>
 fn check_orphaned_nodes(config: &WiringConfig, issues: &mut Vec<Issue>) {
     let referenced: HashSet<&str> = config.connections.iter()
         .flat_map(|c| {
-            let mut ids: Vec<&str> = vec![c.to.as_str()];
-            if let Some(from) = c.from.as_deref() {
+            let mut ids: Vec<&str> = vec![c.callee_node_id()];
+            if let Some(from) = c.caller_node_id() {
                 if !from.trim().is_empty() {
                     ids.push(from);
                 }
@@ -288,13 +291,13 @@ fn check_orphaned_connections(config: &WiringConfig, issues: &mut Vec<Issue>) {
         .collect();
  
     for conn in &config.connections {
-        if !declared.contains(conn.to.as_str()) {
+        if !declared.contains(conn.callee_node_id()) {
             issues.push(Issue::error(format!(
                 "connection references undeclared node '{}'",
-                conn.to
+                conn.callee_node_id()
             )));
         }
-        if let Some(from) = conn.from.as_deref() {
+        if let Some(from) = conn.caller_node_id() {
             if !from.trim().is_empty() && !declared.contains(from) {
                 issues.push(Issue::error(format!(
                     "connection references undeclared node '{}'",
@@ -309,7 +312,7 @@ fn check_outbound_ambiguity(config: &WiringConfig, issues: &mut Vec<Issue>) {
     // Group outbound connections by their calling node.
     let mut by_from: HashMap<&str, Vec<&ConnectionEntry>> = HashMap::new();
     for conn in &config.connections {
-        if let Some(from) = conn.from.as_deref() {
+        if let Some(from) = conn.caller_node_id() {
             if !from.trim().is_empty() {
                 by_from.entry(from).or_default().push(conn);
             }
@@ -323,10 +326,10 @@ fn check_outbound_ambiguity(config: &WiringConfig, issues: &mut Vec<Issue>) {
         // Map each target component id to every node id that resolves to it.
         let mut targets_by_component: HashMap<&str, Vec<&str>> = HashMap::new();
         for conn in &by_from[from] {
-            if let Some(component) = config.component_of_node(&conn.to) {
+            if let Some(component) = config.component_of_node(&conn.callee_node_id()) {
                 let targets = targets_by_component.entry(component).or_default();
-                if !targets.contains(&conn.to.as_str()) {
-                    targets.push(conn.to.as_str());
+                if !targets.contains(&conn.callee_node_id()) {
+                    targets.push(conn.callee_node_id());
                 }
             }
         }
@@ -350,39 +353,58 @@ fn check_outbound_ambiguity(config: &WiringConfig, issues: &mut Vec<Issue>) {
  
 fn check_unknown_transports(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        let t = &conn.transport.id;
-        if t.eq_ignore_ascii_case("direct") {
-            continue; // built-in pseudo-transport, no metadata artifact
+        if let Some(callee) = conn.resolve_callee() {
+            let t = &callee.transport.id;
+            if !t.eq_ignore_ascii_case("direct") && meta.transport(t).is_none() {
+                issues.push(Issue::error(format!(
+                    "connection to '{}' has unknown transport type '{}' \
+                     — no matching transport metadata found",
+                    conn.callee_node_id(), t,
+                )));
+            }
         }
-        if meta.transport(t).is_none() {
-            issues.push(Issue::error(format!(
-                "connection to '{}' has unknown transport type '{}' \
-                 — no matching transport metadata found",
-                conn.to, t,
-            )));
+        if let Some(caller) = conn.resolve_caller() {
+            let t = &caller.transport.id;
+            if !t.eq_ignore_ascii_case("direct") && meta.transport(t).is_none() {
+                issues.push(Issue::error(format!(
+                    "connection to '{}' has unknown transport type '{}' \
+                     — no matching transport metadata found",
+                    conn.callee_node_id(), t,
+                )));
+            }
         }
     }
 }
 
 fn check_unknown_authentication(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        let a = conn.authentication_id();
-        if a.eq_ignore_ascii_case("noop") {
-            continue; // built-in default, no metadata artifact
+        if let Some(callee) = conn.resolve_callee() {
+            let a = callee.authentication_id();
+            if !a.eq_ignore_ascii_case("noop") && meta.authentication(a).is_none() {
+                issues.push(Issue::error(format!(
+                    "connection to '{}' has unknown authentication type '{}' \
+                     — no matching authentication metadata found",
+                    conn.callee_node_id(), a,
+                )));
+            }
         }
-        if meta.authentication(a).is_none() {
-            issues.push(Issue::error(format!(
-                "connection to '{}' has unknown authentication type '{}' \
-                 — no matching authentication metadata found",
-                conn.to, a,
-            )));
+        if let Some(caller) = conn.resolve_caller() {
+            let a = caller.authentication_id();
+            if !a.eq_ignore_ascii_case("noop") && meta.authentication(a).is_none() {
+                issues.push(Issue::error(format!(
+                    "connection to '{}' has unknown authentication type '{}' \
+                     — no matching authentication metadata found",
+                    conn.callee_node_id(), a,
+                )));
+            }
         }
     }
 }
 
 fn check_unknown_authorization(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
     for conn in &config.connections {
-        let a = conn.authorization_id();
+        let Some(callee) = conn.resolve_callee() else { continue };
+        let a = callee.authorization_id();
         if a.eq_ignore_ascii_case("noop") {
             continue; // built-in default, no metadata artifact
         }
@@ -390,7 +412,7 @@ fn check_unknown_authorization(config: &WiringConfig, meta: &MetadataIndex, issu
             issues.push(Issue::error(format!(
                 "connection to '{}' has unknown authorization type '{}' \
                  — no matching authorization metadata found",
-                conn.to, a,
+                conn.callee_node_id(), a,
             )));
         }
     }
@@ -399,7 +421,7 @@ fn check_unknown_authorization(config: &WiringConfig, meta: &MetadataIndex, issu
 fn check_virtual_no_producers(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for vn in config.virtual_nodes() {
         let has_producer = config.connections.iter()
-            .any(|c| c.to == vn.id);
+            .any(|c| c.callee_node_id() == vn.id);
         if !has_producer {
             issues.push(Issue::warning(format!(
                 "virtual node '{}' ({}) has no inbound connections — \
@@ -413,7 +435,7 @@ fn check_virtual_no_producers(config: &WiringConfig, issues: &mut Vec<Issue>) {
 fn check_virtual_no_consumers(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for vn in config.virtual_nodes() {
         let has_consumer = config.connections.iter()
-            .any(|c| c.from.as_deref() == Some(vn.id.as_str()));
+            .any(|c| c.caller_node_id() == Some(vn.id.as_str()));
         if !has_consumer {
             issues.push(Issue::warning(format!(
                 "virtual node '{}' ({}) has no outbound connections — \
@@ -426,11 +448,21 @@ fn check_virtual_no_consumers(config: &WiringConfig, issues: &mut Vec<Issue>) {
 
 fn check_virtual_transport_mismatch(config: &WiringConfig, issues: &mut Vec<Issue>) {
     for vn in config.virtual_nodes() {
-        let transports: std::collections::HashSet<String> = config.connections.iter()
-            .filter(|c| c.to == vn.id
-                    || c.from.as_deref() == Some(vn.id.as_str()))
-            .map(|c| c.transport.id.to_ascii_lowercase())
-            .collect();
+        let mut transports: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for c in &config.connections {
+            // The virtual node as callee (producer side): what it's received on.
+            if c.callee_node_id() == vn.id {
+                if let Some(callee) = c.resolve_callee() {
+                    transports.insert(callee.transport.id.to_ascii_lowercase());
+                }
+            }
+            // The virtual node as caller (consumer side): what it's sent over.
+            if c.caller_node_id() == Some(vn.id.as_str()) {
+                if let Some(caller) = c.resolve_caller() {
+                    transports.insert(caller.transport.id.to_ascii_lowercase());
+                }
+            }
+        }
 
         if transports.len() > 1 {
             let mut sorted: Vec<String> = transports.into_iter().collect();
@@ -453,9 +485,9 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
             continue;
         }
 
-        let from_id = match conn.from.as_deref() {
-            Some(f) if !f.trim().is_empty() => f,
-            _ => continue,
+        let from_id = match conn.caller_node_id() {
+            Some(f) => f,
+            None => continue,
         };
 
         // Resolve caller component id from its node.
@@ -465,7 +497,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
         };
 
         // Resolve callee component id from its node.
-        let callee_component = match config.component_of_node(&conn.to) {
+        let callee_component = match config.component_of_node(conn.callee_node_id()) {
             Some(c) => c,
             None => continue, // virtual node on the callee side — not applicable
         };
@@ -477,7 +509,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                 issues.push(Issue::error(format!(
                     "connection '{}' → '{}': no metadata found for caller component '{}' \
                      — api-version-compatibility check skipped for this connection",
-                    from_id, conn.to, caller_component
+                    from_id, conn.callee_node_id(), caller_component
                 )));
                 continue;
             }
@@ -491,7 +523,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                     "connection '{}' → '{}': caller component '{}' declares no \
                      [api-dependencies] — api-version-compatibility check skipped \
                      for this connection",
-                    from_id, conn.to, caller_component
+                    from_id, conn.callee_node_id(), caller_component
                 )));
                 continue;
             }
@@ -504,7 +536,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                     "connection '{}' → '{}': caller component '{}' does not declare \
                      a dependency on callee API '{}' in [api-dependencies] \
                      — api-version-compatibility check skipped for this connection",
-                    from_id, conn.to, caller_component, callee_component
+                    from_id, conn.callee_node_id(), caller_component, callee_component
                 )));
                 continue;
             }
@@ -518,7 +550,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                     "connection '{}' → '{}': caller component '{}' declares \
                      invalid semver version '{}' for dependency '{}': {} \
                      — api-version-compatibility check skipped for this connection",
-                    from_id, conn.to, caller_component, dep.version, callee_component, e
+                    from_id, conn.callee_node_id(), caller_component, dep.version, callee_component, e
                 )));
                 continue;
             }
@@ -531,7 +563,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                 issues.push(Issue::error(format!(
                     "connection '{}' → '{}': no metadata found for callee component '{}' \
                      — api-version-compatibility check skipped for this connection",
-                    from_id, conn.to, callee_component
+                    from_id, conn.callee_node_id(), callee_component
                 )));
                 continue;
             }
@@ -544,7 +576,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                 "connection '{}' → '{}': callee component '{}' does not declare \
                  api-version in its metadata \
                  — api-version-compatibility check skipped for this connection",
-                from_id, conn.to, callee_component
+                from_id, conn.callee_node_id(), callee_component
             )));
             continue;
         }
@@ -556,7 +588,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                     "connection '{}' → '{}': callee component '{}' declares \
                      invalid semver range '{}' for api-version: {} \
                      — api-version-compatibility check skipped for this connection",
-                    from_id, conn.to, callee_component, api_version_str, e
+                    from_id, conn.callee_node_id(), callee_component, api_version_str, e
                 )));
                 continue;
             }
@@ -567,7 +599,7 @@ fn check_api_version_compatibility(config: &WiringConfig, meta: &MetadataIndex, 
                 "connection '{}' → '{}': caller component '{}' was built against \
                  API '{}' version '{}', but callee component '{}' implements \
                  api-version '{}' — versions are incompatible",
-                from_id, conn.to,
+                from_id, conn.callee_node_id(),
                 caller_component, callee_component, dep.version,
                 callee_component, api_version_str
             )));
@@ -581,7 +613,12 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
             continue;
         }
 
-        let fs = match &conn.failure_semantics {
+        // failureSemantics is caller-side only, and transport.handleTimeout
+        // here is checked against that same caller's failure-semantics
+        // config — both come from the caller's resolved side.
+        let Some(caller) = conn.resolve_caller() else { continue };
+
+        let fs = match caller.failure_semantics {
             Some(fs) => fs,
             None => continue, // no failure semantics block — no timeout to check
         };
@@ -589,7 +626,7 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
         let has_timeout       = fs.timeout.is_some();
         let has_abs_timeout   = fs.absolute_timeout.is_some();
         let fs_handle_timeout = fs.handle_timeout;
-        let t_handle_timeout  = conn.transport.handle_timeout;
+        let t_handle_timeout  = caller.transport.handle_timeout;
 
         if !has_timeout && !has_abs_timeout {
             continue; // nothing to check
@@ -597,12 +634,12 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
 
         let conn_label = format!(
             "'{}' → '{}'",
-            conn.from.as_deref().unwrap_or("?"),
-            conn.to
+            conn.caller_node_id().unwrap_or("?"),
+            conn.callee_node_id()
         );
 
         // Look up transport metadata if we need capability checks.
-        let transport_caps = meta.transport(&conn.transport.id)
+        let transport_caps = meta.transport(&caller.transport.id)
             .and_then(|m| m.transport.as_ref())
             .map(|t| &t.capabilities);
 
@@ -621,7 +658,7 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
                             "connection {}: transport '{}' is configured to enforce \
                              timeout natively but no metadata was found for it \
                              — cannot verify native timeout capability",
-                            conn_label, conn.transport.id
+                            conn_label, caller.transport.id
                         )));
                     }
                     Some(caps) if !caps.native_call_timeout => {
@@ -629,7 +666,7 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
                             "connection {}: transport '{}' is configured to enforce \
                              timeout natively (transport.handleTimeout = true) but \
                              its metadata declares native-call-timeout = false",
-                            conn_label, conn.transport.id
+                            conn_label, caller.transport.id
                         )));
                     }
                     _ => {}
@@ -668,7 +705,7 @@ fn check_timeout_capability(config: &WiringConfig, meta: &MetadataIndex, issues:
                             "connection {}: failure semantics '{}' is configured to \
                              enforce timeout externally but transport '{}' declares \
                              externally-interruptible = false",
-                            conn_label, fs.id, conn.transport.id
+                            conn_label, fs.id, caller.transport.id
                         )));
                     }
                     _ => {}
@@ -728,7 +765,9 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
             continue;
         }
 
-        let fs = match &conn.failure_semantics {
+        let Some(caller) = conn.resolve_caller() else { continue };
+
+        let fs = match &caller.failure_semantics {
             Some(fs) => fs,
             None => continue,
         };
@@ -739,17 +778,17 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
 
         let conn_label = format!(
             "'{}' → '{}'",
-            conn.from.as_deref().unwrap_or("?"),
-            conn.to
+            conn.caller_node_id().unwrap_or("?"),
+            conn.callee_node_id()
         );
 
-        let transport_meta = match meta.transport(&conn.transport.id) {
+        let transport_meta = match meta.transport(&caller.transport.id) {
             None => {
                 issues.push(Issue::error(format!(
                     "connection {}: external timeout enforcement is configured but \
                      no metadata was found for transport '{}' \
                      — cannot verify interrupt safety",
-                    conn_label, conn.transport.id
+                    conn_label, caller.transport.id
                 )));
                 continue;
             }
@@ -762,7 +801,7 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
                     "connection {}: external timeout enforcement is configured but \
                      transport '{}' metadata declares no [transport] section \
                      — cannot verify interrupt safety",
-                    conn_label, conn.transport.id
+                    conn_label, caller.transport.id
                 )));
                 continue;
             }
@@ -775,7 +814,7 @@ fn check_transport_interrupt_safety(config: &WiringConfig, meta: &MetadataIndex,
                  (failureSemantics.handleTimeout = true) but transport '{}' \
                  declares externally-interruptible = false — interrupting this \
                  transport externally may leave connections in an inconsistent state",
-                conn_label, conn.transport.id
+                conn_label, caller.transport.id
             )));
         }
     }
@@ -818,18 +857,16 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
     use semver::{Version, VersionReq};
 
     for conn in &config.connections {
-        if conn.transport.id.eq_ignore_ascii_case("direct") {
+        if conn.is_direct() {
             continue; // no serializer applies to a direct connection
         }
 
-        let callee_component = match config.component_of_node(&conn.to) {
+        let callee_component = match config.component_of_node(conn.callee_node_id()) {
             Some(c) => c,
             None => continue, // virtual/event node — not an API artifact
         };
 
-        let caller_label = conn.from.as_deref()
-            .filter(|f| !f.trim().is_empty())
-            .unwrap_or("(external)");
+        let caller_label = conn.caller_node_id().unwrap_or("(external)");
 
         // In real usage validate() guarantees a non-direct connection has a
         // serializer block with a non-empty id — but this function accepts
@@ -837,13 +874,17 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
         // tests) can bypass validate() entirely. Never panic on that; skip
         // with a warning instead, same as any other "can't check this"
         // outcome below.
-        let serializer_id = match conn.serializer.as_ref() {
+        let callee: ResolvedCallee = match conn.resolve_callee() {
+            Some(c) => c,
+            None => continue, // no transport resolvable — nothing coherent to check
+        };
+        let serializer_id = match callee.serializer {
             Some(s) => &s.id,
             None => {
                 issues.push(Issue::warning(format!(
                     "connection '{}' -> '{}': no serializer configured for this connection \
                      — serializer-compatibility check skipped for this connection",
-                    caller_label, conn.to
+                    caller_label, conn.callee_node_id()
                 )));
                 continue;
             }
@@ -855,7 +896,7 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
                 issues.push(Issue::warning(format!(
                     "connection '{}' -> '{}': no API metadata found for '{}' \
                      — serializer-compatibility check skipped for this connection",
-                    caller_label, conn.to, callee_component
+                    caller_label, conn.callee_node_id(), callee_component
                 )));
                 continue;
             }
@@ -887,7 +928,7 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
                 issues.push(Issue::warning(format!(
                     "connection '{}' -> '{}': no metadata found for serializer '{}' \
                      — serializer-compatibility check skipped for this connection",
-                    caller_label, conn.to, serializer_id
+                    caller_label, conn.callee_node_id(), serializer_id
                 )));
                 continue;
             }
@@ -930,8 +971,109 @@ fn check_serializer_compatibility(config: &WiringConfig, meta: &MetadataIndex, i
              — not listed in the API's [serializers] supported entries, and its declared \
              message format (if any) is not in the serializer's \
              [serializer.capabilities] message-formats",
-            caller_label, conn.to, serializer_id, callee_component
+            caller_label, conn.callee_node_id(), serializer_id, callee_component
         )));
+    }
+}
+
+/// Compares the caller's and the callee's resolved plugin for each kind
+/// that can be declared independently on both sides — transport,
+/// serializer, and authentication. failureSemantics and authorization are
+/// single-sided by construction, so there is nothing on the other side to
+/// compare them against.
+///
+/// Interim rule from the design document: identical ids are compatible;
+/// different ids are compatible if their metadata-declared types match;
+/// otherwise it's an error. This is deliberately not a richer model —
+/// a fuller compatibility scheme is expected later.
+///
+/// Applies to direct connections too — only authentication is meaningful
+/// there, since a direct connection's transport is 'direct' on both sides
+/// by construction (validate() already enforces that) and it never has a
+/// serializer at all.
+fn check_caller_callee_plugin_incompatibility(config: &WiringConfig, meta: &MetadataIndex, issues: &mut Vec<Issue>) {
+    for conn in &config.connections {
+        let (Some(caller), Some(callee)) = (conn.resolve_caller(), conn.resolve_callee()) else {
+            continue; // external — nothing on the other side to compare against
+        };
+
+        if !conn.is_direct() {
+            let caller_transport = &caller.transport.id;
+            let callee_transport = &callee.transport.id;
+            let caller_type = meta.transport(caller_transport)
+                .and_then(|m| m.transport.as_ref())
+                .and_then(|t| t.transport_type.as_deref());
+            let callee_type = meta.transport(callee_transport)
+                .and_then(|m| m.transport.as_ref())
+                .and_then(|t| t.transport_type.as_deref());
+            check_plugin_compatibility(conn, "transport", caller_transport, callee_transport, caller_type, callee_type, issues);
+
+            // validate() guarantees a non-direct connection resolves a
+            // serializer on both sides, so these unwraps are safe here.
+            let caller_serializer = &caller.serializer.expect("non-direct caller resolves a serializer").id;
+            let callee_serializer = &callee.serializer.expect("non-direct callee resolves a serializer").id;
+            let caller_type = meta.serializer(caller_serializer)
+                .and_then(|m| m.serializer.as_ref())
+                .and_then(|s| s.serializer_type.as_deref());
+            let callee_type = meta.serializer(callee_serializer)
+                .and_then(|m| m.serializer.as_ref())
+                .and_then(|s| s.serializer_type.as_deref());
+            check_plugin_compatibility(conn, "serializer", caller_serializer, callee_serializer, caller_type, callee_type, issues);
+        }
+
+        let caller_auth = caller.authentication_id();
+        let callee_auth = callee.authentication_id();
+        // "noop" is the built-in default, not a real deployable artifact —
+        // same posture as check_unknown_authentication, which skips it too.
+        if !caller_auth.eq_ignore_ascii_case("noop") && !callee_auth.eq_ignore_ascii_case("noop") {
+            let caller_type = meta.authentication(caller_auth)
+                .and_then(|m| m.authentication.as_ref())
+                .and_then(|a| a.authentication_type.as_deref());
+            let callee_type = meta.authentication(callee_auth)
+                .and_then(|m| m.authentication.as_ref())
+                .and_then(|a| a.authentication_type.as_deref());
+            check_plugin_compatibility(conn, "authentication", caller_auth, callee_auth, caller_type, callee_type, issues);
+        }
+    }
+}
+
+/// The compatibility rule itself, for one plugin kind on one connection:
+/// same id is always compatible; different ids are compatible if their
+/// (already looked-up) declared types match, a warning if either type is
+/// unknown, and an error otherwise. Takes the ids and types as plain data
+/// — the lookup itself is the caller's job, since it differs per plugin
+/// kind (transport/serializer/authentication metadata, three different
+/// MetadataIndex methods and result shapes) and isn't worth abstracting
+/// over for three call sites.
+fn check_plugin_compatibility(
+    conn: &ConnectionEntry,
+    kind: &str,
+    caller_id: &str,
+    callee_id: &str,
+    caller_type: Option<&str>,
+    callee_type: Option<&str>,
+    issues: &mut Vec<Issue>,
+) {
+    if caller_id == callee_id {
+        return;
+    }
+
+    match (caller_type, callee_type) {
+        (Some(ct), Some(lt)) if ct == lt => {} // different ids, same type — compatible
+        (Some(_), Some(_)) => {
+            issues.push(Issue::error(format!(
+                "connection '{}' -> '{}': incompatible {} — caller uses '{}', callee uses '{}', \
+                 and their declared types do not match",
+                conn.caller_node_id().unwrap_or("?"), conn.callee_node_id(), kind, caller_id, callee_id
+            )));
+        }
+        _ => {
+            issues.push(Issue::warning(format!(
+                "connection '{}' -> '{}': cannot confirm {} compatibility between caller '{}' \
+                 and callee '{}' — metadata for one or both is missing or has no declared type",
+                conn.caller_node_id().unwrap_or("?"), conn.callee_node_id(), kind, caller_id, callee_id
+            )));
+        }
     }
 }
  
@@ -990,7 +1132,8 @@ fn plural<'a>(n: usize, singular: &'a str, plural: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itara_config::{WiringConfig, Node, ComponentNode, VirtualNode, ConnectionEntry, SerializerEntry};
+    use itara_config::{WiringConfig, Node, ComponentNode, VirtualNode, ConnectionEntry,
+        SerializerEntry, ConnectionSide, TransportEntry};
  
     // ── Test helpers ──────────────────────────────────────────────────────────
  
@@ -1033,25 +1176,13 @@ mod tests {
         format!("test-conn-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
     }
  
-    fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: from.map(Into::into),
-            to: to.into(),
-            transport: transport_entry("http", Some(port)),
-            serializer: default_serializer(),
-            failure_semantics: None,
-            authentication: None,
-            authorization: None,
-        }
-    }
- 
-    fn direct(from: &str, to: &str) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: Some(from.into()),
-            to: to.into(),
-            transport: transport_entry("direct", None),
+    /// Builds a bare ConnectionSide with just a node id — the shape every
+    /// helper below needs for a caller or callee block that declares no
+    /// plugin of its own, everything falling back to the connection level.
+    fn side(node_id: &str) -> ConnectionSide {
+        ConnectionSide {
+            node_id: node_id.into(),
+            transport: None,
             serializer: None,
             failure_semantics: None,
             authentication: None,
@@ -1059,49 +1190,73 @@ mod tests {
         }
     }
 
+    fn http(from: Option<&str>, to: &str, port: u16) -> ConnectionEntry {
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            from.map(side),
+            Some(transport_entry("http", Some(port))),
+            default_serializer(),
+            None,
+        )
+    }
+ 
+    fn direct(from: &str, to: &str) -> ConnectionEntry {
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            Some(side(from)),
+            Some(transport_entry("direct", None)),
+            None,
+            None,
+        )
+    }
+
     fn kafka(from: Option<&str>, to: &str) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: from.map(Into::into),
-            to: to.into(),
-            transport: transport_entry("kafka", None),
-            serializer: default_serializer(),
-            failure_semantics: None,
-            authentication: None,
-            authorization: None,
-        }
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            from.map(side),
+            Some(transport_entry("kafka", None)),
+            default_serializer(),
+            None,
+        )
     }
  
     fn conn_with_transport(from: Option<&str>, to: &str, transport: &str, port: u16) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: from.map(Into::into),
-            to: to.into(),
-            transport: transport_entry(transport, Some(port)),
-            serializer: default_serializer(),
-            failure_semantics: None,
-            authentication: None,
-            authorization: None,
-        }
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            from.map(side),
+            Some(transport_entry(transport, Some(port))),
+            default_serializer(),
+            None,
+        )
     }
 
-    /// Overrides the serializer id on an already-built connection.
-    /// Used by tests that need a specific serializer id rather than the
-    /// "json" default the other helpers use.
+    /// Overrides the serializer id on an already-built connection. This sets
+    /// the connection-level serializer, which resolve_callee()/resolve_caller()
+    /// both fall back to when a side declares none of its own — exactly what
+    /// every existing caller of this helper needs, since none of them declare
+    /// a side-specific serializer.
     fn with_serializer_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
         conn.serializer = Some(SerializerEntry { id: id.into(), params: Default::default() });
         conn
     }
 
-    /// Overrides the authentication id on an already-built connection.
+    /// Overrides the authentication id on an already-built connection, at
+    /// the connection level — same fallback reasoning as with_serializer_id.
     fn with_authentication_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
         conn.authentication = Some(itara_config::AuthenticationEntry { id: id.into(), params: Default::default() });
         conn
     }
 
     /// Overrides the authorization id on an already-built connection.
+    /// Authorization is callee-side only now, so this sets it on the callee
+    /// block directly — there is no connection-level placement to fall back
+    /// from.
     fn with_authorization_id(mut conn: ConnectionEntry, id: &str) -> ConnectionEntry {
-        conn.authorization = Some(itara_config::AuthorizationEntry { id: id.into(), params: Default::default() });
+        conn.callee.authorization = Some(itara_config::AuthorizationEntry { id: id.into(), params: Default::default() });
         conn
     }
 
@@ -1252,16 +1407,14 @@ mod tests {
     fn direct_connection_with_no_from_flagged() {
         let cfg = config(
             vec![node("a", "ca")],
-            vec![ConnectionEntry {
-                id: next_conn_id(),
-                from: None,
-                to: "a".into(),
-                transport: transport_entry("direct", None),
-                serializer: None,
-                failure_semantics: None,
-                authentication: None,
-                authorization: None,
-            }],
+            vec![ConnectionEntry::for_testing(
+                next_conn_id(),
+                side("a"),
+                None,
+                Some(transport_entry("direct", None)),
+                None,
+                None,
+            )],
         );
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
         let matches: Vec<_> = issues.iter()
@@ -1269,26 +1422,6 @@ mod tests {
             .collect();
         assert_eq!(matches.len(), 1);
         assert!(matches[0].is_error());
-    }
-
-    #[test]
-    fn direct_connection_with_blank_from_flagged() {
-        // Whitespace-only 'from' is external too — same as is_external() elsewhere.
-        let cfg = config(
-            vec![node("a", "ca")],
-            vec![ConnectionEntry {
-                id: next_conn_id(),
-                from: Some("   ".into()),
-                to: "a".into(),
-                transport: transport_entry("direct", None),
-                serializer: None,
-                failure_semantics: None,
-                authentication: None,
-                authorization: None,
-            }],
-        );
-        let issues = collect_issues(&cfg, &CheckFilter::All, None);
-        assert!(issues.iter().any(|i| i.is_error() && i.message.contains("no 'from'")));
     }
 
     #[test]
@@ -1488,7 +1621,7 @@ mod tests {
         let issues = collect_issues(&cfg, &CheckFilter::Only(
             ["unknown-transport"].iter().map(|s| s.to_string()).collect()
         ), Some(&meta));
-        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 2);
         assert!(issues[0].message.contains("carrier-pigeon"));
     }
 
@@ -1615,16 +1748,14 @@ mod tests {
             ],
             vec![
                 kafka(Some("producerNode"), "channel"),
-                ConnectionEntry {
-                    id: next_conn_id(),
-                    from: Some("channel".into()),
-                    to: "consumerNode".into(),
-                    transport: transport_entry("http", Some(8081)),
-                    serializer: default_serializer(),
-                    failure_semantics: None,
-                    authentication: None,
-                    authorization: None,
-                },
+                ConnectionEntry::for_testing(
+                    next_conn_id(),
+                    side("consumerNode"),
+                    Some(side("channel")),
+                    Some(transport_entry("http", Some(8081))),
+                    default_serializer(),
+                    None,
+                ),
             ],
         );
         let issues = collect_issues(&cfg, &CheckFilter::All, None);
@@ -1767,6 +1898,11 @@ type = "rule-table"
         MetadataIndex::scan(dir.path()).unwrap().index
     }
 
+    /// Every current caller of this helper passes from = Some(...) — failure
+    /// semantics are caller-side only, so a from = None (external) input
+    /// would have nowhere to put them; this helper just drops the failure
+    /// semantics block in that case rather than panicking, since building
+    /// that combination isn't itself invalid, only pointless.
     fn conn_with_fs(
         from: Option<&str>,
         to: &str,
@@ -1777,27 +1913,35 @@ type = "rule-table"
         fs_handle_timeout: bool,
         absolute_timeout: Option<&str>,
     ) -> ConnectionEntry {
-        ConnectionEntry {
-            id: next_conn_id(),
-            from: from.map(Into::into),
-            to: to.into(),
-            transport: itara_config::TransportEntry {
-                id: transport.into(),
-                handle_timeout: transport_handle_timeout,
-                params: Default::default(),
-            },
-            serializer: default_serializer(),
-            failure_semantics: Some(itara_config::FailureSemanticsEntry {
-                id: fs_id.into(),
-                timeout: timeout.map(Into::into),
-                handle_timeout: fs_handle_timeout,
-                absolute_timeout: absolute_timeout.map(Into::into),
-                max_retry: None,
-                params: Default::default(),
-            }),
+        let transport_entry = TransportEntry {
+            id: transport.into(),
+            handle_timeout: transport_handle_timeout,
+            params: Default::default(),
+        };
+        let fs = itara_config::FailureSemanticsEntry {
+            id: fs_id.into(),
+            timeout: timeout.map(Into::into),
+            handle_timeout: fs_handle_timeout,
+            absolute_timeout: absolute_timeout.map(Into::into),
+            max_retry: None,
+            params: Default::default(),
+        };
+        let caller = from.map(|f| ConnectionSide {
+            node_id: f.into(),
+            transport: None,
+            serializer: None,
+            failure_semantics: Some(fs),
             authentication: None,
             authorization: None,
-        }
+        });
+        ConnectionEntry::for_testing(
+            next_conn_id(),
+            side(to),
+            caller,
+            Some(transport_entry),
+            default_serializer(),
+            None,
+        )
     }
 
     // ── check_api_version_compatibility ───────────────────────────────────────
@@ -2169,7 +2313,10 @@ supports-external-timeout = {supports_external_timeout}
     #[test]
     fn timeout_direct_connection_skipped() {
         let mut conn = direct("a", "b");
-        conn.failure_semantics = Some(itara_config::FailureSemanticsEntry {
+        // failureSemantics is caller-side only now — direct() always builds
+        // a caller block (a direct connection is never external), so this
+        // unwrap is safe.
+        conn.caller.as_mut().unwrap().failure_semantics = Some(itara_config::FailureSemanticsEntry {
             id: "built-in".into(),
             timeout: Some("2s".into()),
             handle_timeout: true,
@@ -2193,15 +2340,7 @@ supports-external-timeout = {supports_external_timeout}
 
     #[test]
     fn timeout_external_connection_skipped() {
-        let mut conn = http(None, "b", 8080);
-        conn.failure_semantics = Some(itara_config::FailureSemanticsEntry {
-            id: "built-in".into(),
-            timeout: Some("2s".into()),
-            handle_timeout: false,
-            absolute_timeout: None,
-            max_retry: None,
-            params: Default::default(),
-        });
+        let conn = http(None, "b", 8080);
         let cfg = config(
             vec![node("b", "comp-b")],
             vec![conn],
@@ -2472,7 +2611,10 @@ supports-external-timeout = {supports_external_timeout}
     #[test]
     fn interrupt_safety_direct_connection_skipped() {
         let mut conn = direct("a", "b");
-        conn.failure_semantics = Some(itara_config::FailureSemanticsEntry {
+        // failureSemantics is caller-side only now — direct() always builds
+        // a caller block (a direct connection is never external), so this
+        // unwrap is safe.
+        conn.caller.as_mut().unwrap().failure_semantics = Some(itara_config::FailureSemanticsEntry {
             id: "built-in".into(),
             timeout: Some("2s".into()),
             handle_timeout: true,
@@ -2496,15 +2638,7 @@ supports-external-timeout = {supports_external_timeout}
 
     #[test]
     fn interrupt_safety_external_connection_skipped() {
-        let mut conn = http(None, "b", 8080);
-        conn.failure_semantics = Some(itara_config::FailureSemanticsEntry {
-            id: "built-in".into(),
-            timeout: Some("2s".into()),
-            handle_timeout: true,
-            absolute_timeout: None,
-            max_retry: None,
-            params: Default::default(),
-        });
+        let conn = http(None, "b", 8080);
         let cfg = config(vec![node("b", "comp-b")], vec![conn]);
         let meta = index_from_toml(&[
             &transport_meta("http", true, false),
@@ -2805,6 +2939,283 @@ message-formats = [{formats}]
         let issues = collect_issues(&cfg, &only_serializer_compat(), Some(&meta));
         assert!(issues.iter().any(|i| i.message.contains("not confirmed compatible")));
         assert!(errors(&issues).is_empty(), "must never produce an error");
+    }
+
+    // ── check_caller_callee_plugin_incompatibility ────────────────────────────
+
+    /// Builds a connection where the caller and callee sides each declare
+    /// their own transport, serializer and/or authentication independently
+    /// — the exact shape check_caller_callee_plugin_incompatibility exists
+    /// to compare. Any parameter left None means that side declares
+    /// nothing of that kind (so it has no plugin of that kind at all,
+    /// since there is deliberately no connection-level fallback here).
+    fn conn_with_side_plugins(
+        from: Option<&str>,
+        to: &str,
+        caller_transport: Option<&str>,
+        callee_transport: Option<&str>,
+        caller_serializer: Option<&str>,
+        callee_serializer: Option<&str>,
+        caller_authentication: Option<&str>,
+        callee_authentication: Option<&str>,
+    ) -> ConnectionEntry {
+        let caller_side = from.map(|f| ConnectionSide {
+            node_id: f.into(),
+            transport: caller_transport.map(|id| transport_entry(id, None)),
+            serializer: caller_serializer.map(|id| SerializerEntry { id: id.into(), params: Default::default() }),
+            failure_semantics: None,
+            authentication: caller_authentication.map(|id| itara_config::AuthenticationEntry { id: id.into(), params: Default::default() }),
+            authorization: None,
+        });
+        let callee_side = ConnectionSide {
+            node_id: to.into(),
+            transport: callee_transport.map(|id| transport_entry(id, None)),
+            serializer: callee_serializer.map(|id| SerializerEntry { id: id.into(), params: Default::default() }),
+            failure_semantics: None,
+            authentication: callee_authentication.map(|id| itara_config::AuthenticationEntry { id: id.into(), params: Default::default() }),
+            authorization: None,
+        };
+        ConnectionEntry::for_testing(next_conn_id(), callee_side, caller_side, None, None, None)
+    }
+
+    /// Same as transport_meta, but lets the declared type differ from the
+    /// artifact id — needed to build "different id, same type" fixtures,
+    /// which transport_meta can't (it always sets type = id).
+    fn transport_meta_with_type(id: &str, type_: &str) -> String {
+        format!(r#"
+[artifact]
+kind = "transport"
+id = "{id}"
+version = "0.1.0"
+
+[transport]
+type = "{type_}"
+"#)
+    }
+
+    /// Same idea as transport_meta_with_type, for serializers.
+    fn serializer_meta_with_type(id: &str, type_: &str) -> String {
+        format!(r#"
+[artifact]
+kind = "serializer"
+id = "{id}"
+version = "0.1.0"
+
+[serializer]
+type = "{type_}"
+"#)
+    }
+
+    fn authentication_meta(id: &str, type_: &str) -> String {
+        format!(r#"
+[artifact]
+kind = "authentication"
+id = "{id}"
+version = "0.1.0"
+
+[authentication]
+type = "{type_}"
+"#)
+    }
+
+    fn only_caller_callee_compat() -> CheckFilter {
+        CheckFilter::Only(["caller-callee-plugin-incompatibility".to_string()].into_iter().collect())
+    }
+
+    #[test]
+    fn same_transport_id_on_both_sides_is_compatible_without_any_metadata() {
+        // Same id short-circuits before any metadata lookup, so this must
+        // pass even with a completely empty metadata index.
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("http"),
+            Some("json"), Some("json"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn different_transport_ids_with_matching_type_are_compatible() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http-v1"), Some("http-v2"),
+            Some("json"), Some("json"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http-v1", "http"),
+            &transport_meta_with_type("http-v2", "http"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn different_transport_ids_with_different_types_is_an_error() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("kafka"),
+            Some("json"), Some("json"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http", "http"),
+            &transport_meta_with_type("kafka", "kafka"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("http") && issues[0].message.contains("kafka"));
+    }
+
+    #[test]
+    fn different_serializer_ids_with_different_types_is_an_error() {
+        // Same as the transport case, but for serializer — confirms all
+        // three plugin kinds are actually checked, not just transport.
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("http"),
+            Some("json"), Some("protobuf"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http", "http"),
+            &serializer_meta_with_type("json", "json"),
+            &serializer_meta_with_type("protobuf", "protobuf"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("json") && issues[0].message.contains("protobuf"));
+    }
+
+    #[test]
+    fn different_serializer_ids_with_matching_type_are_compatible() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("http"),
+            Some("json-fast"), Some("json-pretty"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http", "http"),
+            &serializer_meta_with_type("json-fast", "json"),
+            &serializer_meta_with_type("json-pretty", "json"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn different_authentication_ids_with_different_types_is_an_error() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("http"),
+            Some("json"), Some("json"),
+            Some("shared-secret"), Some("mtls"),
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http", "http"),
+            &serializer_meta_with_type("json", "json"),
+            &authentication_meta("shared-secret", "shared-secret"),
+            &authentication_meta("mtls", "mtls"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("shared-secret") && issues[0].message.contains("mtls"));
+    }
+
+    #[test]
+    fn different_ids_with_missing_metadata_is_a_warning_not_an_error() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("carrier-pigeon"),
+            Some("json"), Some("json"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        // No metadata registered for either transport id at all.
+        let meta = index_from_toml(&[&serializer_meta_with_type("json", "json")]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 0);
+        assert_eq!(issues.iter().filter(|i| !i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("cannot confirm"));
+    }
+
+    #[test]
+    fn check_is_unavailable_without_metadata_dir() {
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("kafka"), // would be a hard error with metadata present
+            Some("json"), Some("json"),
+            None, None,
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let issues = collect_issues(&cfg, &CheckFilter::All, None);
+        assert!(issues.iter().filter(|i| i.is_error()).count() == 0);
+    }
+
+    #[test]
+    fn external_connection_has_nothing_to_compare() {
+        // No caller side at all — the check must skip it outright rather
+        // than comparing against a nonexistent caller.
+        let conn = http(None, "callee", 8080);
+        let cfg = config(vec![node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[&transport_meta("http", true, true)]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn direct_connection_only_compares_authentication() {
+        // Both sides resolve to 'direct', so transport and serializer are
+        // skipped entirely (direct never has a serializer, and 'direct' vs
+        // 'direct' would be a no-op comparison anyway). Authentication is
+        // still genuinely different here and must still be flagged.
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("direct"), Some("direct"),
+            None, None,
+            Some("shared-secret"), Some("mtls"),
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &authentication_meta("shared-secret", "shared-secret"),
+            &authentication_meta("mtls", "mtls"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert_eq!(issues.iter().filter(|i| i.is_error()).count(), 1);
+        assert!(issues[0].message.contains("authentication"));
+    }
+
+    #[test]
+    fn noop_authentication_on_either_side_is_never_compared() {
+        // "noop" is the built-in default, not a real artifact — comparing
+        // it against a real authentication type would either need metadata
+        // for a pseudo-id that will never exist, or produce a warning on
+        // every connection that simply doesn't authenticate one side. Both
+        // are wrong, so this combination must be skipped outright.
+        let conn = conn_with_side_plugins(
+            Some("caller"), "callee",
+            Some("http"), Some("http"),
+            Some("json"), Some("json"),
+            None, Some("mtls"), // caller has no authentication block -> "noop"
+        );
+        let cfg = config(vec![node("caller", "comp-a"), node("callee", "comp-b")], vec![conn]);
+        let meta = index_from_toml(&[
+            &transport_meta_with_type("http", "http"),
+            &serializer_meta_with_type("json", "json"),
+            &authentication_meta("mtls", "mtls"),
+        ]);
+        let issues = collect_issues(&cfg, &only_caller_callee_compat(), Some(&meta));
+        assert!(issues.is_empty());
     }
  
     // ── summary_line ──────────────────────────────────────────────────────────
