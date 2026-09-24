@@ -139,23 +139,33 @@ plumbing from `calculator-api`) and the topology still wires up the same
 way; only the bytes on the wire and the contract's parameter/return types
 would differ.
 
-## Building it
+## Build Itara itself, once, if you haven't already
 
 ```bash
-mvn clean install
+mvn install -f ../../java/pom.xml
 ```
 
-`calculator-api`'s build compiles `calculator.proto` via
-`protobuf-maven-plugin`, which resolves a matching `protoc` binary as a
-Maven artifact through `os-maven-plugin` — no local `protoc` install
+`prepare-deployment.sh` copies the already-built Itara jars from
+here — it doesn't build Itara itself.
+
+## Build and assemble everything else
+ 
+```bash
+./prepare-deployment.sh
+```
+
+Builds `calculator`/`gateway`, wipes and regenerates `deployment/` from
+scratch, and collects every jar and `.itara` file it needs, including
+`wiring.yaml` from the example root.
+
+This build step is also where `calculator-api`'s `.proto` gets compiled:
+`protobuf-maven-plugin` resolves a matching `protoc` binary as a Maven
+artifact through `os-maven-plugin`, so no local `protoc` install is
 needed. `CalculatorRequest`/`CalculatorResponse` land in
 `calculator-api/target/generated-sources/protobuf/java` and get compiled
 alongside `CalculatorService.java` into `calculator-api`'s jar.
 
-## Assembling the deployment layout
-
-Same shape as every other Itara deployment — see the demo if this part is
-unfamiliar:
+The layout it produces:
 
 ```
 deployment/
@@ -191,6 +201,22 @@ they are added to the classpath in the startup commands.
 so it needs to be on the system classpath. The rest of the Itara plugins,
 the HTTP transport and the JSON serializer, will be loaded by the
 Itara-specific classloader for isolation.
+
+Every version-pinned jar the script collects can be overridden if your
+`pom.xml` files resolve to something other than the defaults (`0.1.0`
+for Itara's own jars, `3.25.3` for `protobuf-java`):
+
+```bash
+ITARA_VERSION=0.2.0 PROTOBUF_VERSION=3.25.3 ./prepare-deployment.sh
+```
+
+The script fails loudly, naming the missing jar, if a version doesn't
+match what's actually on disk.
+
+`wiring.yaml` itself lives at the example root, a sibling of
+`deployment/`, not inside it — the copy inside `deployment/` is
+regenerated on every run, so edit the root copy, not the one you'll see
+after running the script.
 
 ## Running it
 

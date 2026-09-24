@@ -112,13 +112,22 @@ these classes, it's just shadowed and never loaded.
 
 ## Running them colocated, under Itara
 
-### 1. Build everything
+### 1. Build Itara itself, once, if you haven't already
 
 ```bash
-mvn clean install
+mvn install -f ../../java/pom.xml
 ```
 
-### 2. Assemble the deployment layout
+### 2. Build and assemble everything else
+
+```bash
+./prepare-deployment.sh
+```
+
+Builds the example's own modules, wipes and regenerates `deployment/`
+from scratch each run, and copies in everything it needs — including
+`wiring.yaml` from the example root. The layout below is what you get,
+not what you assemble by hand.
 
 ```
 deployment/
@@ -151,16 +160,32 @@ deployment/
   wiring.yaml
 ```
 
-The four `tomcat-embed-*`/`jakarta.annotation-api` jars can be pulled
-straight from your local `.m2` (Maven already downloaded them building
-the services) — see the `pom.xml` files' resolved versions for exact
-coordinates. **The directory names under `components/` must exactly
+Every version-pinned dependency the script collects — Itara's own jars,
+and the Tomcat/Jakarta jars pulled from your local `.m2` — can be
+overridden if your `pom.xml` files ever resolve to something other than
+the script's defaults:
+
+```bash
+ITARA_VERSION=0.2.0 TOMCAT_VERSION=10.1.33 JAKARTA_VERSION=2.1.1 \
+  ./prepare-deployment.sh
+```
+
+The script fails loudly, naming the missing jar, if a version doesn't
+match what's actually on disk — it won't silently produce a broken
+deployment directory.
+
+**The directory names under `components/` must exactly
 match the component ids declared in `wiring.yaml`** — `order` and
 `inventory` here — this is enforced, not just a convention.
 
 `itara-agent.jar` is kept in its own directory, deliberately not inside
 `lib/`: it is an instrumentation agent, referenced only by `-javaagent`,
 and has no reason to sit on the application classpath.
+
+`wiring.yaml` itself lives at the example root, a sibling of
+`deployment/`, not inside it — the copy inside `deployment/` is
+regenerated on every run, so edit the root copy, not the one you'll see
+after running the script.
 
 ### 3. `wiring.yaml`
 

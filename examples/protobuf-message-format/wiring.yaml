@@ -1,0 +1,29 @@
+nodes:
+  - id: "gatewayNode"
+    component: "gateway"
+  - id: "calculatorNode"
+    component: "calculator"
+
+connections:
+  - id: "external-to-gateway"
+    callee:
+      nodeId: "gatewayNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8080"
+    serializer:
+      id: "json"
+  - id: "gateway-to-calculator"
+    caller:
+      nodeId: "gatewayNode"
+    callee:
+      nodeId: "calculatorNode"
+    transport:
+      id: "http"
+      params:
+        host: "localhost"
+        port: "8081"
+    serializer:
+      id: "protobuf"
