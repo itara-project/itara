@@ -1,0 +1,14 @@
+nodes:
+  - id: "orderNode"
+    component: "order"
+  - id: "inventoryNode"
+    component: "inventory"
+
+connections:
+  - id: "order-to-inventory"
+    caller:
+      nodeId: "orderNode"
+    callee:
+      nodeId: "inventoryNode"
+    transport:
+      id: "direct"

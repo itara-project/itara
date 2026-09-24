@@ -6,7 +6,7 @@ authentication and an allow/deny-by-method authorization — wired onto
 real connections between three components, run two ways: distributed
 (three separate processes, real HTTP) and colocated (one process,
 isolated classloader mode, `direct` transport). Same component code,
-completely unchanged, in both. Only `wiring.yaml` differs.
+completely unchanged, in both. Only the wiring files differ.
 
 ## What this demonstrates
 
@@ -15,7 +15,7 @@ externally-reachable gateways, `gateway-a` and `gateway-b`, each
 delegating straight through to the matching method on `backend`. Neither
 gateway nor `backend` contains a single line of authentication or
 authorization code — both are entirely connection-level concerns,
-configured in `wiring.yaml` and invisible to component code, exactly as
+configured in wiring config and invisible to component code, exactly as
 the spec requires (§15, §16).
 
 - `gateway-a`'s connection to `backend` presents the correct shared
@@ -27,7 +27,7 @@ the spec requires (§15, §16).
   consulted — regardless of which method was requested, since the
   caller's identity was never established in the first place.
 
-The point this example exists to make: running `gateway-a`'s and 
+The point this example exists to make: running `gateway-a`'s and
 `gateway-b`'s connections to `backend` as `direct` instead of `http`
 produces identical authentication and authorization behavior.
 Colocation is a placement decision, not a trust boundary (ADR 0025)
@@ -87,6 +87,11 @@ authn-authz/
       itara-agent.jar
 ```
 
+Both wiring files live at the example root, not inside `deployment/` —
+the copies inside `deployment/` are regenerated on every run of
+`prepare-deployment.sh`, so edit the root copies, not the ones you'll see
+after running the script.
+
 One `deployment/` directory serves both scenarios — which wiring file and
 which `-cp`/`-javaagent` invocation you use is what selects distributed
 vs. colocated, not a different directory tree. `deployment/components/`
@@ -101,15 +106,37 @@ for the auth plugins, plus the two core plugins already published
 alongside Itara itself (`itara-transport-http`, `itara-serializer-json`)
 — all ten sit in the one `metafiles/` directory and cover both wiring
 files, since a `.itara` file describes an artifact, not a scenario.
-
-## Building it
+ 
+## Build Itara itself, once, if you haven't already
 
 ```bash
-mvn clean install
+mvn install -f ../../java/pom.xml
+```
+
+`prepare-deployment.sh` copies the already-built Itara jars from here —
+it doesn't build Itara itself.
+ 
+## Build and assemble everything else
+
+```bash
+./prepare-deployment.sh
 ```
 
 Builds every module — both auth plugins, and all three components'
-`-api`/`-impl` jars.
+`-api`/`-impl` jars — wipes and regenerates `deployment/` from scratch,
+and collects every jar and `.itara` file it needs, including both
+wiring files from the example root.
+
+Every version-pinned Itara jar the script collects can be overridden if
+your `pom.xml` files resolve to something other than the default
+(`0.1.0`):
+
+```bash
+ITARA_VERSION=0.2.0 ./prepare-deployment.sh
+```
+
+The script fails loudly, naming the missing jar, if a version doesn't
+match what's actually on disk.
 
 ## Running it — distributed
 
