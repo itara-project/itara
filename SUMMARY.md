@@ -4,9 +4,9 @@
 In modern distributed systems, **topology** — which components exist, how they communicate, what transport protocols they use, and how failures are handled — is scattered across HTTP clients, Kafka consumers, retry policies, and config files throughout the codebase. Today's distributed systems don't have an explicit topology layer; topology emerges from the combined implementation of individual components.
 
 This creates three fundamental architectural issues:
-1. **High Churn Risk:** Changing a communication boundary (e.g., refactoring an internal HTTP call to a direct in-process call or Kafka message) requires touching business logic on both ends.
+1. **High Churn Risk:** Changing a communication boundary (e.g., refactoring an internal HTTP call to a direct in-process call or Kafka message) requires touching business logic on both ends. In practice, this is why "split the monolith" or "consolidate these three services" refactors stall for months — the blast radius isn't written down anywhere, so mapping it out by hand becomes the bulk of the project.
 2. **Invisible Blast Radius:** Because topology is implicit, no single artifact describes the exact directed runtime graph or predicts what breaks if a connection shifts.
-3. **Calcification:** Early architectural decisions lock into code, making future evolution (splitting monoliths or consolidating microservices) prohibitively expensive.
+3. **Calcification:** Early architectural decisions lock into code, making future evolution (splitting monoliths or consolidating microservices) prohibitively expensive. It also cuts the other way financially: a boundary placed for convenience early on, not by deliberate design, can turn into a chatty cross-service call path that quietly inflates network and serialization costs at scale — a bill nobody chose on purpose.
 
 ---
 
@@ -17,7 +17,33 @@ Itara applies the principles of **Infrastructure-as-Code (IaC) to internal compo
 * **The wiring config declares *how* components connect** (executable topology graph).
 * **Code expresses intent, never transport mechanics** (no HTTP client boilerplate or queue consumer logic in business code).
 
-Topology becomes an explicit, versioned, and verifiable engineering artifact rather than a side effect of implementation.
+A component contract is a plain interface — nothing Itara-specific in it:
+ 
+```java
+public interface Calculator {
+    int add(int a, int b);
+}
+```
+ 
+How two components connect is declared entirely outside that code:
+ 
+```yaml
+connections:
+  - id: gateway-to-calculator
+    caller:
+      nodeId: gatewayNode
+    callee:
+      nodeId: calculatorNode
+    transport:
+      id: http # swap to gRPC, JMS, direct — the interface above never changes
+      params:
+        host: "calculator"
+        port: 8081
+    serializer:
+      id: "json"
+```
+
+Topology becomes an explicit, versionable, and verifiable engineering artifact rather than a side effect of implementation. The [demo](demo/README.md) shows the same pattern applied to event APIs, virtual nodes, and colocated connections.
 
 ---
 
